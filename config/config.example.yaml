@@ -1,0 +1,30 @@
+# TARS 配置模板
+# 使用方法：复制本文件为 config.yaml 后修改（config.yaml 已在 .gitignore 中，不会入库）
+#   cp config/config.example.yaml config/config.yaml
+#
+# 所有值支持 ${VAR} 环境变量引用，密钥等敏感信息建议用环境变量注入，
+# 也可以直接在本地 config.yaml 中填写明文（该文件不会被提交）。
+
+llm:
+  # Gemini API Key（https://aistudio.google.com/apikey 免费申请）
+  # 方式一（推荐）：环境变量
+  apiKey: ${GEMINI_API_KEY}
+  # 方式二：本地明文（仅本机使用，config.yaml 不会入库）
+  # apiKey: "your-api-key-here"
+
+  modelId: "gemini-3.1-flash-lite"
+  #modelId: "gemini-3.5-flash-lite"
+  baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  timeout: 60s
+
+# 工作目录（agent 工具操作 + 会话数据存储的根目录）
+# 留空则默认为用户家目录下的 tars 目录（~/tars）
+# workDir: "C:/my-workdir"
+
+# 追踪配置（OpenTelemetry）
+# 无论是否配置 OTLP，每个会话目录下的 .logs/trace.jsonl 都会写入
+trace:
+  # OTLP/HTTP 导出（Jaeger 等）：docker run -d -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one
+  # otlpHttpEndpoint: "localhost:4318"
+  # OTLP/gRPC 导出（Arize Phoenix 等 LLM 专属视图）：docker run -d -p 6006:6006 -p 4317:4317 arizephoenix/phoenix
+  # otlpGrpcEndpoint: "localhost:4317"
