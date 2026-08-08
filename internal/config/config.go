@@ -19,10 +19,49 @@ type TraceConfig struct {
 	OTLPGrpcEndpoint string `yaml:"otlpGrpcEndpoint,omitempty" json:"otlpGrpcEndpoint,omitempty"`
 }
 
+// AgentConfig controls the ReAct loop runtime behavior.
+type AgentConfig struct {
+	// MaxIterations caps the ReAct loop rounds (LLM → tools → LLM ...)
+	// before the agent is forced to stop. Prevents runaway token burn on
+	// pathological loops; complex multi-file tasks need a generous budget.
+	MaxIterations int `yaml:"maxIterations,omitempty" json:"maxIterations,omitempty"`
+	// CompressionThreshold is the context-usage ratio (0-1) at which history
+	// compression should kick in (compression itself is not implemented yet;
+	// the threshold is surfaced in the status bar for now).
+	CompressionThreshold float64 `yaml:"compressionThreshold,omitempty" json:"compressionThreshold,omitempty"`
+}
+
+// DefaultMaxIterations is used when agent.maxIterations is unset or
+// non-positive. 100 covers long multi-file tasks while still bounding cost.
+const DefaultMaxIterations = 100
+
+// DefaultCompressionThreshold is used when agent.compressionThreshold is
+// unset or out of range.
+const DefaultCompressionThreshold = 0.8
+
+// CompressionThresholdOrDefault returns the configured compression threshold,
+// falling back to DefaultCompressionThreshold when unset or out of (0,1].
+func (c *AppConfig) CompressionThresholdOrDefault() float64 {
+	if c == nil || c.Agent == nil || c.Agent.CompressionThreshold <= 0 || c.Agent.CompressionThreshold > 1 {
+		return DefaultCompressionThreshold
+	}
+	return c.Agent.CompressionThreshold
+}
+
 type AppConfig struct {
 	LLM     *llm.Options `yaml:"llm,omitempty" json:"llm,omitempty"`
 	WorkDir string       `yaml:"workDir,omitempty" json:"workDir,omitempty"`
 	Trace   *TraceConfig `yaml:"trace,omitempty" json:"trace,omitempty"`
+	Agent   *AgentConfig `yaml:"agent,omitempty" json:"agent,omitempty"`
+}
+
+// MaxIterationsOrDefault returns the configured ReAct loop limit, falling
+// back to DefaultMaxIterations when unset or non-positive.
+func (c *AppConfig) MaxIterationsOrDefault() int {
+	if c == nil || c.Agent == nil || c.Agent.MaxIterations <= 0 {
+		return DefaultMaxIterations
+	}
+	return c.Agent.MaxIterations
 }
 
 // OTLPEndpoints returns the configured OTLP/HTTP and OTLP/gRPC endpoints

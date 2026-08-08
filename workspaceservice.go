@@ -40,10 +40,7 @@ func (s *AgentService) OpenDirectoryDialog() (string, error) {
 // All subsequent agent file operations will operate within this directory.
 // Pass an empty string to reset to the default isolated workspace.
 func (s *AgentService) SetWorkspaceDir(conversationID string, dir string) error {
-	s.mu.Lock()
-	conv, ok := s.convs[conversationID]
-	s.mu.Unlock()
-	if !ok {
+	if !s.hasConversation(conversationID) {
 		return fmt.Errorf("conversation not found: %s", conversationID)
 	}
 
@@ -57,8 +54,7 @@ func (s *AgentService) SetWorkspaceDir(conversationID string, dir string) error 
 		return fmt.Errorf("save meta: %w", err)
 	}
 
-	// Emit event so frontend updates
-	_ = conv // conv exists, no in-memory field to update (read from meta on demand)
+	// Emit event so frontend updates（工作区路径按需从 meta 读取，内存无需同步）
 	application.Get().Event.Emit("workspace:changed", WorkspaceChangedEvent{
 		ConversationID: conversationID,
 		Path:           dir,
@@ -71,10 +67,7 @@ func (s *AgentService) SetWorkspaceDir(conversationID string, dir string) error 
 
 // GetWorkspaceInfo returns the current workspace info for a conversation.
 func (s *AgentService) GetWorkspaceInfo(conversationID string) (*WorkspaceInfo, error) {
-	s.mu.RLock()
-	_, ok := s.convs[conversationID]
-	s.mu.RUnlock()
-	if !ok {
+	if !s.hasConversation(conversationID) {
 		return nil, fmt.Errorf("conversation not found: %s", conversationID)
 	}
 

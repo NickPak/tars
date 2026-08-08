@@ -19,6 +19,8 @@ export interface ChatMessage {
   elapsedMs?: number;
   /** 仅前端本地使用：标记该条消息生成失败，后端无需提供 */
   error?: string;
+  /** 仅前端本地使用：错误分类（timeout 时展示"模型超时"提示与重试按钮） */
+  errorKind?: "timeout" | "error";
 }
 
 /** 一次工具调用的信息 */
@@ -57,6 +59,8 @@ export interface StreamError {
   conversationId: string;
   messageId: string;
   error: string;
+  /** 错误分类："timeout"（模型调用超时，可能是服务商拥堵）| "error"（其他） */
+  kind?: "timeout" | "error";
 }
 
 /** "conversation:renamed" 事件 payload：会话标题变更 */
@@ -70,6 +74,38 @@ export interface UsageInfo {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** 提示词中命中服务端缓存的 token 数（缓存命中率 = cachedTokens / promptTokens） */
+  cachedTokens?: number;
+}
+
+/** 当前模型配置（不含敏感信息） */
+export interface ModelInfo {
+  modelId: string;
+  contextWindow: number;
+}
+
+/** 会话级聚合统计（底部状态栏数据） */
+export interface SessionStats {
+  modelId: string;
+  /** 最近一次 LLM 调用是否成功（状态灯） */
+  modelHealthy: boolean;
+  /** 会话轮次（user 消息数） */
+  rounds: number;
+  totalTokens: number;
+  /** 1 credit = 1000 tokens */
+  totalCredits: number;
+  /** 会话累计费用（元） */
+  totalCostYuan: number;
+  /** 平均缓存命中率 0-1 */
+  avgCacheHitRate: number;
+  /** 上下文使用占比 0-1 */
+  contextUsage: number;
+  contextWindow: number;
+  /** 压缩阈值 0-1 */
+  compressionThreshold: number;
+  /** 价格表（元/百万 token），前端算每条消息的本次费用 */
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
 }
 
 /** "agent:reasoning" 事件 payload：模型思考过程 */

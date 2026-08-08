@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Settings, PanelLeftClose } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useLayoutStore } from "../store/layoutStore";
 import RenameDialog, { ConfirmDialog } from "./Dialog";
+import ResizeHandle from "./ResizeHandle";
 
 export default function Sidebar() {
   const conversations = useChatStore((s) => s.conversations);
@@ -12,6 +13,8 @@ export default function Sidebar() {
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const renameConversation = useChatStore((s) => s.renameConversation);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
+  const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
+  const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
 
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
@@ -109,6 +112,9 @@ export default function Sidebar() {
           setDeleteTarget(null);
         }}
       />
+
+      {/* 右边缘拖拽把手（调整侧边栏宽度） */}
+      <ResizeHandle side="right" width={sidebarWidth} onResize={setSidebarWidth} />
     </aside>
   );
 }

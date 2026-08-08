@@ -27,10 +27,7 @@ const maxTreeDepth = 5
 // workspace directory. The workspace dir is per-conversation: {workDir}/conversations/{id}/workspace/.
 // If the directory doesn't exist yet (new conversation), an empty slice is returned.
 func (s *AgentService) ListWorkspaceFiles(conversationID string) ([]FileEntry, error) {
-	s.mu.RLock()
-	_, ok := s.convs[conversationID]
-	s.mu.RUnlock()
-	if !ok {
+	if !s.hasConversation(conversationID) {
 		return nil, fmt.Errorf("conversation not found: %s", conversationID)
 	}
 
@@ -49,10 +46,7 @@ func (s *AgentService) ListWorkspaceFiles(conversationID string) ([]FileEntry, e
 // OpenFile opens a file with the OS default application (not hardcoded to any
 // specific editor). The path should be relative to the conversation's workspace.
 func (s *AgentService) OpenFile(conversationID string, relPath string) error {
-	s.mu.RLock()
-	_, ok := s.convs[conversationID]
-	s.mu.RUnlock()
-	if !ok {
+	if !s.hasConversation(conversationID) {
 		return fmt.Errorf("conversation not found: %s", conversationID)
 	}
 
@@ -70,10 +64,7 @@ func (s *AgentService) OpenFile(conversationID string, relPath string) error {
 // directory. On Windows this is Explorer, on macOS Finder, on Linux the
 // default file manager via xdg-open.
 func (s *AgentService) RevealInExplorer(conversationID string) error {
-	s.mu.RLock()
-	_, ok := s.convs[conversationID]
-	s.mu.RUnlock()
-	if !ok {
+	if !s.hasConversation(conversationID) {
 		return fmt.Errorf("conversation not found: %s", conversationID)
 	}
 
@@ -89,10 +80,7 @@ func (s *AgentService) RevealInExplorer(conversationID string) error {
 // (selects the file in Explorer/Finder). The path should be relative to the
 // conversation's workspace.
 func (s *AgentService) RevealFileInExplorer(conversationID string, relPath string) error {
-	s.mu.RLock()
-	_, ok := s.convs[conversationID]
-	s.mu.RUnlock()
-	if !ok {
+	if !s.hasConversation(conversationID) {
 		return fmt.Errorf("conversation not found: %s", conversationID)
 	}
 
@@ -170,27 +158,50 @@ func scanDir(absDir, relPath string, depth int) ([]FileEntry, error) {
 }
 
 // openWithSystemDefault opens a file or folder with the OS default application.
+// On Windows we go through explorer.exe instead of `cmd /c start`: explorer
+// uses shell association semantics — files with a registered handler open
+// directly, and files WITHOUT an association (e.g. .go on a machine where the
+// IDE never registered it) reliably trigger the "Open with" dialog, whereas
+// `start` fails silently in a detached process environment.
 func openWithSystemDefault(path string) error {
+	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		return exec.Command("cmd", "/c", "start", "", path).Start()
+		cmd = exec.Command("explorer", path)
 	case "darwin":
-		return exec.Command("open", path).Start()
+		cmd = exec.Command("open", path)
 	default:
-		return exec.Command("xdg-open", path).Start()
+		cmd = exec.Command("xdg-open", path)
 	}
+	return startDetached(cmd)
 }
 
 // openFolderInExplorer opens a folder in the OS file manager.
 func openFolderInExplorer(dir string) error {
+	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		return exec.Command("explorer", dir).Start()
+		cmd = exec.Command("explorer", dir)
 	case "darwin":
-		return exec.Command("open", dir).Start()
+		cmd = exec.Command("open", dir)
 	default:
-		return exec.Command("xdg-open", dir).Start()
+		cmd = exec.Command("xdg-open", dir)
 	}
+	return startDetached(cmd)
+}
+
+// startDetached starts the command and reaps it in the background so the
+// launcher process does not become a zombie after handing off to the target
+// application. Errors from Wait (e.g. the target app returning a non-zero
+// exit code after successfully opening the file) are intentionally ignored.
+func startDetached(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = cmd.Wait()
+	}()
+	return nil
 }
 
 // revealFileInExplorer reveals a file in the OS file manager, selecting it.

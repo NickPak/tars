@@ -24,6 +24,13 @@ type Options struct {
 	ModelId string        `yaml:"modelId,omitempty" json:"modelId,omitempty"`
 	BaseUrl string        `yaml:"baseUrl,omitempty" json:"baseUrl,omitempty"`
 	Timeout time.Duration `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+
+	// InputPricePerMillion / OutputPricePerMillion 每百万 token 价格（元），
+	// 用于状态栏费用估算；为 0 时费用不展示。
+	InputPricePerMillion  float64 `yaml:"inputPricePerMillion,omitempty" json:"inputPricePerMillion,omitempty"`
+	OutputPricePerMillion float64 `yaml:"outputPricePerMillion,omitempty" json:"outputPricePerMillion,omitempty"`
+	// ContextWindow 模型上下文窗口（tokens），用于计算上下文使用百分比。
+	ContextWindow int `yaml:"contextWindow,omitempty" json:"contextWindow,omitempty"`
 }
 
 // Client wraps an Eino Gemini ChatModel.

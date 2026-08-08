@@ -10,6 +10,8 @@ import {
   Clock,
   Coins,
   FolderOpen,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import type { UsageInfo } from "../types";
@@ -96,7 +98,11 @@ export default function MessageList() {
                     <span className="stream-cursor" />
                   )}
                   {m.error && (
-                    <div className="message-error">生成失败:{m.error}</div>
+                    <ErrorBanner
+                      error={m.error}
+                      kind={m.errorKind}
+                      isLast={i === messages.length - 1}
+                    />
                   )}
                   {!streamingThis && m.content && (
                     <MessageStatusBar
@@ -198,7 +204,56 @@ function ToolCallCard({
   );
 }
 
-/** 消息状态栏：copy / 点赞 / 点踩 / 删除 / credits / tokens / elapsed */
+/** 错误提示横幅：超时给出针对性说明，最后一条出错消息提供"重试"入口 */
+function ErrorBanner({
+  error,
+  kind,
+  isLast,
+}: {
+  error: string;
+  kind?: "timeout" | "error";
+  isLast: boolean;
+}) {
+  const retry = useChatStore((s) => s.retry);
+  const isStreaming = useChatStore((s) => s.isStreaming);
+
+  return (
+    <div className="message-error">
+      <div className="message-error-main">
+        <AlertTriangle size={15} className="message-error-icon" />
+        <div className="message-error-text">
+          {kind === "timeout" ? (
+            <>
+              <span className="message-error-title">
+                模型响应超时 — 已等待 2 分钟仍无回复
+              </span>
+              <span className="message-error-detail">
+                服务商当前可能繁忙或排队较长，你可以重试一次。
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="message-error-title">生成失败</span>
+              <span className="message-error-detail">{error}</span>
+            </>
+          )}
+        </div>
+      </div>
+      {isLast && (
+        <button
+          className="message-error-retry"
+          disabled={isStreaming}
+          onClick={() => void retry()}
+        >
+          <RotateCcw size={14} />
+          重试
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** 消息状态栏：操作按钮 + 轮次级指标（本次命中率 / 本次费用 / tokens / 耗时） */
 function MessageStatusBar({
   content,
   usage,
@@ -211,6 +266,8 @@ function MessageStatusBar({
   onDelete?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  // 价格表来自会话统计（后端配置），用于估算本次费用
+  const stats = useChatStore((s) => s.stats);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -219,7 +276,19 @@ function MessageStatusBar({
     });
   };
 
-  const credits = usage ? (usage.totalTokens / 10_000).toFixed(1) : undefined;
+  // 本次缓存命中率 = cachedTokens / promptTokens（undefined 表示模型未返回缓存数据）
+  const hitRate =
+    usage && usage.promptTokens > 0 && usage.cachedTokens !== undefined
+      ? usage.cachedTokens / usage.promptTokens
+      : undefined;
+
+  // 本次费用 = prompt × 输入价 + completion × 输出价（价格未配置则不显示）
+  const cost =
+    usage && stats && stats.inputPricePerMillion > 0
+      ? (usage.promptTokens * stats.inputPricePerMillion +
+          usage.completionTokens * stats.outputPricePerMillion) /
+        1e6
+      : undefined;
 
   return (
     <div className="msg-status-bar">
@@ -235,24 +304,30 @@ function MessageStatusBar({
       <button className="msg-action msg-action-danger" title="删除" onClick={onDelete}>
         <Trash2 size={16} />
       </button>
-      {credits && (
-        <span className="msg-usage">
-          <Coins size={12} />
-          Credits {credits}
-        </span>
-      )}
-      {usage && (
-        <span className="msg-usage">
-          <Coins size={12} />
-          Tokens {formatTokens(usage.totalTokens)}
-        </span>
-      )}
-      {elapsedMs !== undefined && (
-        <span className="msg-usage">
-          <Clock size={12} />
-          Elapsed {formatElapsed(elapsedMs)}
-        </span>
-      )}
+      <span className="msg-status-metrics">
+        {hitRate !== undefined && (
+          <span className="msg-usage" title="本次缓存命中率（cachedTokens / promptTokens）">
+            本次命中 {(hitRate * 100).toFixed(0)}%
+          </span>
+        )}
+        {usage && (
+          <span className="msg-usage" title={`输入 ${usage.promptTokens} / 输出 ${usage.completionTokens}`}>
+            <Coins size={12} />
+            Tokens {formatTokens(usage.totalTokens)}
+          </span>
+        )}
+        {cost !== undefined && (
+          <span className="msg-usage" title="本次费用（按当前价格表估算）">
+            ¥{cost.toFixed(4)}
+          </span>
+        )}
+        {elapsedMs !== undefined && (
+          <span className="msg-usage" title="本轮总耗时（含所有工具迭代）">
+            <Clock size={12} />
+            {formatElapsed(elapsedMs)}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

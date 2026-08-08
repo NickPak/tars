@@ -32,6 +32,17 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	CreatedAt  int64      `json:"createdAt"`
+	// Usage/ElapsedMs 仅 assistant 消息有值：本轮 token 消耗与总耗时。
+	Usage     *UsageInfo `json:"usage,omitempty"`
+	ElapsedMs int64      `json:"elapsedMs,omitempty"`
+}
+
+// UsageInfo 一次 assistant 回复的 token 统计（与服务层同构，避免循环依赖）。
+type UsageInfo struct {
+	PromptTokens     int `json:"promptTokens"`
+	CompletionTokens int `json:"completionTokens"`
+	TotalTokens      int `json:"totalTokens"`
+	CachedTokens     int `json:"cachedTokens,omitempty"`
 }
 
 // ToolCall is a single tool invocation within an assistant message.

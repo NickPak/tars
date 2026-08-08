@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"tars/pkg/zcopy"
 	"sync"
+	"tars/pkg/zcopy"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/eino-contrib/jsonschema"
@@ -32,19 +32,40 @@ type Definition struct {
 	Handler Handler
 }
 
+// ToolResult 记录一次工具调用的执行结果。
+type ToolResult struct {
+	ID     string // 对应的 tool_call_id
+	Name   string // 工具名
+	Args   string // 模型生成的原始 JSON 参数
+	Output string // 执行结果文本（含错误信息，永远不为空）
+}
+
+// OnToolComplete is invoked when a single tool finishes execution (in its own
+// goroutine), carrying the full ToolResult. Use it to push per-tool progress
+// to the frontend in real time without waiting for all tools to complete.
+type OnToolComplete func(result ToolResult)
+
+func ToolResultsToMessage(results []ToolResult) []*schema.Message {
+	msgs := make([]*schema.Message, len(results))
+	for i, r := range results {
+		msgs[i] = schema.ToolMessage(r.Output, r.ID)
+	}
+	return msgs
+}
+
 type Manager struct {
-	mu     sync.RWMutex
-	tools  map[string]*Definition
-	order  []string
-	infos  []*schema.ToolInfo
+	mu    sync.RWMutex
+	tools map[string]*Definition
+	order []string
+	infos []*schema.ToolInfo
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		mu:     sync.RWMutex{},
-		tools:  make(map[string]*Definition),
-		order:  nil,
-		infos:  nil,
+		mu:    sync.RWMutex{},
+		tools: make(map[string]*Definition),
+		order: nil,
+		infos: nil,
 	}
 }
 
@@ -134,37 +155,12 @@ func (m *Manager) FindTool(name string) (*Definition, bool) {
 	return def, ok
 }
 
-// Execute 并行执行模型请求的所有工具调用，返回与之一一配对的 tool 消息
-// （顺序与 calls 一致）。单个工具的失败不会中断其它工具：
-// 错误会作为 content 回填，让模型在下一轮自行处理。
-func (m *Manager) Execute(ctx context.Context, calls []schema.ToolCall) []*schema.Message {
-	results := m.ExecuteWithResults(ctx, calls)
-	msgs := make([]*schema.Message, len(results))
-	for i, r := range results {
-		msgs[i] = schema.ToolMessage(r.Output, r.ID)
-	}
-	return msgs
-}
-
-// ToolResult 记录一次工具调用的执行结果。
-type ToolResult struct {
-	ID     string // 对应的 tool_call_id
-	Name   string // 工具名
-	Args   string // 模型生成的原始 JSON 参数
-	Output string // 执行结果文本（含错误信息，永远不为空）
-}
-
-// OnToolComplete is invoked when a single tool finishes execution (in its own
-// goroutine), carrying the full ToolResult. Use it to push per-tool progress
-// to the frontend in real time without waiting for all tools to complete.
-type OnToolComplete func(result ToolResult)
-
-// ExecuteWithResults executes tool calls in parallel and returns the full
+// Execute executes tool calls in parallel and returns the full
 // results (including tool name and arguments). An optional onComplete callback
 // is invoked the moment each individual tool finishes — in that tool's
 // goroutine, before the WaitGroup unblocks — so callers can report per-tool
 // progress immediately rather than after every tool is done.
-func (m *Manager) ExecuteWithResults(ctx context.Context, calls []schema.ToolCall, onComplete ...OnToolComplete) []ToolResult {
+func (m *Manager) Execute(ctx context.Context, calls []schema.ToolCall, onComplete ...OnToolComplete) []ToolResult {
 	var callback OnToolComplete
 	if len(onComplete) > 0 {
 		callback = onComplete[0]

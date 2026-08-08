@@ -18,6 +18,7 @@ export default function TopicBar() {
   const conversations = useChatStore((s) => s.conversations);
   const activeId = useChatStore((s) => s.activeId);
   const workspace = useChatStore((s) => s.workspace);
+  const model = useChatStore((s) => s.model);
   const pickAndSetWorkspace = useChatStore((s) => s.pickAndSetWorkspace);
   const resetWorkspace = useChatStore((s) => s.resetWorkspace);
 
@@ -30,6 +31,19 @@ export default function TopicBar() {
   const handleReveal = () => {
     if (activeId) void agentApi.revealInExplorer(activeId);
     setWsMenuOpen(false);
+  };
+
+  // 导出对话为 Markdown。保存对话框本身就是明确的成功反馈，
+  // 成功与用户取消都静默，仅失败时提示。
+  const setBackendError = useChatStore((s) => s.setBackendError);
+  const handleExport = async () => {
+    setMenuOpen(false);
+    if (!activeId) return;
+    try {
+      await agentApi.exportConversation(activeId);
+    } catch (e) {
+      setBackendError(`导出失败: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
   return (
@@ -96,11 +110,16 @@ export default function TopicBar() {
           </>
         )}
 
-        {/* 模型选择器 */}
-        <button className="topicbar-model-btn" title="选择模型">
-          <span>DeepSeek-R1</span>
-          <ChevronDown size={14} />
-        </button>
+        {/* 模型展示（来自后端配置；模型选择功能待后续实现） */}
+        {model && (
+          <button
+            className="topicbar-model-btn"
+            title={`模型：${model.modelId}\n上下文窗口：${model.contextWindow.toLocaleString()} tokens`}
+          >
+            <span>{model.modelId}</span>
+            <ChevronDown size={14} />
+          </button>
+        )}
 
         {/* 更多操作 */}
         <button
@@ -118,7 +137,12 @@ export default function TopicBar() {
               onClick={() => setMenuOpen(false)}
             />
             <div className="topicbar-menu">
-              <button className="topicbar-menu-item" onClick={() => setMenuOpen(false)}>
+              <button
+                className="topicbar-menu-item"
+                onClick={() => {
+                  void handleExport();
+                }}
+              >
                 导出对话
               </button>
               <button className="topicbar-menu-item" onClick={() => setMenuOpen(false)}>

@@ -2,15 +2,14 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tars/internal/config"
@@ -23,7 +22,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // Message roles.
@@ -36,8 +34,12 @@ const (
 // defaultConversationTitle 新会话默认标题，首次发消息时替换为用户输入的截断。
 const defaultConversationTitle = "新会话"
 
-// agentLoopMaxIterations 防止模型陷入死循环烧 token。
-const agentLoopMaxIterations = 25
+// 最大迭代轮次从配置文件读取（agent.maxIterations），
+// 未配置时使用 config.DefaultMaxIterations。
+
+// iterationTimeout 单次模型调用的超时上限。设置得较长，因为模型服务商
+// 压力大时可能排队较久；超时后前端会提示用户决定是否重试。
+const iterationTimeout = 120 * time.Second
 
 // Message is a single chat message within a conversation.
 type Message struct {
@@ -47,6 +49,10 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	CreatedAt  int64      `json:"createdAt"`
+	// Usage 与 ElapsedMs 仅 assistant 消息有值：记录这一轮的 token 消耗
+	// 与总耗时（含所有迭代），供状态栏/消息底部展示与费用估算。
+	Usage     *UsageInfo `json:"usage,omitempty"`
+	ElapsedMs int64      `json:"elapsedMs,omitempty"`
 }
 
 // ToolCall 记录模型请求的一次工具调用。
@@ -88,6 +94,9 @@ type UsageInfo struct {
 	PromptTokens     int `json:"promptTokens"`
 	CompletionTokens int `json:"completionTokens"`
 	TotalTokens      int `json:"totalTokens"`
+	// CachedTokens 提示词中命中服务端缓存的 token 数（Gemini 隐式缓存），
+	// 用于计算缓存命中率 = CachedTokens / PromptTokens。
+	CachedTokens int `json:"cachedTokens,omitempty"`
 }
 
 // StreamError is the payload of the "agent:error" event.
@@ -95,6 +104,10 @@ type StreamError struct {
 	ConversationID string `json:"conversationId"`
 	MessageID      string `json:"messageId"`
 	Error          string `json:"error"`
+	// Kind classifies the failure for the frontend: "timeout" (model call
+	// exceeded the iteration deadline — likely provider congestion) or
+	// "error" (anything else). Empty means "error".
+	Kind string `json:"kind,omitempty"`
 }
 
 // ConversationRenamedEvent is the payload of the "conversation:renamed" event.
@@ -146,6 +159,10 @@ type AgentService struct {
 	convs   map[string]*Conversation
 	cancels map[string]context.CancelFunc
 	tracers map[string]*trace.Tracer
+
+	// modelHealthy 追踪最近一次 LLM 调用的成败（状态栏绿/红灯）。
+	// 初始乐观置 true；emitDone 成功时 true，emitError 时 false。
+	modelHealthy atomic.Bool
 }
 
 func (s *AgentService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -155,6 +172,7 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 		return err
 	}
 	s.appConfig = appConfig
+	s.modelHealthy.Store(true) // 初始乐观假设模型可用
 	s.otlpHTTPEndpoint, s.otlpGrpcEndpoint = appConfig.OTLPEndpoints()
 	if s.otlpHTTPEndpoint != "" {
 		slog.Info("OTLP/HTTP trace export enabled", "endpoint", s.otlpHTTPEndpoint)
@@ -207,8 +225,6 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 		Tools:    s.toolMgr.ToolNames(),
 	})
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.convs = make(map[string]*Conversation)
 	s.cancels = make(map[string]context.CancelFunc)
 	s.tracers = make(map[string]*trace.Tracer)
@@ -231,7 +247,7 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 				CreatedAt: summary.CreatedAt,
 				UpdatedAt: summary.UpdatedAt,
 			}
-			s.convs[conv.ID] = conv
+			s.addConversation(conv)
 
 			// 确保恢复的会话有 workspace 目录（旧版数据可能没有）
 			if err := os.MkdirAll(s.store.WorkspaceDir(conv.ID), 0755); err != nil {
@@ -240,7 +256,7 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 
 			// 为恢复的会话创建 tracer
 			if t, err := trace.NewTracer(s.store.LogsDir(conv.ID), s.otlpHTTPEndpoint, s.otlpGrpcEndpoint); err == nil {
-				s.tracers[conv.ID] = t
+				s.setTracer(conv.ID, t)
 			}
 		}
 		slog.Info("Loaded conversations from store", "count", len(s.convs))
@@ -249,15 +265,109 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 	return nil
 }
 
-func (s *AgentService) ServiceShutdown() error {
+// --- 会话/取消函数/追踪器的并发安全访问 ---
+// convs、cancels、tracers 三个 map 的全部读写收敛到以下方法，
+// 调用方不再直接操作字段。
+
+func (s *AgentService) addConversation(conv *Conversation) {
+	s.mu.Lock()
+	s.convs[conv.ID] = conv
+	s.mu.Unlock()
+}
+
+func (s *AgentService) removeConversation(id string) {
+	s.mu.Lock()
+	delete(s.convs, id)
+	s.mu.Unlock()
+}
+
+func (s *AgentService) hasConversation(id string) bool {
+	s.mu.RLock()
+	_, ok := s.convs[id]
+	s.mu.RUnlock()
+	return ok
+}
+
+// getConversation 返回会话指针。调用方只允许只读访问；
+// 修改会话消息请走带锁的专用路径（如 hooks 中的同步逻辑）。
+func (s *AgentService) getConversation(id string) (*Conversation, bool) {
+	s.mu.RLock()
+	conv, ok := s.convs[id]
+	s.mu.RUnlock()
+	return conv, ok
+}
+
+func (s *AgentService) registerCancel(id string, cancel context.CancelFunc) {
+	s.mu.Lock()
+	s.cancels[id] = cancel
+	s.mu.Unlock()
+}
+
+func (s *AgentService) unregisterCancel(id string) {
+	s.mu.Lock()
+	delete(s.cancels, id)
+	s.mu.Unlock()
+}
+
+// getCancel 返回取消函数但不摘除（循环退出时统一由 unregisterCancel 清理）。
+func (s *AgentService) getCancel(id string) (context.CancelFunc, bool) {
+	s.mu.RLock()
+	cancel, ok := s.cancels[id]
+	s.mu.RUnlock()
+	return cancel, ok
+}
+
+// popCancel 取出并移除取消函数（一次性语义）。
+func (s *AgentService) popCancel(id string) (context.CancelFunc, bool) {
+	s.mu.Lock()
+	cancel, ok := s.cancels[id]
+	if ok {
+		delete(s.cancels, id)
+	}
+	s.mu.Unlock()
+	return cancel, ok
+}
+
+func (s *AgentService) isRunning(id string) bool {
+	s.mu.RLock()
+	_, ok := s.cancels[id]
+	s.mu.RUnlock()
+	return ok
+}
+
+func (s *AgentService) setTracer(id string, t *trace.Tracer) {
+	s.mu.Lock()
+	s.tracers[id] = t
+	s.mu.Unlock()
+}
+
+// removeTracer 关闭并移除会话的 tracer（释放 trace.jsonl 文件句柄）。
+func (s *AgentService) removeTracer(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if t, ok := s.tracers[id]; ok {
+		if err := t.Close(); err != nil {
+			slog.Warn("Failed to close tracer", "id", id, "error", err)
+		}
+		delete(s.tracers, id)
+	}
+}
+
+func (s *AgentService) ServiceShutdown() error {
+	// 分两段：先在锁内取消所有运行中的会话并收集 tracer id，
+	// 解锁后再逐个关闭 tracer（removeTracer 自身会加锁）。
+	s.mu.Lock()
 	for _, cancel := range s.cancels {
 		cancel()
 	}
-	for id, t := range s.tracers {
-		t.Close()
-		delete(s.tracers, id)
+	tracerIDs := make([]string, 0, len(s.tracers))
+	for id := range s.tracers {
+		tracerIDs = append(tracerIDs, id)
+	}
+	s.mu.Unlock()
+
+	for _, id := range tracerIDs {
+		s.removeTracer(id)
 	}
 	return nil
 }
@@ -279,12 +389,10 @@ func (s *AgentService) CreateConversation() (*Conversation, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	s.mu.Lock()
-	s.convs[conv.ID] = conv
+	s.addConversation(conv)
 	if t, err := trace.NewTracer(s.store.LogsDir(id), s.otlpHTTPEndpoint, s.otlpGrpcEndpoint); err == nil {
-		s.tracers[id] = t
+		s.setTracer(id, t)
 	}
-	s.mu.Unlock()
 	s.getTracer(id).LogConversationCreated(id, defaultConversationTitle)
 	return conv, nil
 }
@@ -347,21 +455,13 @@ func mergeToolOutputs(msgs []Message) []Message {
 }
 
 func (s *AgentService) DeleteConversation(id string) error {
-	s.mu.Lock()
 	// 若该会话正在流式生成，先取消，避免 runAgentLoop 继续写文件
-	if cancel, ok := s.cancels[id]; ok {
+	if cancel, ok := s.popCancel(id); ok {
 		cancel()
-		delete(s.cancels, id)
 	}
 	// 关闭 tracer，释放 .logs/trace.jsonl 的文件句柄（Windows 下未关闭会导致 RemoveAll 失败）
-	if t, ok := s.tracers[id]; ok {
-		if err := t.Close(); err != nil {
-			slog.Warn("Failed to close tracer before delete", "id", id, "error", err)
-		}
-		delete(s.tracers, id)
-	}
-	delete(s.convs, id)
-	s.mu.Unlock()
+	s.removeTracer(id)
+	s.removeConversation(id)
 
 	if err := s.store.DeleteConversation(id); err != nil {
 		slog.Error("Failed to delete conversation from disk", "id", id, "error", err)
@@ -425,10 +525,10 @@ func (s *AgentService) SendMessage(conversationID string, text string) (*Message
 	s.persistMessage(conversationID, userMsg)
 
 	messages := s.buildLLMMessages(conv)
+	s.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s.cancels[conversationID] = cancel
-	s.mu.Unlock()
+	s.registerCancel(conversationID, cancel)
 
 	// 将会话工作目录注入 ctx，工具通过 WorkDirFromCtx 读取
 	convWorkDir := s.store.ResolveWorkDir(conversationID)
@@ -476,221 +576,75 @@ func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 	return msgs
 }
 
-// runAgentLoop 是核心 ReAct 循环：流式请求 → 实时推送 → 检测 tool_calls → 执行 → 回填 → 再请求。
-// 使用 Eino 的 Stream API，让 reasoning 和 content 都能实时推送给前端。
-func (s *AgentService) runAgentLoop(ctx context.Context, conversationID, assistantID string, assistantIndex int, messages []*schema.Message, userText string) {
-	tracer := s.getTracer(conversationID)
-	startTime := time.Now()
-
-	// 开启本轮 agent turn 的根 span（OpenTelemetry）
-	ctx, turnSpan := tracer.StartTurn(ctx, conversationID, assistantID, userText)
-	var turnErr error
-	// 累积本轮所有迭代的回复内容，作为根 span 的 output.value
-	//（Phoenix Sessions 的 Turns 视图用它显示 turn 输出）
-	var finalOutput strings.Builder
-
-	defer func() {
-		tracer.EndTurn(turnSpan, turnErr, time.Since(startTime).Milliseconds(), finalOutput.String())
-		s.mu.Lock()
-		delete(s.cancels, conversationID)
-		s.mu.Unlock()
-	}()
-
-	emitError := func(err error) {
-		turnErr = err
-		application.Get().Event.Emit("agent:error", StreamError{
-			ConversationID: conversationID, MessageID: assistantID, Error: err.Error(),
-		})
-	}
-	emitDone := func(usage *UsageInfo) {
-		application.Get().Event.Emit("agent:done", StreamDone{
-			ConversationID: conversationID, MessageID: assistantID, Usage: usage,
-			ElapsedMs: time.Since(startTime).Milliseconds(),
-		})
-	}
-
-	toolInfos := s.toolMgr.ToolInfos()
-	toolSchemas := s.toolMgr.ToolSchemasJSON()
-
-	chatModel := s.llmClient.ChatModel()
-	modelWithTools, err := chatModel.WithTools(toolInfos)
-	if err != nil {
-		emitError(fmt.Errorf("failed to bind tools: %w", err))
-		return
-	}
-
-	for iter := 0; iter < agentLoopMaxIterations; iter++ {
-		// 用流式 API，实时推送 reasoning 和 content
-		llmCtx, llmSpan := tracer.StartLLMCall(ctx, conversationID, s.appConfig.LLM.ModelId,
-			s.basePrompt, iter, schemaToTraceMessages(messages), toolSchemas)
-
-		reader, err := modelWithTools.Stream(llmCtx, messages)
-		if err != nil {
-			tracer.EndLLMCall(llmSpan, err, "", "", nil, "", nil)
-			if errors.Is(err, context.Canceled) {
-				emitDone(nil)
-				return
-			}
-			emitError(err)
-			return
-		}
-
-		// 收集完整的 assistant 消息（用于回放到历史）
-		var fullContent strings.Builder
-		var fullReasoning strings.Builder
-		var toolCalls []schema.ToolCall
-		var usage *UsageInfo
-
-		for {
-			msg, err := reader.Recv()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				tracer.EndLLMCall(llmSpan, err, "", "", nil, "", nil)
-				if errors.Is(err, context.Canceled) {
-					emitDone(nil)
-					return
-				}
-				emitError(err)
-				return
-			}
-
-			// 收集 usage（最后一帧才有）
-			if msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
-				usage = &UsageInfo{
-					PromptTokens:     msg.ResponseMeta.Usage.PromptTokens,
-					CompletionTokens: msg.ResponseMeta.Usage.CompletionTokens,
-					TotalTokens:      msg.ResponseMeta.Usage.TotalTokens,
-				}
-			}
-
-			// 实时推送 reasoning
-			if msg.ReasoningContent != "" {
-				fullReasoning.WriteString(msg.ReasoningContent)
-				application.Get().Event.Emit("agent:reasoning", ReasoningEvent{
-					ConversationID: conversationID,
-					MessageID:      assistantID,
-					Content:        msg.ReasoningContent,
-				})
-			}
-
-			// 实时推送 content
-			if msg.Content != "" {
-				fullContent.WriteString(msg.Content)
-				application.Get().Event.Emit("agent:chunk", StreamChunk{
-					ConversationID: conversationID,
-					MessageID:      assistantID,
-					Chunk:          msg.Content,
-				})
-			}
-
-			// 收集 tool_calls
-			if len(msg.ToolCalls) > 0 {
-				toolCalls = append(toolCalls, msg.ToolCalls...)
-			}
-		}
-		reader.Close()
-
-		// 构造完整的 assistant 消息追加到历史
-		resp := &schema.Message{
-			Role:             schema.Assistant,
-			Content:          fullContent.String(),
-			ReasoningContent: fullReasoning.String(),
-			ToolCalls:        toolCalls,
-		}
-		messages = append(messages, resp)
-		finalOutput.WriteString(resp.Content)
-
-		// 同步到会话存储
-		s.mu.Lock()
-		if c, ok := s.convs[conversationID]; ok && assistantIndex < len(c.Messages) {
-			c.Messages[assistantIndex].Content += resp.Content
-			if len(resp.ToolCalls) > 0 {
-				for _, tc := range resp.ToolCalls {
-					c.Messages[assistantIndex].ToolCalls = append(
-						c.Messages[assistantIndex].ToolCalls,
-						ToolCall{ID: tc.ID, Name: tc.Function.Name, Args: tc.Function.Arguments},
-					)
-				}
-			}
-			c.UpdatedAt = time.Now().UnixMilli()
-		}
-		s.mu.Unlock()
-
-		// 持久化 assistant 消息当前状态（每轮迭代后写入，确保中断不丢数据）
-		s.persistAssistantSnapshot(conversationID, assistantIndex)
-
-		// 记录本轮 LLM 响应并结束 span
-		tracer.EndLLMCall(llmSpan, nil, resp.Content, resp.ReasoningContent,
-			schemaToolCallsToTrace(resp.ToolCalls), "stop", usageToTraceUsage(usage))
-
-		// 没有工具调用 → 最终回复完成
-		if len(resp.ToolCalls) == 0 {
-			emitDone(usage)
-			return
-		}
-
-		// 有工具调用 → 先推送工具调用事件并开始 tool span
-		toolSpans := make(map[string]oteltrace.Span, len(resp.ToolCalls))
-		for _, tc := range resp.ToolCalls {
-			_, tspan := tracer.StartToolCall(ctx, conversationID, tc.ID, tc.Function.Name, tc.Function.Arguments)
-			toolSpans[tc.ID] = tspan
-			application.Get().Event.Emit("agent:tool", ToolEvent{
-				ConversationID: conversationID,
-				MessageID:      assistantID,
-				ToolCallID:     tc.ID,
-				ToolName:       tc.Function.Name,
-				Args:           tc.Function.Arguments,
-			})
-		}
-
-		// 并行执行工具
-		results := s.toolMgr.ExecuteWithResults(ctx, resp.ToolCalls, func(r tools.ToolResult) {
-			tracer.EndToolCall(toolSpans[r.ID], r.Output)
-			application.Get().Event.Emit("agent:tool_result", ToolResultEvent{
-				ConversationID: conversationID,
-				MessageID:      assistantID,
-				ToolCallID:     r.ID,
-				Output:         r.Output,
-			})
-		})
-
-		// 工具结果追加到历史和存储
-		for _, r := range results {
-			toolMsg := schema.ToolMessage(r.Output, r.ID)
-			messages = append(messages, toolMsg)
-
-			now := time.Now().UnixMilli()
-			agentToolMsg := Message{
-				ID:         uuid.NewString(),
-				Role:       RoleTool,
-				Content:    r.Output,
-				ToolCallID: r.ID,
-				CreatedAt:  now,
-			}
-			s.mu.Lock()
-			if c, ok := s.convs[conversationID]; ok {
-				c.Messages = append(c.Messages, agentToolMsg)
-			}
-			s.mu.Unlock()
-
-			// 持久化工具结果
-			s.persistMessage(conversationID, agentToolMsg)
-		}
-	}
-
-	emitError(fmt.Errorf("agent loop exceeded %d iterations", agentLoopMaxIterations))
-}
-
 func (s *AgentService) CancelMessage(conversationID string) error {
-	s.mu.Lock()
-	cancel, ok := s.cancels[conversationID]
-	s.mu.Unlock()
-	if ok {
+	// 只触发取消、不摘除条目：cancels 由 runAgentLoop 退出时
+	// unregisterCancel 清理，期间 isRunning 仍报告 true，
+	// 避免"循环尚未退出就被允许再次发送"的竞态。
+	if cancel, ok := s.getCancel(conversationID); ok {
 		cancel()
 	}
 	return nil
+}
+
+// RetryMessage 重新生成最后一条 assistant 回复：重置该消息（清空内容与
+// 工具调用记录），丢弃其后的工具结果消息，重写 jsonl，然后重跑 Agent 循环。
+// 用于模型超时/出错后由用户发起的重试。会话正在流式生成时拒绝调用。
+func (s *AgentService) RetryMessage(conversationID string) (*Message, error) {
+	s.mu.Lock()
+
+	conv, ok := s.convs[conversationID]
+	if !ok {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("conversation not found: %s", conversationID)
+	}
+	// 此处已持有 s.mu 写锁，直接读 map 安全（不能用 isRunning，会重复加锁死锁）
+	if _, running := s.cancels[conversationID]; running {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("会话正在生成中，无法重试")
+	}
+
+	// 定位最后一条 assistant 消息
+	idx := -1
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == RoleAssistant {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("no assistant message to retry")
+	}
+
+	// 回撤：截断该消息之后的内容（残留的 tool 消息），并重置该消息本身
+	conv.Messages = conv.Messages[:idx+1]
+	assistantMsg := &conv.Messages[idx]
+	assistantMsg.Content = ""
+	assistantMsg.ToolCalls = nil
+	conv.UpdatedAt = time.Now().UnixMilli()
+
+	// 重写 jsonl，去掉回撤掉的消息并重置 assistant 内容
+	if err := s.rewriteMessagesLocked(conversationID, conv.Messages); err != nil {
+		slog.Warn("Failed to rewrite messages on retry", "conv", conversationID, "err", err)
+	}
+
+	// 重建 LLM 上下文。重置后的 assistant 消息 content 为空且无 toolCalls，
+	// buildLLMMessages 会跳过它 —— 模型将基于该消息之前的历史重新生成。
+	messages := s.buildLLMMessages(conv)
+
+	assistantID := assistantMsg.ID
+	assistantIndex := idx
+	s.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.registerCancel(conversationID, cancel)
+
+	// 将会话工作目录注入 ctx，工具通过 WorkDirFromCtx 读取
+	ctx = tools.WithWorkDir(ctx, s.store.ResolveWorkDir(conversationID))
+
+	go s.runAgentLoop(ctx, conversationID, assistantID, assistantIndex, messages, "[retry]")
+
+	return assistantMsg, nil
 }
 
 // DeleteMessage 删除指定消息及其之后的所有消息（undo to here）。
@@ -705,6 +659,7 @@ func (s *AgentService) DeleteMessage(conversationID, messageID string) error {
 	}
 
 	// 会话正在流式生成时拒绝删除，避免与 runAgentLoop 产生竞态
+	//（直接读 map 安全：此处已持有 s.mu 写锁）
 	if _, running := s.cancels[conversationID]; running {
 		return fmt.Errorf("会话正在生成中，无法删除消息")
 	}
@@ -750,6 +705,32 @@ func usageToTraceUsage(u *UsageInfo) *trace.Usage {
 		PromptTokens:     u.PromptTokens,
 		CompletionTokens: u.CompletionTokens,
 		TotalTokens:      u.TotalTokens,
+	}
+}
+
+// usageToStore / usageFromStore 在服务层 UsageInfo 与存储层 store.UsageInfo
+// 之间转换（两个结构体同构，分属不同包避免循环依赖）。
+func usageToStore(u *UsageInfo) *store.UsageInfo {
+	if u == nil {
+		return nil
+	}
+	return &store.UsageInfo{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		TotalTokens:      u.TotalTokens,
+		CachedTokens:     u.CachedTokens,
+	}
+}
+
+func usageFromStore(u *store.UsageInfo) *UsageInfo {
+	if u == nil {
+		return nil
+	}
+	return &UsageInfo{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		TotalTokens:      u.TotalTokens,
+		CachedTokens:     u.CachedTokens,
 	}
 }
 
@@ -848,6 +829,8 @@ func (s *AgentService) persistMessage(convID string, m Message) {
 		Content:    m.Content,
 		ToolCallID: m.ToolCallID,
 		CreatedAt:  m.CreatedAt,
+		ElapsedMs:  m.ElapsedMs,
+		Usage:      usageToStore(m.Usage),
 	}
 	for _, tc := range m.ToolCalls {
 		stMsg.ToolCalls = append(stMsg.ToolCalls, store.ToolCall{
@@ -888,6 +871,8 @@ func (s *AgentService) rewriteMessagesLocked(convID string, msgs []Message) erro
 			Content:    m.Content,
 			ToolCallID: m.ToolCallID,
 			CreatedAt:  m.CreatedAt,
+			ElapsedMs:  m.ElapsedMs,
+			Usage:      usageToStore(m.Usage),
 		}
 		for _, tc := range m.ToolCalls {
 			stMsgs[i].ToolCalls = append(stMsgs[i].ToolCalls, store.ToolCall{
@@ -941,6 +926,8 @@ func storeMessagesToAgent(msgs []store.Message) []Message {
 			Content:    m.Content,
 			ToolCallID: m.ToolCallID,
 			CreatedAt:  m.CreatedAt,
+			ElapsedMs:  m.ElapsedMs,
+			Usage:      usageFromStore(m.Usage),
 		}
 		for _, tc := range m.ToolCalls {
 			am.ToolCalls = append(am.ToolCalls, ToolCall{

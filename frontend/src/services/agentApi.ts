@@ -7,7 +7,7 @@
 
 import { Events } from "@wailsio/runtime";
 import { AgentService } from "../../bindings/tars";
-import type { ChatMessage, Conversation, FileEntry, WorkspaceInfo } from "../types";
+import type { ChatMessage, Conversation, FileEntry, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { ConversationRenamedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent } from "../types";
@@ -39,6 +39,10 @@ export const agentApi = {
 
   cancelMessage: (conversationId: string): Promise<void> =>
     AgentService.CancelMessage(conversationId),
+
+  /** 重试生成最后一条 assistant 回复（超时/出错后由用户触发） */
+  retryMessage: async (conversationId: string): Promise<ChatMessage | null> =>
+    (await AgentService.RetryMessage(conversationId)) as ChatMessage | null,
 
   deleteMessage: (conversationId: string, messageId: string): Promise<void> =>
     AgentService.DeleteMessage(conversationId, messageId),
@@ -73,6 +77,18 @@ export const agentApi = {
   /** 获取会话当前的工作区信息 */
   getWorkspaceInfo: async (conversationId: string): Promise<WorkspaceInfo> =>
     (await AgentService.GetWorkspaceInfo(conversationId)) as WorkspaceInfo,
+
+  /** 获取会话级聚合统计（状态栏数据） */
+  getSessionStats: async (conversationId: string): Promise<SessionStats> =>
+    (await AgentService.GetSessionStats(conversationId)) as SessionStats,
+
+  /** 获取当前模型配置（TopicBar 模型选择器展示用） */
+  getModelInfo: async (): Promise<ModelInfo> =>
+    (await AgentService.GetModelInfo()) as ModelInfo,
+
+  /** 导出会话为 Markdown（弹出系统保存对话框），返回保存路径（取消返回空串） */
+  exportConversation: async (conversationId: string): Promise<string> =>
+    await AgentService.ExportConversation(conversationId),
 };
 
 export interface AgentEventHandlers {

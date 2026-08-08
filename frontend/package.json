@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@wailsio/runtime": "latest",
+    "clsx": "^2.1.1",
     "katex": "^0.16.21",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",

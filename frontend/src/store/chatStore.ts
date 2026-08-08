@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Conversation, WorkspaceInfo } from "../types";
+import type { ChatMessage, Conversation, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
 
 export interface ConversationMeta {
   id: string;
@@ -17,6 +17,10 @@ interface ChatState {
   backendError: string | null;
   /** 当前会话的工作区信息 */
   workspace: WorkspaceInfo | null;
+  /** 当前会话的聚合统计（状态栏数据）；null 表示新会话/无数据 */
+  stats: SessionStats | null;
+  /** 当前模型配置（TopicBar 模型选择器展示）；init 时加载一次 */
+  model: ModelInfo | null;
 
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
@@ -27,13 +31,19 @@ interface ChatState {
   renameConversation: (id: string, title: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
+  /** 重试生成最后一条 assistant 回复（先回撤已渲染内容，再重新流式） */
+  retry: () => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   dismissError: () => void;
+  /** 设置后端错误横幅（供聊天域之外的组件复用错误提示通道） */
+  setBackendError: (msg: string) => void;
 
   /** 弹出目录选择对话框并设置工作区 */
   pickAndSetWorkspace: () => Promise<void>;
   /** 重置为默认工作区 */
   resetWorkspace: () => Promise<void>;
+  /** 拉取当前会话的聚合统计（done/error/切换会话后调用） */
+  refreshStats: () => Promise<void>;
 }
 
 function toMeta(c: Conversation): ConversationMeta {
@@ -48,11 +58,12 @@ function errText(e: unknown): string {
 function markLastAssistantError(
   messages: ChatMessage[],
   error: string,
+  errorKind?: "timeout" | "error",
 ): ChatMessage[] {
   const next = [...messages];
   const last = next[next.length - 1];
   if (last && last.role === "assistant") {
-    next[next.length - 1] = { ...last, error };
+    next[next.length - 1] = { ...last, error, errorKind };
   }
   return next;
 }
@@ -64,6 +75,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   backendError: null,
   workspace: null,
+  stats: null,
+  model: null,
 
   init: () => {
     agentApi
@@ -74,6 +87,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({ conversations: convs });
       })
       .catch((e) => set({ backendError: errText(e) }));
+
+    // 加载当前模型配置（应用级，不随会话变化）
+    agentApi
+      .getModelInfo()
+      .then((m) => set({ model: m }))
+      .catch(() => {
+        // 静默失败：TopicBar 退化为不显示模型名
+      });
 
     return subscribeAgentEvents({
       onChunk: ({ conversationId, chunk }) => {
@@ -99,13 +120,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
           return { messages, isStreaming: false };
         });
+        void get().refreshStats();
       },
       onError: (err) => {
         if (err.conversationId !== get().activeId) return;
         set((s) => ({
-          messages: markLastAssistantError(s.messages, err.error),
+          messages: markLastAssistantError(s.messages, err.error, err.kind),
           isStreaming: false,
         }));
+        void get().refreshStats();
       },
       onConversationRenamed: ({ conversationId, title }) => {
         set((s) => ({
@@ -162,12 +185,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   newConversation: () => {
     if (get().isStreaming) return;
-    set({ activeId: null, messages: [], workspace: null });
+    set({ activeId: null, messages: [], workspace: null, stats: null });
   },
 
   selectConversation: async (id) => {
     if (get().isStreaming || id === get().activeId) return;
-    set({ activeId: id, messages: [], workspace: null });
+    set({ activeId: id, messages: [], workspace: null, stats: null });
     try {
       const conv = await agentApi.getConversation(id);
       set({ messages: conv.messages ?? [] });
@@ -181,6 +204,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch {
       // 静默忽略，不影响会话加载
     }
+    void get().refreshStats();
   },
 
   deleteConversation: async (id) => {
@@ -268,6 +292,44 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  retry: async () => {
+    const { activeId, messages, isStreaming } = get();
+    if (!activeId || isStreaming) return;
+
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant") return;
+
+    // 前端回撤：清空该消息已渲染的内容/工具调用/错误标记，回到"生成中"状态。
+    // 后端 RetryMessage 会同步重置持久化数据，然后重新流式推送，
+    // 由既有事件流（chunk/reasoning/tool/done）重新填充该消息。
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === last.id
+          ? {
+              ...m,
+              content: "",
+              reasoning: "",
+              toolCalls: [],
+              error: undefined,
+              errorKind: undefined,
+              usage: undefined,
+              elapsedMs: undefined,
+            }
+          : m,
+      ),
+      isStreaming: true,
+    }));
+
+    try {
+      await agentApi.retryMessage(activeId);
+    } catch (e) {
+      set((s) => ({
+        isStreaming: false,
+        messages: markLastAssistantError(s.messages, errText(e), "error"),
+      }));
+    }
+  },
+
   deleteMessage: async (messageId) => {
     const { activeId, messages } = get();
     if (!activeId) return;
@@ -291,6 +353,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   dismissError: () => set({ backendError: null }),
+  setBackendError: (msg) => set({ backendError: msg }),
 
   pickAndSetWorkspace: async () => {
     const { activeId } = get();
@@ -327,6 +390,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ workspace: ws });
     } catch (e) {
       set({ backendError: errText(e) });
+    }
+  },
+
+  refreshStats: async () => {
+    const { activeId } = get();
+    if (!activeId) {
+      set({ stats: null });
+      return;
+    }
+    try {
+      const stats = await agentApi.getSessionStats(activeId);
+      // 防止竞态：拉取期间用户切了会话
+      if (get().activeId === activeId) {
+        set({ stats });
+      }
+    } catch {
+      // 统计失败静默忽略，不影响聊天主流程
     }
   },
 }));

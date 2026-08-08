@@ -50,6 +50,9 @@ func main() {
 		Title:  "TARS",
 		Width:  1280,
 		Height: 800,
+		// 窗口最小尺寸：防止三栏布局（侧边栏+聊天+工作区）被过度挤压
+		MinWidth:  960,
+		MinHeight: 600,
 		Linux: application.LinuxWindow{
 			Icon: iconPNG,
 		},

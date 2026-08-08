@@ -70,6 +70,55 @@ body {
   grid-template-columns: 0 minmax(0, 1fr) 0;
 }
 
+/* ===== 面板拖拽把手 ===== */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 50;
+  touch-action: none;
+}
+
+.resize-handle-right {
+  right: -2px;
+}
+
+.resize-handle-left {
+  left: -2px;
+}
+
+/* hover/拖拽时显示的高亮线 */
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover::after {
+  background: var(--accent);
+}
+
+/* 拖拽过程中：全局禁止文本选择 + 统一列宽光标（把手悬停区域外也生效） */
+body.resizing-col {
+  user-select: none;
+}
+
+body.resizing-col,
+body.resizing-col * {
+  cursor: col-resize !important;
+}
+
+body.resizing-col .resize-handle::after {
+  background: var(--accent);
+}
+
 /* ===== 顶部栏 ===== */
 .topbar {
   grid-area: topbar;
@@ -87,8 +136,14 @@ body {
   height: 100%;
   display: flex;
   align-items: center;
+  gap: 6px;
   /* Wails 窗口拖拽 */
   --wails-drag-frame: drag;
+}
+
+/* 拖拽区内的按钮必须退出拖拽命中，否则点击被窗口拖动吃掉 */
+.topbar-drag .topbar-btn {
+  --wails-drag-frame: no-drag;
 }
 
 .topbar-brand {
@@ -131,6 +186,7 @@ body {
 /* ===== 侧边栏 ===== */
 .sidebar {
   grid-area: sidebar;
+  position: relative;
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
@@ -425,7 +481,9 @@ body {
 }
 
 .topicbar-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 8px 12px;
   border: none;
@@ -435,6 +493,16 @@ body {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+}
+
+/* 菜单项图标：固定尺寸、防止收缩、与文字基线对齐 */
+.topicbar-menu-item svg {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.topicbar-menu-item:hover svg {
+  color: var(--text);
 }
 
 .topicbar-menu-item:hover {
@@ -493,9 +561,70 @@ body {
 }
 
 .message-error {
-  margin-top: 8px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(242, 139, 130, 0.35);
+  border-radius: 12px;
+  background: rgba(242, 139, 130, 0.07);
   color: var(--error);
   font-size: 13px;
+}
+
+.message-error-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.message-error-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.message-error-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.message-error-title {
+  font-weight: 600;
+}
+
+.message-error-detail {
+  color: var(--text-dim);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.message-error-retry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: 1px solid rgba(242, 139, 130, 0.45);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--error);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.message-error-retry:hover:not(:disabled) {
+  background: rgba(242, 139, 130, 0.12);
+}
+
+.message-error-retry:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ===== 思考过程（reasoning） ===== */
@@ -678,11 +807,18 @@ body {
   background: var(--hover);
 }
 
+/* 轮次级指标组：整体右对齐，组内小间距 */
+.msg-status-metrics {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
 .msg-usage {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
   font-size: 12px;
   color: var(--text-dim);
 }
@@ -881,6 +1017,7 @@ body {
 /* ===== 右侧工作区面板（Reasonix 风格：项目区）===== */
 .workspace {
   grid-area: workspace;
+  position: relative;
   display: flex;
   flex-direction: column;
   background: var(--sidebar-bg);
@@ -1151,6 +1288,10 @@ body {
   opacity: 0.6;
 }
 
+.statusbar-hint {
+  opacity: 0.6;
+}
+
 /* ===== 模态对话框 ===== */
 .dialog-overlay {
   position: fixed;
@@ -1307,11 +1448,64 @@ body {
   font-size: 0.88em;
 }
 
-.markdown pre {
+/* 代码块：语言标签 + 复制按钮头部 */
+.codeblock {
+  position: relative;
+  margin: 0.8em 0;
   background: var(--code-bg);
   border-radius: 12px;
+  overflow: hidden;
+}
+
+.codeblock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 6px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.codeblock-lang {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+}
+
+.codeblock-copy {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.codeblock:hover .codeblock-copy,
+.codeblock-copy:focus-visible {
+  opacity: 1;
+}
+
+.codeblock-copy:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* pre 本体：背景/圆角由外层 .codeblock 承担，这里只管内边距和滚动 */
+.codeblock pre {
+  margin: 0;
   padding: 14px 16px;
   overflow-x: auto;
+  background: transparent;
 }
 
 .markdown pre code {
