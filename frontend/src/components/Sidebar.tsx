@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Plus, Pencil, Trash2, Settings, PanelLeftClose } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
+import { useLayoutStore } from "../store/layoutStore";
 import RenameDialog, { ConfirmDialog } from "./Dialog";
 
 export default function Sidebar() {
@@ -9,27 +11,30 @@ export default function Sidebar() {
   const selectConversation = useChatStore((s) => s.selectConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const renameConversation = useChatStore((s) => s.renameConversation);
+  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
 
-  // 重命名对话框状态
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
     title: string;
   } | null>(null);
 
-  // 删除确认对话框状态
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <span className="sidebar-brand">TARS</span>
+        <button
+          className="sidebar-collapse-btn"
+          onClick={toggleSidebar}
+          title="收起侧边栏"
+          aria-label="收起侧边栏"
+        >
+          <PanelLeftClose size={18} />
+        </button>
       </div>
 
       <button className="new-chat-btn" onClick={newConversation}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
+        <Plus size={16} />
         新对话
       </button>
 
@@ -55,9 +60,7 @@ export default function Sidebar() {
                   setRenameTarget({ id: c.id, title: c.title });
                 }}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                </svg>
+                <Pencil size={14} />
               </button>
               <button
                 aria-label="删除"
@@ -67,15 +70,19 @@ export default function Sidebar() {
                   setDeleteTarget(c.id);
                 }}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
+                <Trash2 size={14} />
               </button>
             </span>
           </div>
         ))}
       </nav>
+
+      <div className="sidebar-footer">
+        <button className="sidebar-settings-btn" title="设置">
+          <Settings size={16} />
+          <span>设置</span>
+        </button>
+      </div>
 
       {/* 重命名对话框 */}
       <RenameDialog

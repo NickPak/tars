@@ -18,6 +18,10 @@ type ConvMeta struct {
 	Title     string `json:"title"`
 	CreatedAt int64  `json:"createdAt"`
 	UpdatedAt int64  `json:"updatedAt"`
+	// CustomWorkDir is an external directory the user chose as the workspace.
+	// When empty, the conversation uses the default isolated workspace
+	// (conversations/{id}/workspace/).
+	CustomWorkDir string `json:"customWorkDir,omitempty"`
 }
 
 // Message is one line in session.jsonl. Fields match agentservice.Message.
@@ -75,6 +79,18 @@ func (s *Store) LogsDir(id string) string {
 // This is the root for all tool file operations (read/edit/list/search/run_command).
 func (s *Store) WorkspaceDir(id string) string {
 	return filepath.Join(s.ConvDir(id), "workspace")
+}
+
+// ResolveWorkDir returns the effective workspace directory for a conversation.
+// If the conversation has a CustomWorkDir set in meta.json, that path is used;
+// otherwise the default isolated workspace is returned.
+func (s *Store) ResolveWorkDir(id string) string {
+	if meta, err := s.LoadMeta(id); err == nil && meta != nil && meta.CustomWorkDir != "" {
+		if info, err := os.Stat(meta.CustomWorkDir); err == nil && info.IsDir() {
+			return meta.CustomWorkDir
+		}
+	}
+	return s.WorkspaceDir(id)
 }
 
 // DefaultDataDir returns the default data directory under the user's

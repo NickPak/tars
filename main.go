@@ -28,6 +28,7 @@ func init() {
 	application.RegisterEvent[ToolResultEvent]("agent:tool_result")
 	application.RegisterEvent[ReasoningEvent]("agent:reasoning")
 	application.RegisterEvent[ConversationRenamedEvent]("conversation:renamed")
+	application.RegisterEvent[WorkspaceChangedEvent]("workspace:changed")
 }
 
 func main() {

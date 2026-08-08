@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { ArrowUp, Square } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 
 export default function ChatInput() {
@@ -51,9 +52,7 @@ export default function ChatInput() {
             aria-label="停止生成"
             title="停止生成"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <rect x="7" y="7" width="10" height="10" rx="2" />
-            </svg>
+            <Square size={18} fill="currentColor" />
           </button>
         ) : (
           <button
@@ -63,10 +62,7 @@ export default function ChatInput() {
             aria-label="发送"
             title="发送"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="19" x2="12" y2="5" />
-              <polyline points="5 12 12 5 19 12" />
-            </svg>
+            <ArrowUp size={20} />
           </button>
         )}
       </div>

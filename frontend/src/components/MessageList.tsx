@@ -1,4 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  Copy,
+  Check,
+  ThumbsUp,
+  ThumbsDown,
+  Trash2,
+  ChevronRight,
+  Circle,
+  Clock,
+  Coins,
+  FolderOpen,
+} from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import type { UsageInfo } from "../types";
 import Markdown from "./Markdown";
@@ -7,9 +19,9 @@ export default function MessageList() {
   const messages = useChatStore((s) => s.messages);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const deleteMessage = useChatStore((s) => s.deleteMessage);
+  const pickAndSetWorkspace = useChatStore((s) => s.pickAndSetWorkspace);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 消息更新（含流式追加）时滚动到底部
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
       behavior: "instant" as ScrollBehavior,
@@ -22,6 +34,13 @@ export default function MessageList() {
       <div className="welcome">
         <h1 className="welcome-title">你好</h1>
         <p className="welcome-sub">有什么可以帮你的？</p>
+        <button
+          className="welcome-open-dir"
+          onClick={() => void pickAndSetWorkspace()}
+        >
+          <FolderOpen size={18} />
+          打开目录作为工作区
+        </button>
       </div>
     );
   }
@@ -30,6 +49,9 @@ export default function MessageList() {
     <div className="message-list">
       <div className="message-list-inner">
         {messages.map((m, i) => {
+          // tool 消息（历史会话中的工具执行结果）不单独渲染——
+          // 其内容已通过 assistant 消息的 toolCalls 数组展示在 ToolCallCard 中
+          if (m.role === "tool") return null;
           const streamingThis =
             isStreaming && i === messages.length - 1 && m.role === "assistant";
           return (
@@ -42,10 +64,7 @@ export default function MessageList() {
                     title="删除"
                     onClick={() => void deleteMessage(m.id)}
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
+                    <Trash2 size={15} />
                   </button>
                 </div>
               ) : (
@@ -113,17 +132,10 @@ function ReasoningBlock({
         className="reasoning-toggle"
         onClick={() => setExpanded((e) => !e)}
       >
-        <svg
+        <ChevronRight
+          size={14}
           className={`reasoning-chevron${expanded ? " expanded" : ""}`}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        />
         {streaming ? "思考中…" : "思考过程"}
       </button>
       {expanded && (
@@ -155,25 +167,30 @@ function ToolCallCard({
       >
         <span className="tool-card-status">
           {status === "done" ? (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
+            <Check size={14} />
           ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" strokeDasharray="42" strokeDashoffset="0" />
-            </svg>
+            <Circle size={14} className="tool-card-spinner" />
           )}
         </span>
         <span className="tool-card-name">{name}</span>
-        {args && <span className="tool-card-args">{args.length > 80 ? args.slice(0, 80) + "…" : args}</span>}
-        <svg className={`tool-card-chevron${expanded ? " expanded" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        {args && (
+          <span className="tool-card-args">
+            {args.length > 80 ? args.slice(0, 80) + "…" : args}
+          </span>
+        )}
+        <ChevronRight
+          size={14}
+          className={`tool-card-chevron${expanded ? " expanded" : ""}`}
+        />
       </button>
       {expanded && (
         <div className="tool-card-body">
           {output !== undefined && (
-            <pre className="tool-card-output">{output.length > 2000 ? output.slice(0, 2000) + "\n[truncated]" : output}</pre>
+            <pre className="tool-card-output">
+              {output.length > 2000
+                ? output.slice(0, 2000) + "\n[truncated]"
+                : output}
+            </pre>
           )}
         </div>
       )}
@@ -202,65 +219,37 @@ function MessageStatusBar({
     });
   };
 
-  // Credits 估算：用总 token 数近似（1 credit ≈ 10K tokens）
   const credits = usage ? (usage.totalTokens / 10_000).toFixed(1) : undefined;
 
   return (
     <div className="msg-status-bar">
       <button className="msg-action" title="复制" onClick={handleCopy}>
-        {copied ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-        )}
+        {copied ? <Check size={16} /> : <Copy size={16} />}
       </button>
       <button className="msg-action" title="赞">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z" />
-          <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-        </svg>
+        <ThumbsUp size={16} />
       </button>
       <button className="msg-action" title="踩">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H6.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z" />
-          <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-        </svg>
+        <ThumbsDown size={16} />
       </button>
       <button className="msg-action msg-action-danger" title="删除" onClick={onDelete}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="3 6 5 6 21 6" />
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        </svg>
+        <Trash2 size={16} />
       </button>
       {credits && (
         <span className="msg-usage">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 6v6l4 2" />
-          </svg>
+          <Coins size={12} />
           Credits {credits}
         </span>
       )}
       {usage && (
         <span className="msg-usage">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-          </svg>
+          <Coins size={12} />
           Tokens {formatTokens(usage.totalTokens)}
         </span>
       )}
       {elapsedMs !== undefined && (
         <span className="msg-usage">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 6v6l4 2" />
-          </svg>
+          <Clock size={12} />
           Elapsed {formatElapsed(elapsedMs)}
         </span>
       )}

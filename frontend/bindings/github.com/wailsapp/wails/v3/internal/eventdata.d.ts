@@ -19,6 +19,7 @@ declare module "@wailsio/runtime" {
             "agent:tool": main$0.ToolEvent;
             "agent:tool_result": main$0.ToolResultEvent;
             "conversation:renamed": main$0.ConversationRenamedEvent;
+            "workspace:changed": main$0.WorkspaceChangedEvent;
         }
     }
 }

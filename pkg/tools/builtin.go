@@ -12,6 +12,9 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // workDirKey is the context key for the per-conversation workspace directory.
@@ -417,9 +420,10 @@ func RunCommand(workDir string) *Definition {
 			cmd.Stdout = &out
 			cmd.Stderr = &out
 			runErr := cmd.Run()
-			result := out.String()
+			result := toUTF8(out.Bytes())
 			if len(result) > readFileMaxBytes {
-				result = result[:readFileMaxBytes] + fmt.Sprintf("\n\n[output too large, truncated to first %d bytes]", readFileMaxBytes)
+				// ToValidUTF8 防止截断落在多字节字符中间产生乱码
+				result = strings.ToValidUTF8(result[:readFileMaxBytes], "") + fmt.Sprintf("\n\n[output too large, truncated to first %d bytes]", readFileMaxBytes)
 			}
 			if runErr != nil {
 				if cctx.Err() == context.DeadlineExceeded {
@@ -430,6 +434,21 @@ func RunCommand(workDir string) *Definition {
 			return result, nil
 		},
 	}
+}
+
+// toUTF8 converts command output to valid UTF-8. Windows console builtin
+// commands (dir, type, etc.) emit GBK on Chinese systems (code page 936),
+// which would otherwise render as mojibake in the frontend and LLM context.
+// Pure ASCII/UTF-8 output (e.g. from `go run`) passes through unchanged.
+func toUTF8(b []byte) string {
+	if utf8.Valid(b) {
+		return string(b)
+	}
+	decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(b)
+	if err != nil {
+		return string(b)
+	}
+	return string(decoded)
 }
 
 // --- workspace path safety ---

@@ -96,6 +96,35 @@ export interface ToolResultEvent {
   output: string;
 }
 
+/** 工作区文件树中的一个条目（文件或目录） */
+export interface FileEntry {
+  name: string;
+  /** 相对于工作区根目录的路径 */
+  path: string;
+  isDir: boolean;
+  /** 文件大小（字节），目录为 0 */
+  size: number;
+  /** 子条目（仅目录有） */
+  children?: FileEntry[];
+}
+
+/** 工作区信息 */
+export interface WorkspaceInfo {
+  /** 当前工作区目录绝对路径 */
+  path: string;
+  /** 是否为用户自定义的外部目录 */
+  isCustom: boolean;
+  /** 目录名（用于显示） */
+  name: string;
+}
+
+/** "workspace:changed" 事件 payload */
+export interface WorkspaceChangedEvent {
+  conversationId: string;
+  path: string;
+  isCustom: boolean;
+}
+
 /** 与 Go 端 main.go 中注册的事件名保持一致 */
 export const AgentEvents = {
   Chunk: "agent:chunk",
@@ -105,4 +134,5 @@ export const AgentEvents = {
   Reasoning: "agent:reasoning",
   Tool: "agent:tool",
   ToolResult: "agent:tool_result",
+  WorkspaceChanged: "workspace:changed",
 } as const;

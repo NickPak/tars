@@ -50,10 +50,13 @@ type Message struct {
 }
 
 // ToolCall 记录模型请求的一次工具调用。
+// Output 不参与持久化与 LLM 上下文构建，仅在 GetConversation 返回时
+// 从对应 tool 消息合并填充，供前端展示工具执行结果。
 type ToolCall struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Args string `json:"args"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Args   string `json:"args"`
+	Output string `json:"output,omitempty"`
 }
 
 // Conversation is a chat session with an ordered list of messages.
@@ -310,8 +313,37 @@ func (s *AgentService) GetConversation(id string) (*Conversation, error) {
 		return nil, fmt.Errorf("conversation not found: %s", id)
 	}
 	cp := *conv
-	cp.Messages = append([]Message{}, conv.Messages...)
+	cp.Messages = mergeToolOutputs(append([]Message{}, conv.Messages...))
 	return &cp, nil
+}
+
+// mergeToolOutputs 将 tool 消息的执行结果按 ToolCallID 合并进 assistant
+// 消息的 ToolCalls.Output，供前端 ToolCallCard 展示。只在返回的副本上操作，
+// 不影响内存原始数据、持久化格式和 LLM 上下文（tool 消息仍保留原样）。
+func mergeToolOutputs(msgs []Message) []Message {
+	outputs := make(map[string]string)
+	for _, m := range msgs {
+		if m.Role == RoleTool && m.ToolCallID != "" {
+			outputs[m.ToolCallID] = m.Content
+		}
+	}
+	if len(outputs) == 0 {
+		return msgs
+	}
+	for i := range msgs {
+		if msgs[i].Role != RoleAssistant || len(msgs[i].ToolCalls) == 0 {
+			continue
+		}
+		merged := make([]ToolCall, len(msgs[i].ToolCalls))
+		for j, tc := range msgs[i].ToolCalls {
+			merged[j] = tc
+			if out, ok := outputs[tc.ID]; ok {
+				merged[j].Output = out
+			}
+		}
+		msgs[i].ToolCalls = merged
+	}
+	return msgs
 }
 
 func (s *AgentService) DeleteConversation(id string) error {
@@ -399,7 +431,7 @@ func (s *AgentService) SendMessage(conversationID string, text string) (*Message
 	s.mu.Unlock()
 
 	// 将会话工作目录注入 ctx，工具通过 WorkDirFromCtx 读取
-	convWorkDir := s.store.WorkspaceDir(conversationID)
+	convWorkDir := s.store.ResolveWorkDir(conversationID)
 	ctx = tools.WithWorkDir(ctx, convWorkDir)
 
 	go s.runAgentLoop(ctx, conversationID, assistantMsg.ID, assistantIndex, messages, text)
@@ -412,7 +444,7 @@ func (s *AgentService) SendMessage(conversationID string, text string) (*Message
 func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 	msgs := make([]*schema.Message, 0, len(conv.Messages)+1)
 	// 动态构建 system prompt：base + 会话工作目录 + 静态 env（OS/tools）
-	convWorkDir := s.store.WorkspaceDir(conv.ID)
+	convWorkDir := s.store.ResolveWorkDir(conv.ID)
 	sysPrompt := s.basePrompt + "\n- Working directory: `" + convWorkDir + "`\n" + s.envSuffix
 	msgs = append(msgs, schema.SystemMessage(sysPrompt))
 	for _, m := range conv.Messages {

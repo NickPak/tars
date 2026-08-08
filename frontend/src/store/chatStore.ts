@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Conversation } from "../types";
+import type { ChatMessage, Conversation, WorkspaceInfo } from "../types";
 
 export interface ConversationMeta {
   id: string;
@@ -15,6 +15,8 @@ interface ChatState {
   isStreaming: boolean;
   /** 后端调用失败信息（联调阶段用于提示，可关闭） */
   backendError: string | null;
+  /** 当前会话的工作区信息 */
+  workspace: WorkspaceInfo | null;
 
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
@@ -27,6 +29,11 @@ interface ChatState {
   cancel: () => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   dismissError: () => void;
+
+  /** 弹出目录选择对话框并设置工作区 */
+  pickAndSetWorkspace: () => Promise<void>;
+  /** 重置为默认工作区 */
+  resetWorkspace: () => Promise<void>;
 }
 
 function toMeta(c: Conversation): ConversationMeta {
@@ -56,6 +63,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   backendError: null,
+  workspace: null,
 
   init: () => {
     agentApi
@@ -144,22 +152,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return { messages };
         });
       },
+      onWorkspaceChanged: ({ conversationId, path, isCustom }) => {
+        if (conversationId !== get().activeId) return;
+        const name = path ? path.split(/[/\\]/).pop() || path : "";
+        set({ workspace: { path, isCustom, name } });
+      },
     });
   },
 
   newConversation: () => {
     if (get().isStreaming) return;
-    set({ activeId: null, messages: [] });
+    set({ activeId: null, messages: [], workspace: null });
   },
 
   selectConversation: async (id) => {
     if (get().isStreaming || id === get().activeId) return;
-    set({ activeId: id, messages: [] });
+    set({ activeId: id, messages: [], workspace: null });
     try {
       const conv = await agentApi.getConversation(id);
       set({ messages: conv.messages ?? [] });
     } catch (e) {
       set({ backendError: errText(e) });
+    }
+    // 加载工作区信息
+    try {
+      const ws = await agentApi.getWorkspaceInfo(id);
+      set({ workspace: ws });
+    } catch {
+      // 静默忽略，不影响会话加载
     }
   },
 
@@ -271,4 +291,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   dismissError: () => set({ backendError: null }),
+
+  pickAndSetWorkspace: async () => {
+    const { activeId } = get();
+    try {
+      const dir = await agentApi.openDirectoryDialog();
+      if (!dir) return; // 用户取消
+      if (!activeId) {
+        // 无活动会话时先创建
+        const conv = await agentApi.createConversation();
+        set((s) => ({
+          conversations: [{ id: conv.id, title: conv.title, updatedAt: conv.updatedAt }, ...s.conversations],
+          activeId: conv.id,
+        }));
+        await agentApi.setWorkspaceDir(conv.id, dir);
+        const ws = await agentApi.getWorkspaceInfo(conv.id);
+        set({ workspace: ws });
+      } else {
+        await agentApi.setWorkspaceDir(activeId, dir);
+        // workspace:changed 事件会更新状态，但主动获取确保即时
+        const ws = await agentApi.getWorkspaceInfo(activeId);
+        set({ workspace: ws });
+      }
+    } catch (e) {
+      set({ backendError: errText(e) });
+    }
+  },
+
+  resetWorkspace: async () => {
+    const { activeId } = get();
+    if (!activeId) return;
+    try {
+      await agentApi.setWorkspaceDir(activeId, "");
+      const ws = await agentApi.getWorkspaceInfo(activeId);
+      set({ workspace: ws });
+    } catch (e) {
+      set({ backendError: errText(e) });
+    }
+  },
 }));

@@ -7,10 +7,10 @@
 
 import { Events } from "@wailsio/runtime";
 import { AgentService } from "../../bindings/tars";
-import type { ChatMessage, Conversation } from "../types";
+import type { ChatMessage, Conversation, FileEntry, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
-import type { ConversationRenamedEvent, ReasoningEvent, ToolEvent, ToolResultEvent } from "../types";
+import type { ConversationRenamedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent } from "../types";
 
 export const agentApi = {
   createConversation: async (): Promise<Conversation> => {
@@ -42,6 +42,37 @@ export const agentApi = {
 
   deleteMessage: (conversationId: string, messageId: string): Promise<void> =>
     AgentService.DeleteMessage(conversationId, messageId),
+
+  // --- 文件服务 ---
+
+  listWorkspaceFiles: async (conversationId: string): Promise<FileEntry[]> =>
+    (await AgentService.ListWorkspaceFiles(conversationId)) as FileEntry[],
+
+  /** 用系统默认程序打开文件 */
+  openFile: (conversationId: string, relPath: string): Promise<void> =>
+    AgentService.OpenFile(conversationId, relPath),
+
+  /** 在系统文件管理器中打开工作区目录 */
+  revealInExplorer: (conversationId: string): Promise<void> =>
+    AgentService.RevealInExplorer(conversationId),
+
+  /** 在系统文件管理器中显示指定文件（选中该文件） */
+  revealFileInExplorer: (conversationId: string, relPath: string): Promise<void> =>
+    AgentService.RevealFileInExplorer(conversationId, relPath),
+
+  // --- 工作区管理 ---
+
+  /** 弹出系统目录选择对话框，返回选中的路径（取消则返回空串） */
+  openDirectoryDialog: async (): Promise<string> =>
+    await AgentService.OpenDirectoryDialog(),
+
+  /** 设置会话的自定义工作区目录（空串 = 重置为默认） */
+  setWorkspaceDir: (conversationId: string, dir: string): Promise<void> =>
+    AgentService.SetWorkspaceDir(conversationId, dir),
+
+  /** 获取会话当前的工作区信息 */
+  getWorkspaceInfo: async (conversationId: string): Promise<WorkspaceInfo> =>
+    (await AgentService.GetWorkspaceInfo(conversationId)) as WorkspaceInfo,
 };
 
 export interface AgentEventHandlers {
@@ -52,6 +83,7 @@ export interface AgentEventHandlers {
   onReasoning?: (ev: ReasoningEvent) => void;
   onTool?: (ev: ToolEvent) => void;
   onToolResult?: (ev: ToolResultEvent) => void;
+  onWorkspaceChanged?: (ev: WorkspaceChangedEvent) => void;
 }
 
 /**
@@ -78,6 +110,33 @@ export function subscribeAgentEvents(handlers: AgentEventHandlers): () => void {
     Events.On(AgentEvents.ToolResult, (ev) =>
       handlers.onToolResult?.(ev.data as ToolResultEvent),
     ),
+    Events.On(AgentEvents.WorkspaceChanged, (ev) =>
+      handlers.onWorkspaceChanged?.(ev.data as WorkspaceChangedEvent),
+    ),
+  ];
+  return () => unsubs.forEach((unsub) => unsub());
+}
+
+/**
+ * 订阅"文件可能已变更"的事件：工具执行完成（agent:tool_result，写文件工具
+ * 执行完毕的时刻）和一轮回复结束（agent:done，兜底）。仅当事件属于
+ * conversationId 对应的会话时才触发 callback。返回解绑函数。
+ */
+export function subscribeFileChanges(
+  conversationId: string,
+  callback: () => void,
+): () => void {
+  const unsubs = [
+    Events.On(AgentEvents.ToolResult, (ev) => {
+      if ((ev.data as ToolResultEvent).conversationId === conversationId) {
+        callback();
+      }
+    }),
+    Events.On(AgentEvents.Done, (ev) => {
+      if ((ev.data as StreamDone).conversationId === conversationId) {
+        callback();
+      }
+    }),
   ];
   return () => unsubs.forEach((unsub) => unsub());
 }
