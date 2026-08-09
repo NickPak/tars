@@ -652,6 +652,22 @@ body.resizing-col .resize-handle::after {
   color: var(--text);
 }
 
+/* 思考中：标题轻微脉冲，表明正在输出 */
+.reasoning-toggle.thinking {
+  color: var(--accent);
+  animation: reasoning-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes reasoning-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 .reasoning-chevron {
   flex-shrink: 0;
   transition: transform 0.15s ease;

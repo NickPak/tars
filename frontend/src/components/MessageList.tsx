@@ -123,7 +123,11 @@ export default function MessageList() {
   );
 }
 
-/** 可折叠的思考过程区域 */
+/** 可折叠的思考过程区域：
+ *  思考中（streaming=true）默认展开 —— 用户能实时看到推理输出，不会误以为卡死；
+ *  思考完毕自动收起 —— 让位给最终结果。用户手动点击后进入手动模式，
+ *  之后的自动切换不再覆盖用户选择。
+ */
 function ReasoningBlock({
   content,
   streaming,
@@ -131,18 +135,21 @@ function ReasoningBlock({
   content: string;
   streaming: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  // manual: null = 跟随自动状态；true/false = 用户手动锁定
+  const [manual, setManual] = useState<boolean | null>(null);
+  const expanded = manual ?? streaming;
+
   return (
     <div className="reasoning-block">
       <button
-        className="reasoning-toggle"
-        onClick={() => setExpanded((e) => !e)}
+        className={`reasoning-toggle${streaming ? " thinking" : ""}`}
+        onClick={() => setManual(!expanded)}
       >
         <ChevronRight
           size={14}
           className={`reasoning-chevron${expanded ? " expanded" : ""}`}
         />
-        {streaming ? "思考中…" : "思考过程"}
+        {streaming ? "Deep Thinking…" : "Deep Thinking"}
       </button>
       {expanded && (
         <div className="reasoning-content">

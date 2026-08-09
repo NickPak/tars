@@ -69,6 +69,14 @@ func renderConversationMarkdown(title string, msgs []Message) string {
 
 		case RoleAssistant:
 			b.WriteString("## 🤖 TARS\n\n")
+			if m.Reasoning != "" {
+				reasoning := m.Reasoning
+				if len(reasoning) > 3000 {
+					reasoning = reasoning[:3000] + "\n…(已截断)"
+				}
+				b.WriteString("<details><summary>💭 思考过程</summary>\n\n")
+				b.WriteString(reasoning + "\n\n</details>\n\n")
+			}
 			if len(m.ToolCalls) > 0 {
 				for _, tc := range m.ToolCalls {
 					b.WriteString("**🔧 " + tc.Name + "**")

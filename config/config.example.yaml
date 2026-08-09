@@ -13,13 +13,29 @@ llm:
   # apiKey: "your-api-key-here"
 
   modelId: "gemini-3.1-flash-lite"
-  #modelId: "gemini-3.5-flash-lite"
   baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/"
   timeout: 60s
+
+  inputPricePerMillion: 0.075
+  outputPricePerMillion: 0.30
+  # 模型上下文窗口（tokens），用于计算上下文使用百分比
+  contextWindow: 1048576
+  # 思考预算（tokens）：-1 动态思考；0 关闭（flash-lite 系列默认关闭需显式开启）；>0 固定上限
+  thinkingBudget: -1
 
 # 工作目录（agent 工具操作 + 会话数据存储的根目录）
 # 留空则默认为用户家目录下的 tars 目录（~/tars）
 # workDir: "C:/my-workdir"
+
+# Agent 配置
+agent:
+  # ReAct 循环最大迭代轮次（LLM→工具→LLM 一轮算一次）
+  # 防止模型陷入死循环烧 token；复杂的多文件任务需要较大预算
+  # 未配置时默认 100
+  maxIterations: 100
+
+  # 上下文压缩阈值（0-1）：使用占比超过该值时应触发历史压缩（功能待实现，先在状态栏展示）
+  compressionThreshold: 0.8
 
 # 追踪配置（OpenTelemetry）
 # 无论是否配置 OTLP，每个会话目录下的 .logs/trace.jsonl 都会写入

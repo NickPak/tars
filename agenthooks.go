@@ -63,11 +63,13 @@ func (h *agentHooks) IterationEnd(ctx context.Context, iter int, full []*schema.
 	h.tracer.EndLLMCall(h.llmSpan, nil, assistantMsg.Content, assistantMsg.ReasoningContent,
 		schemaToolCallsToTrace(assistantMsg.ToolCalls), "stop", usageToTraceUsage(h.usage))
 
-	// Sync assistant content/tool_calls to the in-memory conversation and
-	// persist a snapshot (crash-safe: partial progress is kept).
+	// Sync assistant content/reasoning/tool_calls to the in-memory
+	// conversation and persist a snapshot (crash-safe: partial progress
+	// is kept). Reasoning accumulates across iterations, same as content.
 	h.svc.mu.Lock()
 	if c, ok := h.svc.convs[h.conversationID]; ok && h.assistantIndex < len(c.Messages) {
 		c.Messages[h.assistantIndex].Content += assistantMsg.Content
+		c.Messages[h.assistantIndex].Reasoning += assistantMsg.ReasoningContent
 		for _, tc := range assistantMsg.ToolCalls {
 			c.Messages[h.assistantIndex].ToolCalls = append(
 				c.Messages[h.assistantIndex].ToolCalls,

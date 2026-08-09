@@ -49,6 +49,10 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	CreatedAt  int64      `json:"createdAt"`
+	// Reasoning 仅 assistant 消息有值：模型思考过程。它既用于历史会话
+	// 重新展示，也随 buildLLMMessages 回传给模型（Gemini function call
+	// 场景要求 thinking 随消息回放）。
+	Reasoning string `json:"reasoning,omitempty"`
 	// Usage 与 ElapsedMs 仅 assistant 消息有值：记录这一轮的 token 消耗
 	// 与总耗时（含所有迭代），供状态栏/消息底部展示与费用估算。
 	Usage     *UsageInfo `json:"usage,omitempty"`
@@ -552,6 +556,8 @@ func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 		case RoleUser:
 			msgs = append(msgs, schema.UserMessage(m.Content))
 		case RoleAssistant:
+			// 回传 ReasoningContent：Gemini function call 场景要求 thinking
+			// 随消息回放，否则下一轮请求可能报错；其他模型会忽略该字段。
 			if len(m.ToolCalls) > 0 {
 				// 带 tool_calls 的 assistant 消息
 				toolCalls := make([]schema.ToolCall, len(m.ToolCalls))
@@ -565,9 +571,18 @@ func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 						},
 					}
 				}
-				msgs = append(msgs, schema.AssistantMessage(m.Content, toolCalls))
+				msgs = append(msgs, &schema.Message{
+					Role:             schema.Assistant,
+					Content:          m.Content,
+					ReasoningContent: m.Reasoning,
+					ToolCalls:        toolCalls,
+				})
 			} else if m.Content != "" {
-				msgs = append(msgs, schema.AssistantMessage(m.Content, nil))
+				msgs = append(msgs, &schema.Message{
+					Role:             schema.Assistant,
+					Content:          m.Content,
+					ReasoningContent: m.Reasoning,
+				})
 			}
 		case RoleTool:
 			msgs = append(msgs, schema.ToolMessage(m.Content, m.ToolCallID))
@@ -620,7 +635,10 @@ func (s *AgentService) RetryMessage(conversationID string) (*Message, error) {
 	conv.Messages = conv.Messages[:idx+1]
 	assistantMsg := &conv.Messages[idx]
 	assistantMsg.Content = ""
+	assistantMsg.Reasoning = ""
 	assistantMsg.ToolCalls = nil
+	assistantMsg.Usage = nil
+	assistantMsg.ElapsedMs = 0
 	conv.UpdatedAt = time.Now().UnixMilli()
 
 	// 重写 jsonl，去掉回撤掉的消息并重置 assistant 内容
@@ -829,6 +847,7 @@ func (s *AgentService) persistMessage(convID string, m Message) {
 		Content:    m.Content,
 		ToolCallID: m.ToolCallID,
 		CreatedAt:  m.CreatedAt,
+		Reasoning:  m.Reasoning,
 		ElapsedMs:  m.ElapsedMs,
 		Usage:      usageToStore(m.Usage),
 	}
@@ -871,6 +890,7 @@ func (s *AgentService) rewriteMessagesLocked(convID string, msgs []Message) erro
 			Content:    m.Content,
 			ToolCallID: m.ToolCallID,
 			CreatedAt:  m.CreatedAt,
+			Reasoning:  m.Reasoning,
 			ElapsedMs:  m.ElapsedMs,
 			Usage:      usageToStore(m.Usage),
 		}
@@ -926,6 +946,7 @@ func storeMessagesToAgent(msgs []store.Message) []Message {
 			Content:    m.Content,
 			ToolCallID: m.ToolCallID,
 			CreatedAt:  m.CreatedAt,
+			Reasoning:  m.Reasoning,
 			ElapsedMs:  m.ElapsedMs,
 			Usage:      usageFromStore(m.Usage),
 		}

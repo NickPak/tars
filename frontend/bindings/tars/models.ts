@@ -138,6 +138,13 @@ export class Message {
     "createdAt": number;
 
     /**
+     * Reasoning 仅 assistant 消息有值：模型思考过程。它既用于历史会话
+     * 重新展示，也随 buildLLMMessages 回传给模型（Gemini function call
+     * 场景要求 thinking 随消息回放）。
+     */
+    "reasoning"?: string;
+
+    /**
      * Usage 与 ElapsedMs 仅 assistant 消息有值：记录这一轮的 token 消耗
      * 与总耗时（含所有迭代），供状态栏/消息底部展示与费用估算。
      */
@@ -167,13 +174,13 @@ export class Message {
      */
     static createFrom($$source: any = {}): Message {
         const $$createField3_0 = $$createType5;
-        const $$createField6_0 = $$createType7;
+        const $$createField7_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("toolCalls" in $$parsedSource) {
             $$parsedSource["toolCalls"] = $$createField3_0($$parsedSource["toolCalls"]);
         }
         if ("usage" in $$parsedSource) {
-            $$parsedSource["usage"] = $$createField6_0($$parsedSource["usage"]);
+            $$parsedSource["usage"] = $$createField7_0($$parsedSource["usage"]);
         }
         return new Message($$parsedSource as Partial<Message>);
     }

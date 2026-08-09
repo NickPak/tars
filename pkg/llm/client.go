@@ -31,6 +31,13 @@ type Options struct {
 	OutputPricePerMillion float64 `yaml:"outputPricePerMillion,omitempty" json:"outputPricePerMillion,omitempty"`
 	// ContextWindow 模型上下文窗口（tokens），用于计算上下文使用百分比。
 	ContextWindow int `yaml:"contextWindow,omitempty" json:"contextWindow,omitempty"`
+
+	// ThinkingBudget 思考预算（tokens），仅对支持 thinking 的型号生效：
+	//   -1 = 动态思考（模型自行决定思考量）
+	//    0 = 关闭思考（gemini flash-lite 系列的默认值）
+	//  >0  = 固定预算上限
+	// nil（未配置）= 沿用 SDK 默认行为。
+	ThinkingBudget *int32 `yaml:"thinkingBudget,omitempty" json:"thinkingBudget,omitempty"`
 }
 
 // Client wraps an Eino Gemini ChatModel.
@@ -61,7 +68,10 @@ func NewClient(options *Options) (*Client, error) {
 		Client: genaiClient,
 		Model:  options.ModelId,
 		ThinkingConfig: &genai.ThinkingConfig{
-			IncludeThoughts: true, // 开启 thinking，模型返回的推理过程会填充到 Message.ReasoningContent
+			IncludeThoughts: true, // 响应中包含思考内容（仅"如果思考了就透传"）
+			// 是否真正思考取决于 ThinkingBudget：flash-lite 系列默认为 0
+			//（不思考），需显式设置（如 -1 动态）才有思考输出。
+			ThinkingBudget: options.ThinkingBudget,
 		},
 	})
 	if err != nil {

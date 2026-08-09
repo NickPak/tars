@@ -32,6 +32,9 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	CreatedAt  int64      `json:"createdAt"`
+	// Reasoning 仅 assistant 消息有值：模型思考过程（thinking/reasoning
+	// content），多轮迭代时逐轮累加。
+	Reasoning string `json:"reasoning,omitempty"`
 	// Usage/ElapsedMs 仅 assistant 消息有值：本轮 token 消耗与总耗时。
 	Usage     *UsageInfo `json:"usage,omitempty"`
 	ElapsedMs int64      `json:"elapsedMs,omitempty"`
