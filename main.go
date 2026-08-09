@@ -35,6 +35,7 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "tars",
 		Description: "Personal Agent",
+		Icon:        iconPNG,
 		Services: []application.Service{
 			application.NewService(&AgentService{}),
 		},
