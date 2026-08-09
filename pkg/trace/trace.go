@@ -10,7 +10,7 @@
 //	agent.turn                     (root, one per user message)
 //	├── gen_ai.chat <model>        (LLM request, iteration 0)
 //	│   ├── gen_ai.execute_tool read_file
-//	│   └── gen_ai.execute_tool search_replace
+//	│   └── gen_ai.execute_tool edit_file
 //	├── gen_ai.chat <model>        (LLM request, iteration 1)
 //	└── gen_ai.chat <model>        (final answer, no tool calls)
 package trace

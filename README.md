@@ -13,7 +13,7 @@ TARS 是一个**通用型 AI Agent 桌面应用**：你给它一个任务，它�
 ## 功能特性
 
 - **ReAct Agent Loop**：流式请求 LLM → 检测 tool_calls → 并行执行工具 → 结果回填 → 继续推理，直到给出最终回复（最大 25 轮）
-- **内置工具集**：`read_file`、`search_replace`、`list_dir`、`search_text`、`run_command`，均带工作区边界限制与输出截断保护
+- **内置工具集**：`code_interpreter`、`run_command`（持久终端会话）、`read_file`、`write_file`、`edit_file`、`glob_files`、`grep_files`，均带工作区边界限制与输出截断保护
 - **流式 UI**：实时展示模型深度思考过程（reasoning）、工具调用卡片（运行中/完成状态）、消息状态栏（tokens/耗时/复制/删除）
 - **会话隔离**：每个会话拥有独立目录，包含会话数据、追踪日志与专属 `workspace/` 工作目录，工具操作互不影响
 - **会话持久化**：JSONL 追加式存储（与 Codex / Claude Code 相同方案），重启自动恢复历史会话

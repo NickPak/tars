@@ -215,11 +215,13 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 	s.store = convStore
 
 	s.toolMgr = tools.NewManager()
-	s.toolMgr.Register(tools.ReadFile(workDir))
-	s.toolMgr.Register(tools.SearchReplace(workDir))
-	s.toolMgr.Register(tools.ListDir(workDir))
-	s.toolMgr.Register(tools.SearchText(workDir))
+	s.toolMgr.Register(tools.CodeInterpreter(workDir))
 	s.toolMgr.Register(tools.RunCommand(workDir))
+	s.toolMgr.Register(tools.ReadFile(workDir))
+	s.toolMgr.Register(tools.WriteFile(workDir))
+	s.toolMgr.Register(tools.EditFile(workDir))
+	s.toolMgr.Register(tools.GlobFiles(workDir))
+	s.toolMgr.Register(tools.GrepFiles(workDir))
 
 	// base prompt 只含方法论部分（不含 env），env 在 buildLLMMessages 时动态拼接
 	s.basePrompt = prompt.BasePrompt()
