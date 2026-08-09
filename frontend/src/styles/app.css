@@ -545,14 +545,16 @@ body.resizing-col .resize-handle::after {
   word-break: break-word;
 }
 
-.user-delete-btn {
+.user-bubble-actions {
+  display: flex;
+  gap: 2px;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.15s;
   margin-top: 8px;
 }
 
-.user-bubble-group:hover .user-delete-btn {
+.user-bubble-group:hover .user-bubble-actions {
   opacity: 1;
 }
 
@@ -1430,6 +1432,12 @@ body.resizing-col .resize-handle::after {
 }
 
 /* ===== Markdown 渲染 ===== */
+/* 长内容（超长数字/token/URL 等无断点字符串）在容器边界处强制折行，
+   防止撑破会话窗口宽度 */
+.markdown {
+  overflow-wrap: break-word;
+}
+
 .markdown > :first-child {
   margin-top: 0;
 }
@@ -1460,6 +1468,8 @@ body.resizing-col .resize-handle::after {
   background: var(--code-bg);
   border-radius: 5px;
   padding: 2px 5px;
+  /* 行内代码里的超长无断点字符串（如长数字、长 token）允许折行 */
+  overflow-wrap: anywhere;
   font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
   font-size: 0.88em;
 }
@@ -1516,11 +1526,14 @@ body.resizing-col .resize-handle::after {
   color: var(--text);
 }
 
-/* pre 本体：背景/圆角由外层 .codeblock 承担，这里只管内边距和滚动 */
+/* pre 本体：背景/圆角由外层 .codeblock 承担，这里只管内边距和折行。
+   默认软换行（pre-wrap + anywhere）：超长行/无断点字符串在边界处折行，
+   不再出现横向滚动条。 */
 .codeblock pre {
   margin: 0;
   padding: 14px 16px;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   background: transparent;
 }
 

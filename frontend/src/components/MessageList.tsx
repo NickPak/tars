@@ -59,16 +59,10 @@ export default function MessageList() {
           return (
             <div key={m.id} className={`message ${m.role}`}>
               {m.role === "user" ? (
-                <div className="user-bubble-group">
-                  <div className="user-bubble">{m.content}</div>
-                  <button
-                    className="msg-action msg-action-danger user-delete-btn"
-                    title="删除"
-                    onClick={() => void deleteMessage(m.id)}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
+                <UserBubble
+                  content={m.content}
+                  onDelete={() => void deleteMessage(m.id)}
+                />
               ) : (
                 <div className="assistant-body">
                   {m.reasoning && (
@@ -118,6 +112,42 @@ export default function MessageList() {
           );
         })}
         <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+/** 用户消息气泡：hover 显示复制/删除按钮 */
+function UserBubble({
+  content,
+  onDelete,
+}: {
+  content: string;
+  onDelete: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className="user-bubble-group">
+      <div className="user-bubble">{content}</div>
+      <div className="user-bubble-actions">
+        <button className="msg-action" title="复制" onClick={handleCopy}>
+          {copied ? <Check size={15} /> : <Copy size={15} />}
+        </button>
+        <button
+          className="msg-action msg-action-danger"
+          title="删除"
+          onClick={onDelete}
+        >
+          <Trash2 size={15} />
+        </button>
       </div>
     </div>
   );
