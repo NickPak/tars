@@ -587,12 +587,12 @@ func (s *AgentService) SendMessage(conversationID string, text string) (*Message
 }
 
 // buildLLMMessages 把会话存储里的消息转成 Eino schema.Message 格式。
-// 必须在持有 s.mu 锁时调用。系统提示词动态拼接当前会话的工作目录。
+// 必须在持有 s.mu 锁时调用。系统提示词 = base + 静态 env（OS/tools），
+// 不含会话工作目录——该信息由 StatusBar 的 cwd 字段每轮迭代注入，
+// 避免 per-conversation 的 UUID 路径破坏 system prompt 的前缀缓存。
 func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 	msgs := make([]*schema.Message, 0, len(conv.Messages)+1)
-	// 动态构建 system prompt：base + 会话工作目录 + 静态 env（OS/tools）
-	convWorkDir := s.store.ResolveWorkDir(conv.ID)
-	sysPrompt := s.basePrompt + "\n- Working directory: `" + convWorkDir + "`\n" + s.envSuffix
+	sysPrompt := s.basePrompt + s.envSuffix
 	msgs = append(msgs, schema.SystemMessage(sysPrompt))
 	// reasoning 回放策略由目标供应商决定（provider 级，内置默认 + 可选覆盖）：
 	// Gemini function call 回合必须回放 thinking（维持签名链），

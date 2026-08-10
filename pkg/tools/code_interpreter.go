@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -110,4 +111,26 @@ func lookupPython() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no Python interpreter found in PATH (tried `python` and `python3`)")
+}
+
+// pythonVersionCached 缓存 Python 版本（进程内不变，查询需 fork 子进程）。
+var pythonVersionCached = sync.OnceValue(func() string {
+	python, err := lookupPython()
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, python, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	// "Python 3.12.1" → "3.12.1"
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "Python"))
+})
+
+// PythonVersion returns the system Python version (e.g. "3.12.1"), or ""
+// when no interpreter is available. Used by the agent status bar (env zone).
+func PythonVersion() string {
+	return pythonVersionCached()
 }

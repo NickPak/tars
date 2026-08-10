@@ -7,11 +7,61 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 )
+
+// shellInfoCached 缓存 ShellInfo 的结果：shell 软链在进程生命周期内不会变，
+// 没必要每轮迭代重新解析。
+var shellInfoCached = sync.OnceValue(func() string {
+	if runtime.GOOS == "windows" {
+		return "cmd"
+	}
+	return resolveShell(shellName)
+})
+
+// osInfoCached 缓存 OS 描述（GOOS/GOARCH 进程内不变）。
+var osInfoCached = sync.OnceValue(func() string {
+	return runtime.GOOS + "/" + runtime.GOARCH
+})
+
+// ShellInfo 返回 run_command 实际使用的 shell 描述（状态栏 env 区用）。
+// Windows 返回 "cmd"；其他平台解析 `sh` 软链指向的真实二进制
+// （bash/dash/zsh 等），让模型知道能安全使用哪种 shell 语法：
+//   - "sh (bash)"  → 可用 bash 扩展语法
+//   - "sh (dash)"  → 仅 POSIX sh 语法
+//   - "sh"         → 无法解析，保守按 POSIX 处理
+func ShellInfo() string {
+	return shellInfoCached()
+}
+
+// OSInfo 返回 "windows/amd64" 形式的系统+架构描述（状态栏 env 区用）。
+func OSInfo() string {
+	return osInfoCached()
+}
+
+// resolveShell 解析 shellPath 软链指向的真实二进制名。
+func resolveShell(shellPath string) string {
+	p, err := exec.LookPath(shellPath)
+	if err != nil {
+		return shellName // PATH 里找不到 sh（极端情况），返回字面值
+	}
+	// 跟踪符号链接到真实二进制（macOS: /bin/sh → /bin/bash；Debian: /bin/sh → dash）
+	realPath, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return shellName
+	}
+	base := filepath.Base(realPath)
+	// 去掉版本后缀（bash5 → bash）
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if base == shellName || base == "" {
+		return shellName // sh 指向 sh 自身（非软链），无法进一步解析
+	}
+	return shellName + " (" + base + ")"
+}
 
 type runCommandArgs struct {
 	Command string `json:"command"`
@@ -25,6 +75,10 @@ const (
 	// (cwd + environment) appended after every command. Uniqueness keeps
 	// accidental collisions with user output vanishingly unlikely.
 	sessionStateMarker = "__TARS_SESSION_STATE_9f3a1c__"
+
+	// shellName 是 run_command 实际使用的 shell：Windows 用 cmd，其他平台用 sh。
+	// 状态栏通过 ShellInfo() 读取同一来源，保证"告诉模型的"与"实际执行的"一致。
+	shellName = "sh"
 )
 
 // termSession is the persistent terminal state of one workspace: the working
@@ -121,7 +175,7 @@ func RunCommand(workDir string) *Definition {
 				cmd = exec.CommandContext(cctx, "cmd", "/S", "/C", full)
 			} else {
 				full := args.Command + "\necho " + sessionStateMarker + "\npwd\nenv"
-				cmd = exec.CommandContext(cctx, "sh", "-c", full)
+				cmd = exec.CommandContext(cctx, shellName, "-c", full)
 			}
 			cmd.Dir = sess.cwd
 			cmd.Env = sess.env

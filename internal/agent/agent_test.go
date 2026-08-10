@@ -102,7 +102,7 @@ type recordingHooks struct {
 	onErrorCalls []error
 }
 
-func (h *recordingHooks) IterationStart(_ context.Context, i int) {
+func (h *recordingHooks) IterationStart(_ context.Context, i int, _ []*schema.Message) {
 	h.iterStarts = append(h.iterStarts, i)
 }
 

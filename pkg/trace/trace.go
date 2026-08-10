@@ -245,11 +245,9 @@ func flattenInputMessages(messages []ChatMessage) []attribute.KeyValue {
 // (reasoning + text parts per the OpenInference spec); otherwise as the
 // plain message.content shorthand.
 func flattenMessageContent(prefix, role, content, reasoning string) []attribute.KeyValue {
-	// System prompt: keep only a short marker, full text is in
-	// gen_ai.system_instructions — avoids duplicating KBs per span.
-	if role == "system" && len(content) > 80 {
-		content = fmt.Sprintf("%s... [%d more chars]", content[:80], len(content)-80)
-	}
+	// system 消息不截断——调试时需要在 input_messages 里看到完整 system
+	// prompt（gen_ai.system_instructions 也保留全文，两处都有方便 Phoenix
+	// 不同视图渲染）。
 	if reasoning == "" {
 		if content == "" {
 			return nil

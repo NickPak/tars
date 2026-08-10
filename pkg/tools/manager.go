@@ -37,7 +37,10 @@ type ToolResult struct {
 	ID     string // 对应的 tool_call_id
 	Name   string // 工具名
 	Args   string // 模型生成的原始 JSON 参数
-	Output string // 执行结果文本（含错误信息，永远不为空）
+	Output string // 执行结果文本；失败时为失败原因，永远不为空
+	// Error 非空表示执行失败（Handler 返回 error / panic / 工具不存在）。
+	// 成功时为 nil——判断成败用这个字段，不要靠 Output 的字符串前缀。
+	Error error
 }
 
 // OnToolComplete is invoked when a single tool finishes execution (in its own
@@ -176,7 +179,8 @@ func (m *Manager) Execute(ctx context.Context, calls []schema.ToolCall, onComple
 		}
 		def, ok := m.FindTool(call.Function.Name)
 		if !ok {
-			results[i].Output = fmt.Sprintf("error: unknown tool %q", call.Function.Name)
+			results[i].Error = fmt.Errorf("unknown tool %q", call.Function.Name)
+			results[i].Output = results[i].Error.Error()
 			if callback != nil {
 				callback(results[i])
 			}
@@ -185,7 +189,7 @@ func (m *Manager) Execute(ctx context.Context, calls []schema.ToolCall, onComple
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i].Output = m.executeOne(ctx, def, call)
+			results[i].Output, results[i].Error = m.executeOne(ctx, def, call)
 			if callback != nil {
 				callback(results[i])
 			}
@@ -195,16 +199,17 @@ func (m *Manager) Execute(ctx context.Context, calls []schema.ToolCall, onComple
 	return results
 }
 
-func (m *Manager) executeOne(ctx context.Context, def *Definition, call schema.ToolCall) (output string) {
+func (m *Manager) executeOne(ctx context.Context, def *Definition, call schema.ToolCall) (output string, err error) {
 	// 防止单个工具 panic 拖垮整个 agent loop
 	defer func() {
 		if r := recover(); r != nil {
-			output = fmt.Sprintf("error: tool %q panicked: %v", call.Function.Name, r)
+			err = fmt.Errorf("tool %q panicked: %v", call.Function.Name, r)
+			output = err.Error()
 		}
 	}()
-	out, err := def.Handler(ctx, zcopy.UnsafeStringToBytes(call.Function.Arguments))
-	if err != nil {
-		return fmt.Sprintf("error: tool %s, %s", call.Function.Name, err.Error())
+	out, e := def.Handler(ctx, zcopy.UnsafeStringToBytes(call.Function.Arguments))
+	if e != nil {
+		return e.Error(), fmt.Errorf("tool %s: %w", call.Function.Name, e)
 	}
-	return out
+	return out, nil
 }

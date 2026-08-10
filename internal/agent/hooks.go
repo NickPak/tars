@@ -23,7 +23,9 @@ import (
 //	IterationEnd             (full history + this round's delta)
 type Hooks interface {
 	// IterationStart fires before each LLM call. iteration is 1-based.
-	IterationStart(ctx context.Context, iteration int)
+	// messages is the full input context that will be sent to the model
+	// (system + history + status bar) — hosts use it for tracing.
+	IterationStart(ctx context.Context, iteration int, messages []*schema.Message)
 	// IterationEnd fires after one full iteration completes — LLM call plus
 	// any tool executions. full is the complete message history including
 	// this round; delta contains only the messages produced in this round
@@ -60,7 +62,7 @@ type Hooks interface {
 // nopHooks is the no-op Hooks implementation used when the caller passes nil.
 type nopHooks struct{}
 
-func (nopHooks) IterationStart(context.Context, int)                                     {}
+func (nopHooks) IterationStart(context.Context, int, []*schema.Message)                  {}
 func (nopHooks) IterationEnd(context.Context, int, []*schema.Message, []*schema.Message) {}
 func (nopHooks) StreamChunk(context.Context, int, *schema.Message)                       {}
 func (nopHooks) ToolsStart(context.Context, []schema.ToolCall)                           {}

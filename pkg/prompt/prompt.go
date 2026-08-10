@@ -3,11 +3,14 @@
 // The prompt is split into two layers:
 //   - Base prompt: a stable methodology loaded from an embedded markdown file
 //     (prompts/system.md). It rarely changes and benefits from prefix caching.
-//   - Environment context: dynamic per-session info (working directory, OS,
-//     available tools) injected at runtime so the model knows its environment.
+//   - Environment context: static process-level info (OS, available tools)
+//     injected at runtime. Per-conversation dynamic info (working directory,
+//     time, git state) is NOT included here — it's delivered via the StatusBar
+//     each iteration, so the system prompt stays identical across conversations
+//     and prefix caching is preserved.
 //
 // This mirrors the architecture used by Codex and Claude Code: a fixed system
-// prompt plus a dynamically injected environment block.
+// prompt plus an injected environment block.
 package prompt
 
 import (
@@ -20,9 +23,11 @@ import (
 //go:embed system.md
 var basePromptFS embed.FS
 
-// EnvironmentContext holds the dynamic context injected into each session.
+// EnvironmentContext holds the static environment context injected into the
+// system prompt. Working directory is intentionally excluded — it varies per
+// conversation (UUID-based path) and would break prefix caching. The StatusBar
+// delivers it per-iteration via its cwd field instead.
 type EnvironmentContext struct {
-	WorkDir  string   // workspace root directory
 	OS       string   // operating system
 	Platform string   // GOOS / GOARCH
 	Tools    []string // names of registered tools
@@ -38,12 +43,11 @@ func BasePrompt() string {
 	return string(base)
 }
 
-// RenderEnvContext builds the dynamic environment context section.
-// Call this per-conversation with the conversation's workspace directory.
+// RenderEnvContext builds the static environment context section.
+// Working directory is NOT included — see EnvironmentContext doc.
 func RenderEnvContext(env EnvironmentContext) string {
 	var b strings.Builder
 	b.WriteString("\n\n## Environment Context\n\n")
-	fmt.Fprintf(&b, "- Working directory: `%s`\n", env.WorkDir)
 	fmt.Fprintf(&b, "- Operating system: %s\n", env.OS)
 	fmt.Fprintf(&b, "- Platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	if len(env.Tools) > 0 {
@@ -55,7 +59,7 @@ func RenderEnvContext(env EnvironmentContext) string {
 }
 
 // BuildSystemPrompt assembles the base prompt from the embedded markdown file
-// and appends a dynamically rendered environment context section.
+// and appends the static environment context section.
 func BuildSystemPrompt(env EnvironmentContext) string {
 	base := BasePrompt()
 	if base == "" {
@@ -69,6 +73,5 @@ func BuildSystemPrompt(env EnvironmentContext) string {
 // agent can still operate.
 func fallbackPrompt(env EnvironmentContext) string {
 	return fmt.Sprintf(`You are a helpful AI assistant running inside a user's desktop application.
-Working directory: %s
-Operating system: %s`, env.WorkDir, env.OS)
+Operating system: %s`, env.OS)
 }

@@ -45,6 +45,10 @@ type Agent struct {
 	// Zero means no per-iteration timeout. Set it generously — busy model
 	// providers may queue requests for a long while.
 	IterationTimeout time.Duration
+
+	// statusBar 是 Agent 的内部状态栏（每轮迭代前注入 <agent_status>）。
+	// 在 New 中创建，无需外部设置。
+	statusBar *StatusBar
 }
 
 // New creates an Agent from the given config.
@@ -56,6 +60,7 @@ func New(model model.ToolCallingChatModel, executor *tools.Manager, maxIteration
 		model:         model,
 		executor:      executor,
 		maxIterations: maxIterations,
+		statusBar:     NewStatusBar(),
 	}
 }
 
@@ -78,7 +83,13 @@ func (a *Agent) Run(ctx context.Context, messages []*schema.Message, hooks Hooks
 		}
 		iterations = iter
 
-		hooks.IterationStart(ctx, iter)
+		// 注入状态栏：追加到内存上下文尾部（不改 system 前缀，保住 KV Cache），
+		// 只在内存中存在——IterationEnd 的 delta 不含它，宿主不会持久化。
+		// 必须在 IterationStart 之前：IterationStart 会把 msgs 传给 trace，
+		// 状态栏消息需要包含在内，Phoenix 才能看到完整的 input messages。
+		msgs = append(msgs, a.statusBar.Render(ctx, iter))
+
+		hooks.IterationStart(ctx, iter, msgs)
 
 		msg, err := a.callModel(ctx, iter, msgs, hooks)
 		if err != nil {
@@ -106,6 +117,9 @@ func (a *Agent) Run(ctx context.Context, messages []*schema.Message, hooks Hooks
 				toolMsg := schema.ToolMessage(r.Output, r.ID)
 				msgs = append(msgs, toolMsg)
 				delta = append(delta, toolMsg)
+
+				// 更新状态栏计数器：工具名→次数；Error 非 nil 视为失败
+				a.statusBar.RecordToolCall(r.Name, r.Error)
 			}
 		}
 

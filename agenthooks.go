@@ -40,12 +40,40 @@ type agentHooks struct {
 	iterMessages [][]*schema.Message // assistant msg per iteration, for trace
 }
 
-func (h *agentHooks) IterationStart(ctx context.Context, iter int) {
-	// Start an LLM span for this iteration. Messages for the trace payload are
-	// assembled lazily by the caller; we only need prompt + tools here.
+func (h *agentHooks) IterationStart(ctx context.Context, iter int, messages []*schema.Message) {
+	// 把 eino schema.Message 转为 trace 的 ChatMessage，传入完整上下文
+	// （system + 历史 user/assistant/tool + 状态栏），Phoenix 据此渲染
+	// LLM span 的 input messages 视图。
+	traceMsgs := make([]trace.ChatMessage, 0, len(messages))
+	for _, m := range messages {
+		traceMsgs = append(traceMsgs, schemaToTraceMsg(m))
+	}
 	_, span := h.tracer.StartLLMCall(h.turnCtx, h.conversationID, h.modelID,
-		h.basePrompt, iter-1, nil, h.toolSchemas)
+		h.basePrompt, iter-1, traceMsgs, h.toolSchemas)
 	h.llmSpan = span
+}
+
+// schemaToTraceMsg 把 eino schema.Message 转为 trace.ChatMessage。
+func schemaToTraceMsg(m *schema.Message) trace.ChatMessage {
+	tm := trace.ChatMessage{
+		Role:      string(m.Role),
+		Content:   m.Content,
+		Reasoning: m.ReasoningContent,
+	}
+	if m.ToolCallID != "" {
+		tm.ToolCallID = m.ToolCallID
+	}
+	if len(m.ToolCalls) > 0 {
+		tm.ToolCalls = make([]trace.ToolCallRef, len(m.ToolCalls))
+		for i, tc := range m.ToolCalls {
+			tm.ToolCalls[i] = trace.ToolCallRef{
+				ID:   tc.ID,
+				Name: tc.Function.Name,
+				Args: tc.Function.Arguments,
+			}
+		}
+	}
+	return tm
 }
 
 // IterationEnd fires after one full iteration (LLM call + any tool runs).
