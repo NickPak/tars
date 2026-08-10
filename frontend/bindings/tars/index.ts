@@ -7,11 +7,18 @@ export {
 };
 
 export {
+    AgentConfigView,
+    AppConfigView,
     Conversation,
     ConversationRenamedEvent,
     FileEntry,
+    LLMConfigView,
     Message,
+    ModelChangedEvent,
     ModelInfo,
+    ModelPrice,
+    ModelView,
+    ProviderView,
     ReasoningEvent,
     SessionStats,
     StreamChunk,
@@ -20,6 +27,7 @@ export {
     ToolCall,
     ToolEvent,
     ToolResultEvent,
+    TraceConfigView,
     UsageInfo,
     WorkspaceChangedEvent,
     WorkspaceInfo

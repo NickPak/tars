@@ -46,6 +46,8 @@ type UsageInfo struct {
 	CompletionTokens int `json:"completionTokens"`
 	TotalTokens      int `json:"totalTokens"`
 	CachedTokens     int `json:"cachedTokens,omitempty"`
+	// ModelEntry 产生该用量的模型条目 ID，多模型下按条目价格表核算费用
+	ModelEntry string `json:"modelEntry,omitempty"`
 }
 
 // ToolCall is a single tool invocation within an assistant message.

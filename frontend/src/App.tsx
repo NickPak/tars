@@ -6,8 +6,10 @@ import TopBar from "./components/TopBar";
 import TopicBar from "./components/TopicBar";
 import WorkspacePanel from "./components/WorkspacePanel";
 import StatusBar from "./components/StatusBar";
+import SettingsPanel from "./components/SettingsPanel";
 import { useChatStore } from "./store/chatStore";
 import { useLayoutStore } from "./store/layoutStore";
+import { useSettingsStore } from "./store/settingsStore";
 
 export default function App() {
   const backendError = useChatStore((s) => s.backendError);
@@ -33,6 +35,18 @@ export default function App() {
     };
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
+  }, []);
+
+  // Ctrl+, 打开设置（常见桌面应用约定）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === ",") {
+        e.preventDefault();
+        useSettingsStore.getState().openSettings();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const gridClass = [
@@ -70,6 +84,7 @@ export default function App() {
       </main>
       {workspaceVisible && <WorkspacePanel />}
       <StatusBar />
+      <SettingsPanel />
     </div>
   );
 }

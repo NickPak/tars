@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2, Settings, PanelLeftClose } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useLayoutStore } from "../store/layoutStore";
+import { useSettingsStore } from "../store/settingsStore";
 import RenameDialog, { ConfirmDialog } from "./Dialog";
 import ResizeHandle from "./ResizeHandle";
 
@@ -81,7 +82,11 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <button className="sidebar-settings-btn" title="设置">
+        <button
+          className="sidebar-settings-btn"
+          title="设置 (Ctrl+,)"
+          onClick={() => useSettingsStore.getState().openSettings()}
+        >
           <Settings size={16} />
           <span>设置</span>
         </button>

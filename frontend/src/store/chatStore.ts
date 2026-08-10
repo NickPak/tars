@@ -19,8 +19,10 @@ interface ChatState {
   workspace: WorkspaceInfo | null;
   /** 当前会话的聚合统计（状态栏数据）；null 表示新会话/无数据 */
   stats: SessionStats | null;
-  /** 当前模型配置（TopicBar 模型选择器展示）；init 时加载一次 */
+  /** 当前激活模型信息（TopicBar 模型选择器展示）；model:changed 事件刷新 */
   model: ModelInfo | null;
+  /** 全部已配置模型条目（模型切换下拉用） */
+  models: ModelInfo[];
 
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
@@ -44,6 +46,12 @@ interface ChatState {
   resetWorkspace: () => Promise<void>;
   /** 拉取当前会话的聚合统计（done/error/切换会话后调用） */
   refreshStats: () => Promise<void>;
+  /** 重新拉取模型信息（设置界面保存配置后调用，TopicBar/状态栏随之更新） */
+  refreshModelInfo: () => Promise<void>;
+  /** 重新拉取模型条目列表 */
+  refreshModels: () => Promise<void>;
+  /** 切换当前使用的模型（后端持久化并广播 model:changed） */
+  setActiveModel: (id: string) => Promise<void>;
 }
 
 function toMeta(c: Conversation): ConversationMeta {
@@ -77,6 +85,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   workspace: null,
   stats: null,
   model: null,
+  models: [],
 
   init: () => {
     agentApi
@@ -88,13 +97,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
       .catch((e) => set({ backendError: errText(e) }));
 
-    // 加载当前模型配置（应用级，不随会话变化）
-    agentApi
-      .getModelInfo()
-      .then((m) => set({ model: m }))
-      .catch(() => {
-        // 静默失败：TopicBar 退化为不显示模型名
-      });
+    // 加载当前模型配置与模型条目列表（应用级，不随会话变化）
+    void get().refreshModelInfo();
+    void get().refreshModels();
 
     return subscribeAgentEvents({
       onChunk: ({ conversationId, chunk }) => {
@@ -179,6 +184,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (conversationId !== get().activeId) return;
         const name = path ? path.split(/[/\\]/).pop() || path : "";
         set({ workspace: { path, isCustom, name } });
+      },
+      onModelChanged: ({ model }) => {
+        set({ model });
+        // 模型列表的 active 标记与状态栏统计随模型切换更新
+        void get().refreshModels();
+        void get().refreshStats();
       },
     });
   },
@@ -407,6 +418,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     } catch {
       // 统计失败静默忽略，不影响聊天主流程
+    }
+  },
+
+  refreshModelInfo: async () => {
+    try {
+      set({ model: await agentApi.getModelInfo() });
+    } catch {
+      // 静默失败：TopicBar 退化为不显示模型名
+    }
+  },
+
+  refreshModels: async () => {
+    try {
+      set({ models: await agentApi.listModels() });
+    } catch {
+      // 静默失败：切换下拉退化为空列表
+    }
+  },
+
+  setActiveModel: async (id) => {
+    try {
+      await agentApi.setActiveModel(id);
+      // 成功后端广播 model:changed，onModelChanged 统一刷新状态
+    } catch (e) {
+      set({ backendError: errText(e) });
     }
   },
 }));

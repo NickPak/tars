@@ -6,6 +6,82 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * AgentConfigView 是 Agent 运行时配置对前端的视图。
+ */
+export class AgentConfigView {
+    "maxIterations": number;
+    "compressionThreshold": number;
+
+    /** Creates a new AgentConfigView instance. */
+    constructor($$source: Partial<AgentConfigView> = {}) {
+        if (!("maxIterations" in $$source)) {
+            this["maxIterations"] = 0;
+        }
+        if (!("compressionThreshold" in $$source)) {
+            this["compressionThreshold"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AgentConfigView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AgentConfigView {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AgentConfigView($$parsedSource as Partial<AgentConfigView>);
+    }
+}
+
+/**
+ * AppConfigView 是设置界面读写的完整配置视图。
+ */
+export class AppConfigView {
+    "llm": LLMConfigView;
+    "workDir": string;
+    "agent": AgentConfigView;
+    "trace": TraceConfigView;
+
+    /** Creates a new AppConfigView instance. */
+    constructor($$source: Partial<AppConfigView> = {}) {
+        if (!("llm" in $$source)) {
+            this["llm"] = (new LLMConfigView());
+        }
+        if (!("workDir" in $$source)) {
+            this["workDir"] = "";
+        }
+        if (!("agent" in $$source)) {
+            this["agent"] = (new AgentConfigView());
+        }
+        if (!("trace" in $$source)) {
+            this["trace"] = (new TraceConfigView());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AppConfigView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AppConfigView {
+        const $$createField0_0 = $$createType0;
+        const $$createField2_0 = $$createType1;
+        const $$createField3_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("llm" in $$parsedSource) {
+            $$parsedSource["llm"] = $$createField0_0($$parsedSource["llm"]);
+        }
+        if ("agent" in $$parsedSource) {
+            $$parsedSource["agent"] = $$createField2_0($$parsedSource["agent"]);
+        }
+        if ("trace" in $$parsedSource) {
+            $$parsedSource["trace"] = $$createField3_0($$parsedSource["trace"]);
+        }
+        return new AppConfigView($$parsedSource as Partial<AppConfigView>);
+    }
+}
+
+/**
  * Conversation is a chat session with an ordered list of messages.
  */
 export class Conversation {
@@ -40,7 +116,7 @@ export class Conversation {
      * Creates a new Conversation instance from a string or object.
      */
     static createFrom($$source: any = {}): Conversation {
-        const $$createField2_0 = $$createType1;
+        const $$createField2_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("messages" in $$parsedSource) {
             $$parsedSource["messages"] = $$createField2_0($$parsedSource["messages"]);
@@ -117,12 +193,52 @@ export class FileEntry {
      * Creates a new FileEntry instance from a string or object.
      */
     static createFrom($$source: any = {}): FileEntry {
-        const $$createField4_0 = $$createType3;
+        const $$createField4_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField4_0($$parsedSource["children"]);
         }
         return new FileEntry($$parsedSource as Partial<FileEntry>);
+    }
+}
+
+/**
+ * LLMConfigView 是 LLM 配置对前端的视图。
+ */
+export class LLMConfigView {
+    "active": string;
+    "providers": ProviderView[];
+    "models": ModelView[];
+
+    /** Creates a new LLMConfigView instance. */
+    constructor($$source: Partial<LLMConfigView> = {}) {
+        if (!("active" in $$source)) {
+            this["active"] = "";
+        }
+        if (!("providers" in $$source)) {
+            this["providers"] = [];
+        }
+        if (!("models" in $$source)) {
+            this["models"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LLMConfigView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LLMConfigView {
+        const $$createField1_0 = $$createType8;
+        const $$createField2_0 = $$createType10;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("providers" in $$parsedSource) {
+            $$parsedSource["providers"] = $$createField1_0($$parsedSource["providers"]);
+        }
+        if ("models" in $$parsedSource) {
+            $$parsedSource["models"] = $$createField2_0($$parsedSource["models"]);
+        }
+        return new LLMConfigView($$parsedSource as Partial<LLMConfigView>);
     }
 }
 
@@ -173,8 +289,8 @@ export class Message {
      * Creates a new Message instance from a string or object.
      */
     static createFrom($$source: any = {}): Message {
-        const $$createField3_0 = $$createType5;
-        const $$createField7_0 = $$createType7;
+        const $$createField3_0 = $$createType12;
+        const $$createField7_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("toolCalls" in $$parsedSource) {
             $$parsedSource["toolCalls"] = $$createField3_0($$parsedSource["toolCalls"]);
@@ -187,24 +303,86 @@ export class Message {
 }
 
 /**
- * ModelInfo 描述当前配置的模型（不含 apiKey 等敏感字段），
- * 供前端 TopicBar/状态栏展示。
+ * ModelChangedEvent is the payload of the "model:changed" event.
+ */
+export class ModelChangedEvent {
+    "model": ModelInfo;
+
+    /** Creates a new ModelChangedEvent instance. */
+    constructor($$source: Partial<ModelChangedEvent> = {}) {
+        if (!("model" in $$source)) {
+            this["model"] = (new ModelInfo());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ModelChangedEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ModelChangedEvent {
+        const $$createField0_0 = $$createType15;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("model" in $$parsedSource) {
+            $$parsedSource["model"] = $$createField0_0($$parsedSource["model"]);
+        }
+        return new ModelChangedEvent($$parsedSource as Partial<ModelChangedEvent>);
+    }
+}
+
+/**
+ * ModelInfo describes one configured model entry.
  */
 export class ModelInfo {
+    /**
+     * 配置条目 ID（models[].id）
+     */
+    "id": string;
+
+    /**
+     * 供应商 ID
+     */
+    "provider": string;
+
+    /**
+     * 供应商类型（gemini/openai）
+     */
+    "providerType": string;
+
+    /**
+     * 发送给 API 的真实模型名
+     */
     "modelId": string;
 
     /**
-     * ContextWindow 模型上下文窗口（tokens）。
+     * 上下文窗口大小（tokens），0 = 未知
      */
     "contextWindow": number;
 
+    /**
+     * 是否为当前使用中的模型
+     */
+    "active": boolean;
+
     /** Creates a new ModelInfo instance. */
     constructor($$source: Partial<ModelInfo> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("provider" in $$source)) {
+            this["provider"] = "";
+        }
+        if (!("providerType" in $$source)) {
+            this["providerType"] = "";
+        }
         if (!("modelId" in $$source)) {
             this["modelId"] = "";
         }
         if (!("contextWindow" in $$source)) {
             this["contextWindow"] = 0;
+        }
+        if (!("active" in $$source)) {
+            this["active"] = false;
         }
 
         Object.assign(this, $$source);
@@ -216,6 +394,208 @@ export class ModelInfo {
     static createFrom($$source: any = {}): ModelInfo {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new ModelInfo($$parsedSource as Partial<ModelInfo>);
+    }
+}
+
+/**
+ * ModelPrice 是单个模型条目的价格表（元/百万 tokens）。
+ */
+export class ModelPrice {
+    "input": number;
+    "output": number;
+
+    /** Creates a new ModelPrice instance. */
+    constructor($$source: Partial<ModelPrice> = {}) {
+        if (!("input" in $$source)) {
+            this["input"] = 0;
+        }
+        if (!("output" in $$source)) {
+            this["output"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ModelPrice instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ModelPrice {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ModelPrice($$parsedSource as Partial<ModelPrice>);
+    }
+}
+
+/**
+ * ModelView 是模型条目对前端的视图。
+ */
+export class ModelView {
+    "id": string;
+    "provider": string;
+    "modelId": string;
+    "contextWindow": number;
+    "inputPricePerMillion": number;
+    "outputPricePerMillion": number;
+
+    /**
+     * MaxTokens 最大输出 tokens（claude 必填；deepseek 默认 4096 上限 8192；其余可选）
+     */
+    "maxTokens": number;
+
+    /**
+     * ThinkingBudget 字符串形式整数："" 默认 / "-1" 动态 / "0" 关闭 / ">0" 固定预算
+     * （仅 gemini 类型供应商的模型使用）
+     */
+    "thinkingBudget": string;
+
+    /**
+     * EnableThinking 三态："" 默认 / "on" 开启 / "off" 关闭
+     * （仅 deepseek/qwen/ark/ollama 类型供应商的模型使用）
+     */
+    "enableThinking": string;
+
+    /** Creates a new ModelView instance. */
+    constructor($$source: Partial<ModelView> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("provider" in $$source)) {
+            this["provider"] = "";
+        }
+        if (!("modelId" in $$source)) {
+            this["modelId"] = "";
+        }
+        if (!("contextWindow" in $$source)) {
+            this["contextWindow"] = 0;
+        }
+        if (!("inputPricePerMillion" in $$source)) {
+            this["inputPricePerMillion"] = 0;
+        }
+        if (!("outputPricePerMillion" in $$source)) {
+            this["outputPricePerMillion"] = 0;
+        }
+        if (!("maxTokens" in $$source)) {
+            this["maxTokens"] = 0;
+        }
+        if (!("thinkingBudget" in $$source)) {
+            this["thinkingBudget"] = "";
+        }
+        if (!("enableThinking" in $$source)) {
+            this["enableThinking"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ModelView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ModelView {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ModelView($$parsedSource as Partial<ModelView>);
+    }
+}
+
+/**
+ * ProviderView 是供应商配置对前端的视图。
+ * 安全约定：ApiKey 读取时恒为空串（不落网传输已保存的密钥），
+ * 仅返回 ApiKeySet 标记"是否已配置"；保存时 ApiKey 非空才覆盖。
+ */
+export class ProviderView {
+    "id": string;
+
+    /**
+     * gemini | openai | claude | deepseek | qwen | ark | ollama | qianfan
+     */
+    "type": string;
+    "apiKey": string;
+    "apiKeySet": boolean;
+    "baseUrl": string;
+
+    /**
+     * Timeout 人类可读的时长字符串（如 "60s"、"2m"），空 = 不设超时
+     */
+    "timeout": string;
+
+    /**
+     * ---- 供应商私有字段 ----
+     * qianfan AK（读取时脱敏为空）
+     */
+    "accessKey": string;
+
+    /**
+     * qianfan SK（读取时脱敏为空）
+     */
+    "secretKey": string;
+
+    /**
+     * AK/SK 是否均已配置
+     */
+    "keySet": boolean;
+
+    /**
+     * ark 区域，默认 cn-beijing
+     */
+    "region": string;
+
+    /**
+     * claude 自动前缀缓存："5m"/"1h"/"" 关闭
+     */
+    "cacheTTL": string;
+
+    /**
+     * ReasoningPolicy 历史 reasoning 回放策略："" 内置默认 / replay / strip / keep。
+     * 留空用供应商类型的内置默认（DeepSeek/Qwen/ARK=strip，Gemini=replay，其余=keep）
+     */
+    "reasoningPolicy": string;
+
+    /** Creates a new ProviderView instance. */
+    constructor($$source: Partial<ProviderView> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("apiKey" in $$source)) {
+            this["apiKey"] = "";
+        }
+        if (!("apiKeySet" in $$source)) {
+            this["apiKeySet"] = false;
+        }
+        if (!("baseUrl" in $$source)) {
+            this["baseUrl"] = "";
+        }
+        if (!("timeout" in $$source)) {
+            this["timeout"] = "";
+        }
+        if (!("accessKey" in $$source)) {
+            this["accessKey"] = "";
+        }
+        if (!("secretKey" in $$source)) {
+            this["secretKey"] = "";
+        }
+        if (!("keySet" in $$source)) {
+            this["keySet"] = false;
+        }
+        if (!("region" in $$source)) {
+            this["region"] = "";
+        }
+        if (!("cacheTTL" in $$source)) {
+            this["cacheTTL"] = "";
+        }
+        if (!("reasoningPolicy" in $$source)) {
+            this["reasoningPolicy"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProviderView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProviderView {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ProviderView($$parsedSource as Partial<ProviderView>);
     }
 }
 
@@ -285,7 +665,7 @@ export class SessionStats {
     "totalCredits": number;
 
     /**
-     * TotalCostYuan 会话累计费用（元），按配置的价格表估算。
+     * TotalCostYuan 会话累计费用（元），按各轮模型条目的价格表估算。
      */
     "totalCostYuan": number;
 
@@ -310,11 +690,17 @@ export class SessionStats {
     "compressionThreshold": number;
 
     /**
-     * 价格表透传给前端，用于计算每条消息的"本次费用"（价格变更时历史
-     * 消息的展示费用随当前价格浮动，属预期行为 —— 费用是估算值而非账单）。
+     * 当前激活模型的价格表，透传给前端计算每条消息的"本次费用"。
      */
     "inputPricePerMillion": number;
     "outputPricePerMillion": number;
+
+    /**
+     * ModelPrices 全部模型条目的价格表（key = 条目 ID）：
+     * 前端按每条消息的 usage.modelEntry 核算单条费用；
+     * 条目被删除时回退激活模型价格（费用是估算值而非账单）。
+     */
+    "modelPrices"?: { [_ in string]?: ModelPrice };
 
     /** Creates a new SessionStats instance. */
     constructor($$source: Partial<SessionStats> = {}) {
@@ -362,7 +748,11 @@ export class SessionStats {
      * Creates a new SessionStats instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionStats {
+        const $$createField12_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("modelPrices" in $$parsedSource) {
+            $$parsedSource["modelPrices"] = $$createField12_0($$parsedSource["modelPrices"]);
+        }
         return new SessionStats($$parsedSource as Partial<SessionStats>);
     }
 }
@@ -427,7 +817,7 @@ export class StreamDone {
      * Creates a new StreamDone instance from a string or object.
      */
     static createFrom($$source: any = {}): StreamDone {
-        const $$createField2_0 = $$createType7;
+        const $$createField2_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("usage" in $$parsedSource) {
             $$parsedSource["usage"] = $$createField2_0($$parsedSource["usage"]);
@@ -587,6 +977,34 @@ export class ToolResultEvent {
 }
 
 /**
+ * TraceConfigView 是追踪配置对前端的视图。
+ */
+export class TraceConfigView {
+    "otlpHttpEndpoint": string;
+    "otlpGrpcEndpoint": string;
+
+    /** Creates a new TraceConfigView instance. */
+    constructor($$source: Partial<TraceConfigView> = {}) {
+        if (!("otlpHttpEndpoint" in $$source)) {
+            this["otlpHttpEndpoint"] = "";
+        }
+        if (!("otlpGrpcEndpoint" in $$source)) {
+            this["otlpGrpcEndpoint"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TraceConfigView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TraceConfigView {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TraceConfigView($$parsedSource as Partial<TraceConfigView>);
+    }
+}
+
+/**
  * UsageInfo carries token usage statistics for the completed response.
  */
 export class UsageInfo {
@@ -599,6 +1017,12 @@ export class UsageInfo {
      * 用于计算缓存命中率 = CachedTokens / PromptTokens。
      */
     "cachedTokens"?: number;
+
+    /**
+     * ModelEntry 产生该用量的模型条目 ID（配置中的 models[].id），
+     * 多模型下用于按条目价格表核算费用。
+     */
+    "modelEntry"?: string;
 
     /** Creates a new UsageInfo instance. */
     constructor($$source: Partial<UsageInfo> = {}) {
@@ -701,11 +1125,21 @@ export class WorkspaceInfo {
 }
 
 // Private type creation functions
-const $$createType0 = Message.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = FileEntry.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = ToolCall.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = UsageInfo.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
+const $$createType0 = LLMConfigView.createFrom;
+const $$createType1 = AgentConfigView.createFrom;
+const $$createType2 = TraceConfigView.createFrom;
+const $$createType3 = Message.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = FileEntry.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = ProviderView.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = ModelView.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = ToolCall.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = UsageInfo.createFrom;
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = ModelInfo.createFrom;
+const $$createType16 = ModelPrice.createFrom;
+const $$createType17 = $Create.Map($Create.Any, $$createType16);

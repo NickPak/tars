@@ -7,10 +7,10 @@
 
 import { Events } from "@wailsio/runtime";
 import { AgentService } from "../../bindings/tars";
-import type { ChatMessage, Conversation, FileEntry, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
+import type { AppConfigView, ChatMessage, Conversation, FileEntry, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
-import type { ConversationRenamedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent } from "../types";
+import type { ConversationRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent } from "../types";
 
 export const agentApi = {
   createConversation: async (): Promise<Conversation> => {
@@ -82,13 +82,34 @@ export const agentApi = {
   getSessionStats: async (conversationId: string): Promise<SessionStats> =>
     (await AgentService.GetSessionStats(conversationId)) as SessionStats,
 
-  /** 获取当前模型配置（TopicBar 模型选择器展示用） */
+  /** 获取当前激活模型信息（TopicBar 模型选择器展示用） */
   getModelInfo: async (): Promise<ModelInfo> =>
     (await AgentService.GetModelInfo()) as ModelInfo,
+
+  /** 获取全部已配置模型条目（模型切换下拉用） */
+  listModels: async (): Promise<ModelInfo[]> =>
+    ((await AgentService.ListModels()) ?? []) as ModelInfo[],
+
+  /** 切换当前使用的模型（立即生效并持久化），成功后后端广播 model:changed */
+  setActiveModel: (id: string): Promise<void> =>
+    AgentService.SetActiveModel(id),
 
   /** 导出会话为 Markdown（弹出系统保存对话框），返回保存路径（取消返回空串） */
   exportConversation: async (conversationId: string): Promise<string> =>
     await AgentService.ExportConversation(conversationId),
+
+  // --- 设置（应用配置） ---
+
+  /** 获取当前应用配置（apiKey 脱敏为空串，用 apiKeySet 判断是否已配置） */
+  getAppConfig: async (): Promise<AppConfigView> => {
+    const cfg = await AgentService.GetAppConfig();
+    if (!cfg) throw new Error("获取配置失败：后端返回空");
+    return cfg as AppConfigView;
+  },
+
+  /** 保存应用配置：写回 config.yaml 并热更新（model/agent/trace 立即生效） */
+  saveAppConfig: (cfg: AppConfigView): Promise<void> =>
+    AgentService.SaveAppConfig(cfg),
 };
 
 export interface AgentEventHandlers {
@@ -100,6 +121,7 @@ export interface AgentEventHandlers {
   onTool?: (ev: ToolEvent) => void;
   onToolResult?: (ev: ToolResultEvent) => void;
   onWorkspaceChanged?: (ev: WorkspaceChangedEvent) => void;
+  onModelChanged?: (ev: ModelChangedEvent) => void;
 }
 
 /**
@@ -128,6 +150,9 @@ export function subscribeAgentEvents(handlers: AgentEventHandlers): () => void {
     ),
     Events.On(AgentEvents.WorkspaceChanged, (ev) =>
       handlers.onWorkspaceChanged?.(ev.data as WorkspaceChangedEvent),
+    ),
+    Events.On(AgentEvents.ModelChanged, (ev) =>
+      handlers.onModelChanged?.(ev.data as ModelChangedEvent),
     ),
   ];
   return () => unsubs.forEach((unsub) => unsub());

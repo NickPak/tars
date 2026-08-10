@@ -1,38 +1,30 @@
-# TARS 配置模板
-# 使用方法：复制本文件为 config.yaml 后修改（config.yaml 已在 .gitignore 中，不会入库）
-#   cp config/config.example.yaml config/config.yaml
-#
-# 所有值支持 ${VAR} 环境变量引用，密钥等敏感信息建议用环境变量注入，
-# 也可以直接在本地 config.yaml 中填写明文（该文件不会被提交）。
-
 llm:
-  # Gemini API Key（https://aistudio.google.com/apikey 免费申请）
-  # 方式一（推荐）：环境变量
-  apiKey: ${GEMINI_API_KEY}
-  # 方式二：本地明文（仅本机使用，config.yaml 不会入库）
-  # apiKey: "your-api-key-here"
-
-  modelId: "gemini-3.1-flash-lite"
-  baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/"
-  timeout: 60s
-
-  inputPricePerMillion: 0.075
-  outputPricePerMillion: 0.30
-  # 模型上下文窗口（tokens），用于计算上下文使用百分比
-  contextWindow: 1048576
-  # 思考预算（tokens）：-1 动态思考；0 关闭（flash-lite 系列默认关闭需显式开启）；>0 固定上限
-  thinkingBudget: -1
+  active: gemini/gemini-3.1-flash-lite
+  providers:
+    - id: gemini
+      type: gemini
+      apiKey: ${LLM_API_KEY}
+      timeout: 60s
+  models:
+    - id: gemini/gemini-3.1-flash-lite
+      provider: gemini
+      modelId: gemini-3.1-flash-lite
+      contextWindow: 1048576
+      inputPricePerMillion: 0.075
+      outputPricePerMillion: 0.30
+      # thinkingBudget：-1 动态思考 / 0 关闭 / >0 固定预算（flash-lite 默认 0，需显式开启）
+      thinkingBudget: -1
 
 # 工作目录（agent 工具操作 + 会话数据存储的根目录）
 # 留空则默认为用户家目录下的 tars 目录（~/tars）
-# workDir: "C:/my-workdir"
+# workDir: "~/tars"
 
 # Agent 配置
 agent:
   # ReAct 循环最大迭代轮次（LLM→工具→LLM 一轮算一次）
   # 防止模型陷入死循环烧 token；复杂的多文件任务需要较大预算
-  # 未配置时默认 100
-  maxIterations: 100
+  # 未配置时默认 200
+  maxIterations: 200
 
   # 上下文压缩阈值（0-1）：使用占比超过该值时应触发历史压缩（功能待实现，先在状态栏展示）
   compressionThreshold: 0.8

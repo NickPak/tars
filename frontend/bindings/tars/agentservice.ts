@@ -45,6 +45,15 @@ export function ExportConversation(conversationID: string): $CancellablePromise<
     return $Call.ByID(3425942425, conversationID);
 }
 
+/**
+ * GetAppConfig 返回当前配置（apiKey 脱敏）。
+ */
+export function GetAppConfig(): $CancellablePromise<$models.AppConfigView | null> {
+    return $Call.ByID(3243841041).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
 export function GetConversation(id: string): $CancellablePromise<$models.Conversation | null> {
     return $Call.ByID(754590447, id).then(($result: any) => {
         return $$createType1($result);
@@ -52,12 +61,12 @@ export function GetConversation(id: string): $CancellablePromise<$models.Convers
 }
 
 /**
- * GetModelInfo 返回当前 LLM 配置的可公开信息。
- * 调用方无需会话上下文 —— 模型是应用级配置。
+ * GetModelInfo returns the currently active model (TopicBar/状态栏展示用）。
+ * 未配置任何模型时返回空对象（前端退化为不显示）。
  */
 export function GetModelInfo(): $CancellablePromise<$models.ModelInfo | null> {
     return $Call.ByID(708754981).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -66,7 +75,7 @@ export function GetModelInfo(): $CancellablePromise<$models.ModelInfo | null> {
  */
 export function GetSessionStats(conversationID: string): $CancellablePromise<$models.SessionStats | null> {
     return $Call.ByID(520403183, conversationID).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -75,13 +84,22 @@ export function GetSessionStats(conversationID: string): $CancellablePromise<$mo
  */
 export function GetWorkspaceInfo(conversationID: string): $CancellablePromise<$models.WorkspaceInfo | null> {
     return $Call.ByID(3454358245, conversationID).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
 export function ListConversations(): $CancellablePromise<$models.Conversation[]> {
     return $Call.ByID(2342191952).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType10($result);
+    });
+}
+
+/**
+ * ListModels returns all configured model entries（TopicBar 切换下拉用）。
+ */
+export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
+    return $Call.ByID(425219254).then(($result: any) => {
+        return $$createType11($result);
     });
 }
 
@@ -92,7 +110,7 @@ export function ListConversations(): $CancellablePromise<$models.Conversation[]>
  */
 export function ListWorkspaceFiles(conversationID: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(2376334908, conversationID).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType13($result);
     });
 }
 
@@ -124,7 +142,7 @@ export function RenameConversation(id: string, title: string): $CancellablePromi
  */
 export function RetryMessage(conversationID: string): $CancellablePromise<$models.Message | null> {
     return $Call.ByID(3966755125, conversationID).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType15($result);
     });
 }
 
@@ -147,12 +165,29 @@ export function RevealInExplorer(conversationID: string): $CancellablePromise<vo
 }
 
 /**
+ * SaveAppConfig 校验并保存配置：写回 config.yaml（保留注释与 apiKey 引用），
+ * 并热更新内存配置与模型注册表（model/agent/trace 立即生效，
+ * workDir 需重启生效——工作目录涉及存量会话数据搬迁）。
+ */
+export function SaveAppConfig(v: $models.AppConfigView | null): $CancellablePromise<void> {
+    return $Call.ByID(484951638, v);
+}
+
+/**
  * SendMessage 是 Agent 的入口。
  */
 export function SendMessage(conversationID: string, text: string): $CancellablePromise<$models.Message | null> {
     return $Call.ByID(729126489, conversationID, text).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType15($result);
     });
+}
+
+/**
+ * SetActiveModel switches the active model: 预构建目标模型（失败则不切换），
+ * 热更新注册表并落盘（active 键），最后广播 model:changed 事件。
+ */
+export function SetActiveModel(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1916297203, id);
 }
 
 /**
@@ -167,14 +202,17 @@ export function SetWorkspaceDir(conversationID: string, dir: string): $Cancellab
 // Private type creation functions
 const $$createType0 = $models.Conversation.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.ModelInfo.createFrom;
+const $$createType2 = $models.AppConfigView.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.SessionStats.createFrom;
+const $$createType4 = $models.ModelInfo.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $models.WorkspaceInfo.createFrom;
+const $$createType6 = $models.SessionStats.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $Create.Array($$createType0);
-const $$createType9 = $models.FileEntry.createFrom;
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = $models.Message.createFrom;
-const $$createType12 = $Create.Nullable($$createType11);
+const $$createType8 = $models.WorkspaceInfo.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = $Create.Array($$createType0);
+const $$createType11 = $Create.Array($$createType4);
+const $$createType12 = $models.FileEntry.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = $models.Message.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);

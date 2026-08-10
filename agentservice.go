@@ -19,6 +19,7 @@ import (
 	"tars/pkg/tools"
 	"tars/pkg/trace"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -101,6 +102,9 @@ type UsageInfo struct {
 	// CachedTokens 提示词中命中服务端缓存的 token 数（Gemini 隐式缓存），
 	// 用于计算缓存命中率 = CachedTokens / PromptTokens。
 	CachedTokens int `json:"cachedTokens,omitempty"`
+	// ModelEntry 产生该用量的模型条目 ID（配置中的 models[].id），
+	// 多模型下用于按条目价格表核算费用。
+	ModelEntry string `json:"modelEntry,omitempty"`
 }
 
 // StreamError is the payload of the "agent:error" event.
@@ -146,18 +150,27 @@ type ReasoningEvent struct {
 	Content        string `json:"content"`
 }
 
+// appConfigPath 是应用配置文件的路径（相对工作目录）。
+const appConfigPath = "config/config.yaml"
+
 // AgentService exposes the agent backend to the frontend.
 type AgentService struct {
-	appConfig    *config.AppConfig
-	llmClient    *llm.Client
 	toolMgr      *tools.Manager
 	workDir      string
 	convsDir     string // root dir for conversation storage
 	basePrompt   string // stable base prompt (without env context)
 	envSuffix    string // env context that doesn't change per-conversation (OS, tools)
+	store        *store.Store
+
+	// cfgMu 保护 appConfig 与 OTLP 端点：设置界面保存配置时会热替换它们
+	cfgMu            sync.RWMutex
+	appConfig        *config.AppConfig
 	otlpHTTPEndpoint string // optional OTLP/HTTP collector endpoint (Jaeger)
 	otlpGrpcEndpoint string // optional OTLP/gRPC collector endpoint (Phoenix)
-	store        *store.Store
+
+	// llmReg 模型注册表：多供应商/多模型的工厂与缓存，内部有锁，
+	// 切换模型或保存配置通过 UpdateConfig 热更新。
+	llmReg *llm.Registry
 
 	mu      sync.RWMutex
 	convs   map[string]*Conversation
@@ -169,8 +182,28 @@ type AgentService struct {
 	modelHealthy atomic.Bool
 }
 
+// currentConfig 返回当前生效的应用配置（设置界面保存后会被热替换）。
+func (s *AgentService) currentConfig() *config.AppConfig {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.appConfig
+}
+
+// currentModel 返回当前激活模型的 ChatModel 与条目配置（每轮 agent
+// 循环开始时调用，模型切换下一轮自然生效）。
+func (s *AgentService) currentModel() (model.ToolCallingChatModel, *llm.ModelConfig, error) {
+	return s.llmReg.Active()
+}
+
+// traceEndpoints 返回当前生效的 OTLP 导出端点（HTTP, gRPC）。
+func (s *AgentService) traceEndpoints() (string, string) {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.otlpHTTPEndpoint, s.otlpGrpcEndpoint
+}
+
 func (s *AgentService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
-	appConfig, err := config.LoadAppConfig("config/config.yaml")
+	appConfig, err := config.LoadAppConfig(appConfigPath)
 	if err != nil {
 		slog.Error("Failed loading app config", "error", err)
 		return err
@@ -185,12 +218,9 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 		slog.Info("OTLP/gRPC trace export enabled", "endpoint", s.otlpGrpcEndpoint)
 	}
 
-	llmClient, err := llm.NewClient(appConfig.LLM)
-	if err != nil {
-		slog.Error("Failed to create LLM client", "error", err)
-		return err
-	}
-	s.llmClient = llmClient
+	// 注册表启动期容错：配置问题不阻塞启动，首次对话时才暴露，
+	// 用户可通过设置界面修复。
+	s.llmReg = llm.NewRegistry(appConfig.LLM)
 
 	// 工作目录：优先用配置，否则用平台特定的家目录默认路径
 	workDir := appConfig.WorkDir
@@ -261,7 +291,8 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 			}
 
 			// 为恢复的会话创建 tracer
-			if t, err := trace.NewTracer(s.store.LogsDir(conv.ID), s.otlpHTTPEndpoint, s.otlpGrpcEndpoint); err == nil {
+			httpEp, grpcEp := s.traceEndpoints()
+			if t, err := trace.NewTracer(s.store.LogsDir(conv.ID), httpEp, grpcEp); err == nil {
 				s.setTracer(conv.ID, t)
 			}
 		}
@@ -396,7 +427,8 @@ func (s *AgentService) CreateConversation() (*Conversation, error) {
 		UpdatedAt: now,
 	}
 	s.addConversation(conv)
-	if t, err := trace.NewTracer(s.store.LogsDir(id), s.otlpHTTPEndpoint, s.otlpGrpcEndpoint); err == nil {
+	httpEp, grpcEp := s.traceEndpoints()
+	if t, err := trace.NewTracer(s.store.LogsDir(id), httpEp, grpcEp); err == nil {
 		s.setTracer(id, t)
 	}
 	s.getTracer(id).LogConversationCreated(id, defaultConversationTitle)
@@ -553,13 +585,19 @@ func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 	convWorkDir := s.store.ResolveWorkDir(conv.ID)
 	sysPrompt := s.basePrompt + "\n- Working directory: `" + convWorkDir + "`\n" + s.envSuffix
 	msgs = append(msgs, schema.SystemMessage(sysPrompt))
+	// reasoning 回放策略由目标供应商决定（provider 级，内置默认 + 可选覆盖）：
+	// Gemini function call 回合必须回放 thinking（维持签名链），
+	// DeepSeek/Qwen/ARK 工具回合禁止回传 reasoning（报 400）。
+	reasoningPolicy := s.reasoningPolicy()
 	for _, m := range conv.Messages {
 		switch m.Role {
 		case RoleUser:
 			msgs = append(msgs, schema.UserMessage(m.Content))
 		case RoleAssistant:
-			// 回传 ReasoningContent：Gemini function call 场景要求 thinking
-			// 随消息回放，否则下一轮请求可能报错；其他模型会忽略该字段。
+			reasoning := m.Reasoning
+			if reasoningPolicy == llm.ReasoningStrip {
+				reasoning = ""
+			}
 			if len(m.ToolCalls) > 0 {
 				// 带 tool_calls 的 assistant 消息
 				toolCalls := make([]schema.ToolCall, len(m.ToolCalls))
@@ -576,14 +614,14 @@ func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 				msgs = append(msgs, &schema.Message{
 					Role:             schema.Assistant,
 					Content:          m.Content,
-					ReasoningContent: m.Reasoning,
+					ReasoningContent: reasoning,
 					ToolCalls:        toolCalls,
 				})
 			} else if m.Content != "" {
 				msgs = append(msgs, &schema.Message{
 					Role:             schema.Assistant,
 					Content:          m.Content,
-					ReasoningContent: m.Reasoning,
+					ReasoningContent: reasoning,
 				})
 			}
 		case RoleTool:
@@ -591,6 +629,21 @@ func (s *AgentService) buildLLMMessages(conv *Conversation) []*schema.Message {
 		}
 	}
 	return msgs
+}
+
+// reasoningPolicy 返回当前激活模型供应商的 reasoning 回放策略
+//（replay/strip/keep）。配置缺失时保守取 keep（透传）。
+func (s *AgentService) reasoningPolicy() string {
+	cfg := s.llmReg.Config()
+	m := cfg.ActiveModel()
+	if m == nil {
+		return llm.ReasoningKeep
+	}
+	p := cfg.FindProvider(m.Provider)
+	if p == nil {
+		return llm.ReasoningKeep
+	}
+	return p.ReasoningReplayMode()
 }
 
 func (s *AgentService) CancelMessage(conversationID string) error {
@@ -739,6 +792,7 @@ func usageToStore(u *UsageInfo) *store.UsageInfo {
 		CompletionTokens: u.CompletionTokens,
 		TotalTokens:      u.TotalTokens,
 		CachedTokens:     u.CachedTokens,
+		ModelEntry:       u.ModelEntry,
 	}
 }
 
@@ -751,6 +805,7 @@ func usageFromStore(u *store.UsageInfo) *UsageInfo {
 		CompletionTokens: u.CompletionTokens,
 		TotalTokens:      u.TotalTokens,
 		CachedTokens:     u.CachedTokens,
+		ModelEntry:       u.ModelEntry,
 	}
 }
 
@@ -829,7 +884,8 @@ func (s *AgentService) getTracer(convID string) *trace.Tracer {
 	if t, ok = s.tracers[convID]; ok {
 		return t
 	}
-	t, err := trace.NewTracer(s.store.LogsDir(convID), s.otlpHTTPEndpoint, s.otlpGrpcEndpoint)
+	httpEp, grpcEp := s.traceEndpoints()
+	t, err := trace.NewTracer(s.store.LogsDir(convID), httpEp, grpcEp)
 	if err != nil {
 		slog.Warn("Failed to create tracer", "conv", convID, "error", err)
 		return nil

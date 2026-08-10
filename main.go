@@ -29,6 +29,7 @@ func init() {
 	application.RegisterEvent[ReasoningEvent]("agent:reasoning")
 	application.RegisterEvent[ConversationRenamedEvent]("conversation:renamed")
 	application.RegisterEvent[WorkspaceChangedEvent]("workspace:changed")
+	application.RegisterEvent[ModelChangedEvent]("model:changed")
 }
 
 func main() {

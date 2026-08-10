@@ -26,7 +26,8 @@ type agentHooks struct {
 	assistantID    string
 	assistantIndex int
 	tracer         *trace.Tracer
-	modelID        string
+	modelID        string // 真实模型名（trace 展示用）
+	modelEntry     string // 配置条目 ID（usage 费用核算用）
 	basePrompt     string
 	toolSchemas    []string
 	turnCtx        context.Context // turn span ctx, for tool spans
@@ -110,6 +111,7 @@ func (h *agentHooks) StreamChunk(ctx context.Context, iter int, chunk *schema.Me
 			CompletionTokens: chunk.ResponseMeta.Usage.CompletionTokens,
 			TotalTokens:      chunk.ResponseMeta.Usage.TotalTokens,
 			CachedTokens:     chunk.ResponseMeta.Usage.PromptTokenDetails.CachedTokens,
+			ModelEntry:       h.modelEntry,
 		}
 	}
 
@@ -195,7 +197,16 @@ func (s *AgentService) runAgentLoop(ctx context.Context, conversationID, assista
 	ctx, turnSpan := tracer.StartTurn(ctx, conversationID, assistantID, userText)
 	var turnErr error
 
-	chatModel := s.llmClient.ChatModel()
+	chatModel, modelCfg, err := s.currentModel()
+	if err != nil {
+		turnErr = err
+		application.Get().Event.Emit("agent:error", StreamError{
+			ConversationID: conversationID, MessageID: assistantID, Error: turnErr.Error(),
+		})
+		tracer.EndTurn(turnSpan, turnErr, time.Since(startTime).Milliseconds(), "")
+		s.unregisterCancel(conversationID)
+		return
+	}
 	modelWithTools, err := chatModel.WithTools(s.toolMgr.ToolInfos())
 	if err != nil {
 		turnErr = fmt.Errorf("failed to bind tools: %w", err)
@@ -207,20 +218,22 @@ func (s *AgentService) runAgentLoop(ctx context.Context, conversationID, assista
 		return
 	}
 
+	cfg := s.currentConfig()
 	hooks := &agentHooks{
 		svc:            s,
 		conversationID: conversationID,
 		assistantID:    assistantID,
 		assistantIndex: assistantIndex,
 		tracer:         tracer,
-		modelID:        s.appConfig.LLM.ModelId,
+		modelID:        modelCfg.ModelId, // 真实模型名，用于 trace 展示
+		modelEntry:     modelCfg.ID,      // 配置条目 ID，用于费用核算
 		basePrompt:     s.basePrompt,
 		toolSchemas:    s.toolMgr.ToolSchemasJSON(),
 		turnCtx:        ctx,
 		turnSpan:       turnSpan,
 	}
 
-	ag := agent.New(modelWithTools, s.toolMgr, s.appConfig.MaxIterationsOrDefault())
+	ag := agent.New(modelWithTools, s.toolMgr, cfg.MaxIterationsOrDefault())
 	// Generous per-iteration deadline: busy providers may queue requests.
 	ag.IterationTimeout = iterationTimeout
 

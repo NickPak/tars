@@ -319,11 +319,18 @@ function MessageStatusBar({
       ? usage.cachedTokens / usage.promptTokens
       : undefined;
 
-  // 本次费用 = prompt × 输入价 + completion × 输出价（价格未配置则不显示）
+  // 本次费用 = prompt × 输入价 + completion × 输出价。
+  // 多模型下按产生该用量的模型条目价格核算（usage.modelEntry），
+  // 条目已删除或无条目信息时回退当前激活模型价格；价格未配置则不显示。
+  const price =
+    (usage?.modelEntry && stats?.modelPrices?.[usage.modelEntry]) ||
+    (stats
+      ? { input: stats.inputPricePerMillion, output: stats.outputPricePerMillion }
+      : undefined);
   const cost =
-    usage && stats && stats.inputPricePerMillion > 0
-      ? (usage.promptTokens * stats.inputPricePerMillion +
-          usage.completionTokens * stats.outputPricePerMillion) /
+    usage && price && (price.input > 0 || price.output > 0)
+      ? (usage.promptTokens * price.input +
+          usage.completionTokens * price.output) /
         1e6
       : undefined;
 

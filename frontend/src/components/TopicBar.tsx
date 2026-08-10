@@ -25,7 +25,11 @@ export default function TopicBar() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsMenuOpen, setWsMenuOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [idCopied, setIdCopied] = useState(false);
+
+  const models = useChatStore((s) => s.models);
+  const setActiveModel = useChatStore((s) => s.setActiveModel);
 
   // 复制完整会话 ID，用于在链路追踪（OTel/Jaeger）中按 ID 检索对话
   const handleCopyId = () => {
@@ -136,15 +140,48 @@ export default function TopicBar() {
           </>
         )}
 
-        {/* 模型展示（来自后端配置；模型选择功能待后续实现） */}
-        {model && (
+        {/* 模型切换下拉（数据来自后端配置） */}
+        {model?.modelId && (
           <button
             className="topicbar-model-btn"
-            title={`模型：${model.modelId}\n上下文窗口：${model.contextWindow.toLocaleString()} tokens`}
+            title={`模型：${model.id}\n上下文窗口：${model.contextWindow.toLocaleString()} tokens\n点击切换模型`}
+            onClick={() => setModelMenuOpen((v) => !v)}
           >
             <span>{model.modelId}</span>
             <ChevronDown size={14} />
           </button>
+        )}
+        {modelMenuOpen && (
+          <>
+            <div
+              className="topicbar-menu-overlay"
+              onClick={() => setModelMenuOpen(false)}
+            />
+            <div className="topicbar-menu topicbar-model-menu">
+              {models.map((m) => (
+                <button
+                  key={m.id}
+                  className="topicbar-menu-item"
+                  onClick={() => {
+                    setModelMenuOpen(false);
+                    if (!m.active) void setActiveModel(m.id);
+                  }}
+                >
+                  <span
+                    className={`topicbar-menu-check${m.active ? " active" : ""}`}
+                  >
+                    {m.active ? "✓" : ""}
+                  </span>
+                  <span className="topicbar-menu-label">{m.id}</span>
+                </button>
+              ))}
+              {models.length === 0 && (
+                <div className="topicbar-menu-empty">
+                  暂无可用模型，请在设置中添加
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         {/* 更多操作 */}

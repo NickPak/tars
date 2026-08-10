@@ -76,12 +76,28 @@ export interface UsageInfo {
   totalTokens: number;
   /** 提示词中命中服务端缓存的 token 数（缓存命中率 = cachedTokens / promptTokens） */
   cachedTokens?: number;
+  /** 产生该用量的模型条目 ID（多模型下按条目价格表核算费用） */
+  modelEntry?: string;
 }
 
-/** 当前模型配置（不含敏感信息） */
+/** 模型条目信息（模型选择器/状态栏展示用） */
 export interface ModelInfo {
+  /** 配置条目 ID（models[].id） */
+  id: string;
+  /** 供应商 ID */
+  provider: string;
+  /** 供应商类型（gemini/openai） */
+  providerType: string;
+  /** 发送给 API 的真实模型名 */
   modelId: string;
   contextWindow: number;
+  /** 是否为当前使用中的模型 */
+  active: boolean;
+}
+
+/** "model:changed" 事件 payload：当前模型已切换 */
+export interface ModelChangedEvent {
+  model: ModelInfo;
 }
 
 /** 会话级聚合统计（底部状态栏数据） */
@@ -106,6 +122,8 @@ export interface SessionStats {
   /** 价格表（元/百万 token），前端算每条消息的本次费用 */
   inputPricePerMillion: number;
   outputPricePerMillion: number;
+  /** 全部模型条目的价格表（key = 条目 ID），按 usage.modelEntry 核算单条费用 */
+  modelPrices?: Record<string, { input: number; output: number }>;
 }
 
 /** "agent:reasoning" 事件 payload：模型思考过程 */
@@ -161,6 +179,77 @@ export interface WorkspaceChangedEvent {
   isCustom: boolean;
 }
 
+// ===== 设置界面（与 Go 端 configservice.go 的视图结构对应） =====
+
+/** 供应商配置视图。密钥类字段读取时恒为空串；保存时非空才覆盖 */
+export interface ProviderView {
+  id: string;
+  /** 供应商类型（对应 eino 原生组件）：gemini | openai | claude | deepseek | qwen | ark | ollama | qianfan */
+  type: string;
+  apiKey: string;
+  /** 后端是否已配置 apiKey（用于显示"已配置"占位） */
+  apiKeySet: boolean;
+  baseUrl: string;
+  /** 人类可读时长（如 "60s"、"2m"），空 = 不设超时 */
+  timeout: string;
+  /** 千帆 Access Key（读取脱敏为空） */
+  accessKey: string;
+  /** 千帆 Secret Key（读取脱敏为空） */
+  secretKey: string;
+  /** AK/SK 是否均已配置 */
+  keySet: boolean;
+  /** 火山引擎区域（ark），默认 cn-beijing */
+  region: string;
+  /** Claude 自动前缀缓存："5m" | "1h" | "" 关闭 */
+  cacheTTL: string;
+  /** 历史 reasoning 回放策略："" 内置默认 / "replay" / "strip" / "keep" */
+  reasoningPolicy: string;
+}
+
+/** 模型条目配置视图 */
+export interface ModelView {
+  /** 条目唯一 ID，建议 "provider/modelId" 形式 */
+  id: string;
+  /** 引用的供应商 ID */
+  provider: string;
+  /** 发送给 API 的真实模型名（ark 类型为推理接入点 endpoint ID） */
+  modelId: string;
+  contextWindow: number;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  /** 最大输出 tokens（claude 必填；deepseek 默认 4096 上限 8192；其余可选） */
+  maxTokens: number;
+  /** 字符串整数："" 默认 / "-1" 动态 / "0" 关闭 / ">0" 固定预算（仅 gemini 供应商） */
+  thinkingBudget: string;
+  /** 三态："" 默认 / "on" 开启 / "off" 关闭（仅 deepseek/qwen/ark/ollama 供应商） */
+  enableThinking: string;
+}
+
+/** LLM 配置视图：供应商列表 + 模型列表 + 当前激活条目 */
+export interface LLMConfigView {
+  active: string;
+  providers: ProviderView[];
+  models: ModelView[];
+}
+
+export interface AgentConfigView {
+  maxIterations: number;
+  compressionThreshold: number;
+}
+
+export interface TraceConfigView {
+  otlpHttpEndpoint: string;
+  otlpGrpcEndpoint: string;
+}
+
+/** 设置界面读写的完整配置视图 */
+export interface AppConfigView {
+  llm: LLMConfigView;
+  workDir: string;
+  agent: AgentConfigView;
+  trace: TraceConfigView;
+}
+
 /** 与 Go 端 main.go 中注册的事件名保持一致 */
 export const AgentEvents = {
   Chunk: "agent:chunk",
@@ -171,4 +260,5 @@ export const AgentEvents = {
   Tool: "agent:tool",
   ToolResult: "agent:tool_result",
   WorkspaceChanged: "workspace:changed",
+  ModelChanged: "model:changed",
 } as const;
