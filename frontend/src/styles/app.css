@@ -378,6 +378,34 @@ body.resizing-col .resize-handle::after {
   white-space: nowrap;
 }
 
+/* 会话 ID：等宽字体，便于与链路追踪系统对照 */
+.topicbar-conv-id {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-dim);
+  user-select: all;
+}
+
+.topicbar-copy-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.topicbar-copy-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
 .topicbar-actions {
   display: flex;
   align-items: center;

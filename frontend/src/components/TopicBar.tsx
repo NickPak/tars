@@ -7,15 +7,16 @@ import {
   RotateCcw,
   FolderInput,
   ExternalLink,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { agentApi } from "../services/agentApi";
 
 /**
- * 对话标题栏：显示当前对话标题、工作区路径（可切换）、模型选择器、更多操作。
+ * 对话标题栏：显示当前会话 ID（可复制，用于链路追踪检索）、工作区路径（可切换）、模型选择器、更多操作。
  */
 export default function TopicBar() {
-  const conversations = useChatStore((s) => s.conversations);
   const activeId = useChatStore((s) => s.activeId);
   const workspace = useChatStore((s) => s.workspace);
   const model = useChatStore((s) => s.model);
@@ -24,9 +25,16 @@ export default function TopicBar() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsMenuOpen, setWsMenuOpen] = useState(false);
+  const [idCopied, setIdCopied] = useState(false);
 
-  const activeConv = conversations.find((c) => c.id === activeId);
-  const title = activeConv?.title || "新对话";
+  // 复制完整会话 ID，用于在链路追踪（OTel/Jaeger）中按 ID 检索对话
+  const handleCopyId = () => {
+    if (!activeId) return;
+    navigator.clipboard.writeText(activeId).then(() => {
+      setIdCopied(true);
+      setTimeout(() => setIdCopied(false), 1500);
+    });
+  };
 
   const handleReveal = () => {
     if (activeId) void agentApi.revealInExplorer(activeId);
@@ -50,7 +58,25 @@ export default function TopicBar() {
     <div className="topicbar">
       <div className="topicbar-title">
         <Hash size={15} className="topicbar-icon" />
-        <span className="topicbar-name">{title}</span>
+        {activeId ? (
+          <>
+            <span
+              className="topicbar-name topicbar-conv-id"
+              title={`会话 ID：${activeId}\n用于链路追踪检索`}
+            >
+              {activeId}
+            </span>
+            <button
+              className="topicbar-copy-btn"
+              title="复制会话 ID"
+              onClick={handleCopyId}
+            >
+              {idCopied ? <Check size={13} /> : <Copy size={13} />}
+            </button>
+          </>
+        ) : (
+          <span className="topicbar-name">新对话</span>
+        )}
       </div>
 
       <div className="topicbar-actions">
