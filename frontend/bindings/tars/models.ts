@@ -980,11 +980,18 @@ export class ToolResultEvent {
  * TraceConfigView 是追踪配置对前端的视图。
  */
 export class TraceConfigView {
+    /**
+     * Enabled 追踪总开关：false 时即使配置了端点也不产生任何 span
+     */
+    "enabled": boolean;
     "otlpHttpEndpoint": string;
     "otlpGrpcEndpoint": string;
 
     /** Creates a new TraceConfigView instance. */
     constructor($$source: Partial<TraceConfigView> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
         if (!("otlpHttpEndpoint" in $$source)) {
             this["otlpHttpEndpoint"] = "";
         }

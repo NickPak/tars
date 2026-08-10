@@ -86,11 +86,6 @@ func (s *Store) DataDir(id string) string {
 	return filepath.Join(s.ConvDir(id), ".data")
 }
 
-// LogsDir returns the logs directory for a conversation (.logs/).
-func (s *Store) LogsDir(id string) string {
-	return filepath.Join(s.ConvDir(id), ".logs")
-}
-
 // WorkspaceDir returns the workspace directory for a conversation (workspace/).
 // This is the root for all tool file operations (read/edit/list/search/run_command).
 func (s *Store) WorkspaceDir(id string) string {

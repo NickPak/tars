@@ -15,9 +15,9 @@ TARS 是一个**通用型 AI Agent 桌面应用**：你给它一个任务，它�
 - **ReAct Agent Loop**：流式请求 LLM → 检测 tool_calls → 并行执行工具 → 结果回填 → 继续推理，直到给出最终回复（最大 25 轮）
 - **内置工具集**：`code_interpreter`、`run_command`（持久终端会话）、`read_file`、`write_file`、`edit_file`、`glob_files`、`grep_files`，均带工作区边界限制与输出截断保护
 - **流式 UI**：实时展示模型深度思考过程（reasoning）、工具调用卡片（运行中/完成状态）、消息状态栏（tokens/耗时/复制/删除）
-- **会话隔离**：每个会话拥有独立目录，包含会话数据、追踪日志与专属 `workspace/` 工作目录，工具操作互不影响
+- **会话隔离**：每个会话拥有独立目录，包含会话数据与专属 `workspace/` 工作目录，工具操作互不影响
 - **会话持久化**：JSONL 追加式存储（与 Codex / Claude Code 相同方案），重启自动恢复历史会话
-- **OpenTelemetry 可观测**：遵循 GenAI + OpenInference 语义约定，本地每会话一份 `trace.jsonl`，可同时导出到 Jaeger / Phoenix 等 OTLP 后端
+- **OpenTelemetry 可观测**：遵循 GenAI + OpenInference 语义约定，可导出到 Jaeger（OTLP/HTTP）与 Phoenix（OTLP/gRPC）等收集器，带总开关
 
 ## 技术栈
 
@@ -78,9 +78,8 @@ wails3 build
 
 ## 可观测性
 
-每次对话的完整执行过程（LLM 请求/响应、token 用量、工具调用与结果）都会记录为 OpenTelemetry span：
+每次对话的完整执行过程（LLM 请求/响应、token 用量、工具调用与结果）都会记录为 OpenTelemetry span，导出到配置的 OTLP 收集器（无本地文件落盘）：
 
-- **本地文件**：每个会话目录下的 `.logs/trace.jsonl`（span JSONL，含 parentSpanId 可还原调用树）
 - **Jaeger**（通用瀑布图）：
   ```bash
   docker run -d -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one
@@ -90,10 +89,11 @@ wails3 build
   docker run -d -p 6006:6006 -p 4317:4317 arizephoenix/phoenix
   ```
 
-在 `config.yaml` 中启用对应 endpoint 即可同时导出：
+在 `config.yaml`（或设置界面的「追踪」页）中启用并配置 endpoint，两种方式可同时导出：
 
 ```yaml
 trace:
+  enabled: true                        # 总开关（缺省停用）
   otlpHttpEndpoint: "localhost:4318"   # Jaeger
   otlpGrpcEndpoint: "localhost:4317"   # Phoenix
 ```
@@ -107,8 +107,6 @@ trace:
 ├── .data/
 │   ├── session.jsonl     # 消息记录（追加式）
 │   └── meta.json         # 标题与时间戳
-├── .logs/
-│   └── trace.jsonl       # 该会话的追踪 span
 └── workspace/            # 该会话的工作目录（工具文件操作的根）
 ```
 

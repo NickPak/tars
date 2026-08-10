@@ -1,9 +1,9 @@
 // Package trace provides OpenTelemetry-based tracing for agent conversations.
 //
 // Each conversation gets its own Tracer backed by a dedicated TracerProvider
-// whose file exporter appends every completed span as one JSON line to the
-// conversation's .logs/trace.jsonl. An optional OTLP/HTTP exporter mirrors
-// spans to a collector (Jaeger, Tempo, ...) when an endpoint is configured.
+// exporting completed spans to the configured OTLP collectors: OTLP/HTTP
+// (Jaeger, Tempo, ...) and/or OTLP/gRPC (Arize Phoenix, ...). Both can be
+// enabled at the same time. There is no local file sink.
 //
 // Span tree for one SendMessage turn (ReAct loop):
 //
@@ -19,8 +19,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -70,25 +68,16 @@ type ToolCallRef struct {
 type Tracer struct {
 	tp     *sdktrace.TracerProvider
 	tracer oteltrace.Tracer
-	path   string
 }
 
-// NewTracer creates a Tracer writing spans to {logDir}/trace.jsonl.
-// Spans are additionally mirrored to OTLP collectors when endpoints are
-// given: httpEndpoint for OTLP/HTTP (e.g. "localhost:4318", Jaeger) and
+// NewTracer creates a Tracer exporting spans to OTLP collectors:
+// httpEndpoint for OTLP/HTTP (e.g. "localhost:4318", Jaeger) and
 // grpcEndpoint for OTLP/gRPC (e.g. "localhost:4317", Arize Phoenix).
-// Both can be enabled at the same time. Returns nil Tracer when logDir is empty.
-func NewTracer(logDir, httpEndpoint, grpcEndpoint string) (*Tracer, error) {
-	if logDir == "" {
+// Both can be enabled at the same time. Returns nil Tracer (tracing off)
+// when enabled is false or no endpoint is configured.
+func NewTracer(enabled bool, httpEndpoint, grpcEndpoint string) (*Tracer, error) {
+	if !enabled || (httpEndpoint == "" && grpcEndpoint == "") {
 		return nil, nil
-	}
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return nil, err
-	}
-	path := filepath.Join(logDir, "trace.jsonl")
-	fileExp, err := newFileExporter(path)
-	if err != nil {
-		return nil, err
 	}
 
 	res, err := resource.New(context.Background(),
@@ -106,8 +95,6 @@ func NewTracer(logDir, httpEndpoint, grpcEndpoint string) (*Tracer, error) {
 			AttributeCountLimit:       -1,
 		}),
 	)
-	// Simple processor for the file: spans written immediately on End, in order.
-	tp.RegisterSpanProcessor(sdktrace.NewSimpleSpanProcessor(fileExp))
 
 	if httpEndpoint != "" {
 		httpExp, err := otlptracehttp.New(context.Background(),
@@ -138,16 +125,7 @@ func NewTracer(logDir, httpEndpoint, grpcEndpoint string) (*Tracer, error) {
 	return &Tracer{
 		tp:     tp,
 		tracer: tp.Tracer("tars"),
-		path:   path,
 	}, nil
-}
-
-// Path returns the trace file path.
-func (t *Tracer) Path() string {
-	if t == nil {
-		return ""
-	}
-	return t.path
 }
 
 // Close flushes and shuts down the tracer provider.

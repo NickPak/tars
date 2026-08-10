@@ -64,6 +64,8 @@ type AgentConfigView struct {
 
 // TraceConfigView 是追踪配置对前端的视图。
 type TraceConfigView struct {
+	// Enabled 追踪总开关：false 时即使配置了端点也不产生任何 span
+	Enabled          bool   `json:"enabled"`
 	OTLPHTTPEndpoint string `json:"otlpHttpEndpoint"`
 	OTLPGrpcEndpoint string `json:"otlpGrpcEndpoint"`
 }
@@ -130,6 +132,9 @@ func (s *AgentService) GetAppConfig() (*AppConfigView, error) {
 		MaxIterations:        cfg.MaxIterationsOrDefault(),
 		CompressionThreshold: cfg.CompressionThresholdOrDefault(),
 	}
+	if cfg.Trace != nil {
+		v.Trace.Enabled = cfg.Trace.Enabled
+	}
 	v.Trace.OTLPHTTPEndpoint, v.Trace.OTLPGrpcEndpoint = cfg.OTLPEndpoints()
 	return v, nil
 }
@@ -181,6 +186,7 @@ func (s *AgentService) SaveAppConfig(v *AppConfigView) error {
 			CompressionThreshold: v.Agent.CompressionThreshold,
 		},
 		Trace: &config.TraceConfig{
+			Enabled:          v.Trace.Enabled,
 			OTLPHTTPEndpoint: strings.TrimSpace(v.Trace.OTLPHTTPEndpoint),
 			OTLPGrpcEndpoint: strings.TrimSpace(v.Trace.OTLPGrpcEndpoint),
 		},
@@ -200,6 +206,8 @@ func (s *AgentService) SaveAppConfig(v *AppConfigView) error {
 	s.appConfig = newCfg
 	s.otlpHTTPEndpoint, s.otlpGrpcEndpoint = newCfg.Trace.OTLPHTTPEndpoint, newCfg.Trace.OTLPGrpcEndpoint
 	s.cfgMu.Unlock()
+	// 追踪配置（开关/端点）可能已变：重建所有会话的 tracer
+	s.rebuildTracers()
 	return nil
 }
 

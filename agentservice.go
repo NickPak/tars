@@ -195,11 +195,15 @@ func (s *AgentService) currentModel() (model.ToolCallingChatModel, *llm.ModelCon
 	return s.llmReg.Active()
 }
 
-// traceEndpoints 返回当前生效的 OTLP 导出端点（HTTP, gRPC）。
-func (s *AgentService) traceEndpoints() (string, string) {
+// traceEndpoints 返回当前生效的追踪配置（总开关, HTTP 端点, gRPC 端点）。
+func (s *AgentService) traceEndpoints() (bool, string, string) {
 	s.cfgMu.RLock()
 	defer s.cfgMu.RUnlock()
-	return s.otlpHTTPEndpoint, s.otlpGrpcEndpoint
+	enabled := false
+	if s.appConfig != nil && s.appConfig.Trace != nil {
+		enabled = s.appConfig.Trace.Enabled
+	}
+	return enabled, s.otlpHTTPEndpoint, s.otlpGrpcEndpoint
 }
 
 func (s *AgentService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -211,11 +215,16 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 	s.appConfig = appConfig
 	s.modelHealthy.Store(true) // 初始乐观假设模型可用
 	s.otlpHTTPEndpoint, s.otlpGrpcEndpoint = appConfig.OTLPEndpoints()
-	if s.otlpHTTPEndpoint != "" {
-		slog.Info("OTLP/HTTP trace export enabled", "endpoint", s.otlpHTTPEndpoint)
-	}
-	if s.otlpGrpcEndpoint != "" {
-		slog.Info("OTLP/gRPC trace export enabled", "endpoint", s.otlpGrpcEndpoint)
+	traceEnabled := appConfig.Trace != nil && appConfig.Trace.Enabled
+	if !traceEnabled {
+		slog.Info("Tracing disabled (trace.enabled is not set)")
+	} else {
+		if s.otlpHTTPEndpoint != "" {
+			slog.Info("OTLP/HTTP trace export enabled", "endpoint", s.otlpHTTPEndpoint)
+		}
+		if s.otlpGrpcEndpoint != "" {
+			slog.Info("OTLP/gRPC trace export enabled", "endpoint", s.otlpGrpcEndpoint)
+		}
 	}
 
 	// 注册表启动期容错：配置问题不阻塞启动，首次对话时才暴露，
@@ -291,8 +300,8 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 			}
 
 			// 为恢复的会话创建 tracer
-			httpEp, grpcEp := s.traceEndpoints()
-			if t, err := trace.NewTracer(s.store.LogsDir(conv.ID), httpEp, grpcEp); err == nil {
+			enabled, httpEp, grpcEp := s.traceEndpoints()
+			if t, err := trace.NewTracer(enabled, httpEp, grpcEp); err == nil && t != nil {
 				s.setTracer(conv.ID, t)
 			}
 		}
@@ -378,7 +387,7 @@ func (s *AgentService) setTracer(id string, t *trace.Tracer) {
 	s.mu.Unlock()
 }
 
-// removeTracer 关闭并移除会话的 tracer（释放 trace.jsonl 文件句柄）。
+// removeTracer 关闭并移除会话的 tracer（冲刷 OTLP 批量导出器）。
 func (s *AgentService) removeTracer(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -427,8 +436,8 @@ func (s *AgentService) CreateConversation() (*Conversation, error) {
 		UpdatedAt: now,
 	}
 	s.addConversation(conv)
-	httpEp, grpcEp := s.traceEndpoints()
-	if t, err := trace.NewTracer(s.store.LogsDir(id), httpEp, grpcEp); err == nil {
+	enabled, httpEp, grpcEp := s.traceEndpoints()
+	if t, err := trace.NewTracer(enabled, httpEp, grpcEp); err == nil && t != nil {
 		s.setTracer(id, t)
 	}
 	s.getTracer(id).LogConversationCreated(id, defaultConversationTitle)
@@ -497,7 +506,7 @@ func (s *AgentService) DeleteConversation(id string) error {
 	if cancel, ok := s.popCancel(id); ok {
 		cancel()
 	}
-	// 关闭 tracer，释放 .logs/trace.jsonl 的文件句柄（Windows 下未关闭会导致 RemoveAll 失败）
+	// 关闭 tracer（冲刷 OTLP 导出缓冲区）
 	s.removeTracer(id)
 	s.removeConversation(id)
 
@@ -884,14 +893,47 @@ func (s *AgentService) getTracer(convID string) *trace.Tracer {
 	if t, ok = s.tracers[convID]; ok {
 		return t
 	}
-	httpEp, grpcEp := s.traceEndpoints()
-	t, err := trace.NewTracer(s.store.LogsDir(convID), httpEp, grpcEp)
+	enabled, httpEp, grpcEp := s.traceEndpoints()
+	t, err := trace.NewTracer(enabled, httpEp, grpcEp)
 	if err != nil {
 		slog.Warn("Failed to create tracer", "conv", convID, "error", err)
 		return nil
 	}
-	s.tracers[convID] = t
+	if t != nil {
+		s.tracers[convID] = t
+	}
 	return t
+}
+
+// rebuildTracers 按当前追踪配置重建所有会话的 tracer
+//（设置界面保存 trace 配置后调用：停用的关闭、新端点的重新导出）。
+func (s *AgentService) rebuildTracers() {
+	enabled, httpEp, grpcEp := s.traceEndpoints()
+	s.mu.RLock()
+	ids := make([]string, 0, len(s.convs))
+	for id := range s.convs {
+		ids = append(ids, id)
+	}
+	s.mu.RUnlock()
+
+	for _, id := range ids {
+		t, err := trace.NewTracer(enabled, httpEp, grpcEp)
+		if err != nil {
+			slog.Warn("Failed to rebuild tracer", "conv", id, "error", err)
+			continue // 保留旧 tracer，避免追踪配置错误导致既有会话丢 tracer
+		}
+		s.mu.Lock()
+		old := s.tracers[id]
+		if t == nil {
+			delete(s.tracers, id)
+		} else {
+			s.tracers[id] = t
+		}
+		s.mu.Unlock()
+		if old != nil {
+			old.Close() // 关闭旧 provider（含 OTLP 批量导出器的冲刷）
+		}
+	}
 }
 
 // --- Persistence helpers ---

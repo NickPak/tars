@@ -1092,8 +1092,28 @@ function TracePage({
   return (
     <PageShell
       title="追踪"
-      desc="OpenTelemetry 链路追踪导出。无论是否配置，本地 trace.jsonl 始终写入；留空即停用对应导出。"
+      desc="OpenTelemetry 链路追踪，仅导出到配置的 OTLP 收集器（无本地文件落盘）。修改保存后立即生效。"
     >
+      <Section title="总开关">
+        <Field
+          label="启用追踪"
+          hint="关闭时即使配置了端点也不产生任何 span。"
+        >
+          <button
+            className={`switch${draft.trace.enabled ? " on" : ""}`}
+            role="switch"
+            aria-checked={draft.trace.enabled}
+            onClick={() =>
+              update((d) => ({
+                ...d,
+                trace: { ...d.trace, enabled: !d.trace.enabled },
+              }))
+            }
+          >
+            <span className="switch-thumb" />
+          </button>
+        </Field>
+      </Section>
       <Section title="OTLP 导出">
         <Field
           label="OTLP / HTTP 端点"

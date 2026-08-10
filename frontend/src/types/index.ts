@@ -238,6 +238,8 @@ export interface AgentConfigView {
 }
 
 export interface TraceConfigView {
+  /** 追踪总开关：关闭时即使配置了端点也不产生任何 span */
+  enabled: boolean;
   otlpHttpEndpoint: string;
   otlpGrpcEndpoint: string;
 }
