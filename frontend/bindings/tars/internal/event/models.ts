@@ -10,6 +10,60 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as store$0 from "../../pkg/store/models.js";
 
 /**
+ * ApprovalEvent "agent:approval"：执行层拦截危险工具调用后发起的安全审批请求。
+ * 答复键即 ToolCallID；答复经 AgentService.AnswerAskUser 回写，
+ * 终态（允许/拒绝/超时默认拒绝）随 agent:tool_result 到达。
+ */
+export class ApprovalEvent {
+    "sessionId": string;
+    "toolCallId": string;
+    "toolName": string;
+
+    /**
+     * 待批准的危险内容（如完整命令）
+     */
+    "summary": string;
+
+    /**
+     * 命中的风险规则说明
+     */
+    "reason": string;
+    "timeoutSeconds": number;
+
+    /** Creates a new ApprovalEvent instance. */
+    constructor($$source: Partial<ApprovalEvent> = {}) {
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("toolCallId" in $$source)) {
+            this["toolCallId"] = "";
+        }
+        if (!("toolName" in $$source)) {
+            this["toolName"] = "";
+        }
+        if (!("summary" in $$source)) {
+            this["summary"] = "";
+        }
+        if (!("reason" in $$source)) {
+            this["reason"] = "";
+        }
+        if (!("timeoutSeconds" in $$source)) {
+            this["timeoutSeconds"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ApprovalEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ApprovalEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ApprovalEvent($$parsedSource as Partial<ApprovalEvent>);
+    }
+}
+
+/**
  * ReasoningEvent "agent:reasoning"：思考链内容的流式增量片段。
  */
 export class ReasoningEvent {

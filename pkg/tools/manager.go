@@ -89,6 +89,7 @@ func InitManager(workDir string) {
 	m.Register(GlobFiles(workDir))
 	m.Register(GrepFiles(workDir))
 	m.Register(TodoWrite())
+	m.Register(AskUser())
 	defaultManager = m
 }
 
@@ -230,9 +231,45 @@ func (m *Manager) executeOne(ctx context.Context, def *Definition, call schema.T
 			output = err.Error()
 		}
 	}()
+
+	// 工具调用 ID 入 ctx：交互工具（ask_user）与审批门用它关联用户答复。
+	ctx = WithToolCallID(ctx, call.ID)
+
+	// 危险调用审批门：handler 执行前拦截，由框架（而非模型）发起用户审批。
+	if req := classifyRisk(call); req != nil {
+		ans, aerr := requestApproval(ctx, req)
+		if aerr != nil {
+			return aerr.Error(), fmt.Errorf("tool %s: %w", call.Function.Name, aerr)
+		}
+		if ans.Value != "allow" {
+			// 拒绝作为正常工具结果返回（理由回模型，据此调整方案）。
+			out := map[string]any{"approved": false}
+			switch {
+			case ans.Reason != "":
+				out["reason"] = ans.Reason
+			case ans.Source == "timeout_default":
+				out["reason"] = "approval timed out; denied by default"
+			default:
+				out["reason"] = "denied by user"
+			}
+			b, _ := json.Marshal(out)
+			return string(b), nil
+		}
+	}
+
 	out, e := def.Handler(ctx, zcopy.UnsafeStringToBytes(call.Function.Arguments))
 	if e != nil {
 		return e.Error(), fmt.Errorf("tool %s: %w", call.Function.Name, e)
 	}
 	return out, nil
+}
+
+// requestApproval 把审批请求交给 ctx 中的 Asker；非交互场景（无 Asker）
+// fail-closed 一律拒绝。
+func requestApproval(ctx context.Context, req *ApprovalRequest) (*Answer, error) {
+	asker := AskerFromCtx(ctx)
+	if asker == nil {
+		return &Answer{Value: "deny", Reason: "no interactive session available", Source: "timeout_default"}, nil
+	}
+	return asker.Approve(ctx, req)
 }

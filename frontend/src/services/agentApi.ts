@@ -12,7 +12,7 @@ import type * as llmModels from "../../bindings/tars/pkg/llm/models";
 import type { AppConfig, ChatMessage, Session, FileEntry, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
-import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent } from "../types";
+import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent, ApprovalEvent } from "../types";
 
 /**
  * 后端 llm.Config 中 providers/models 是 map（key 即条目 ID），
@@ -182,6 +182,15 @@ export const agentApi = {
   exportSession: async (sessionId: string): Promise<string> =>
     await AgentService.ExportSession(sessionId),
 
+  /** 提交一次询问/审批的用户答复（requestID 即工具调用 ID） */
+  answerAskUser: async (
+    requestId: string,
+    value: string,
+    reason = "",
+  ): Promise<void> => {
+    await AgentService.AnswerAskUser(requestId, value, reason);
+  },
+
   // --- 设置（应用配置） ---
 
   /** 获取当前应用配置（密钥原样返回，UI 层负责掩码显示） */
@@ -205,6 +214,7 @@ export interface AgentEventHandlers {
   onReasoning?: (ev: ReasoningEvent) => void;
   onTool?: (ev: ToolEvent) => void;
   onToolResult?: (ev: ToolResultEvent) => void;
+  onApproval?: (ev: ApprovalEvent) => void;
   onWorkspaceChanged?: (ev: WorkspaceChangedEvent) => void;
   onModelChanged?: (ev: ModelChangedEvent) => void;
 }
@@ -232,6 +242,9 @@ export function subscribeAgentEvents(handlers: AgentEventHandlers): () => void {
     ),
     Events.On(AgentEvents.ToolResult, (ev) =>
       handlers.onToolResult?.(ev.data as ToolResultEvent),
+    ),
+    Events.On(AgentEvents.Approval, (ev) =>
+      handlers.onApproval?.(ev.data as ApprovalEvent),
     ),
     Events.On(AgentEvents.WorkspaceChanged, (ev) =>
       handlers.onWorkspaceChanged?.(ev.data as WorkspaceChangedEvent),

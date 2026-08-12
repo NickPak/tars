@@ -17,6 +17,16 @@ import * as session$0 from "./internal/session/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AnswerAskUser 提交一次询问/审批的用户答复。requestID 即工具调用 ID
+ * （ask_user 询问或危险调用审批共用同一答复通道）。
+ * value：confirm 为 "confirm"/"deny"；select 为选项 id；input 为文本；
+ * 审批为 "allow"/"allow_always"/"deny"。reason 为可选拒绝理由。
+ */
+export function AnswerAskUser(requestID: string, value: string, reason: string): $CancellablePromise<void> {
+    return $Call.ByID(2155695152, requestID, value, reason);
+}
+
+/**
  * CancelMessage cancels an in-flight SendMessage turn.
  */
 export function CancelMessage(sessionID: string): $CancellablePromise<void> {

@@ -186,6 +186,17 @@ func (s *AgentService) RetryMessage(sessionID string, messageID string) error {
 	return nil
 }
 
+// AnswerAskUser 提交一次询问/审批的用户答复。requestID 即工具调用 ID
+// （ask_user 询问或危险调用审批共用同一答复通道）。
+// value：confirm 为 "confirm"/"deny"；select 为选项 id；input 为文本；
+// 审批为 "allow"/"allow_always"/"deny"。reason 为可选拒绝理由。
+func (s *AgentService) AnswerAskUser(requestID, value, reason string) error {
+	if !turn.ResolveAsk(requestID, &tools.Answer{Value: value, Reason: reason, Source: "user"}) {
+		return fmt.Errorf("question not found or already resolved: %s", requestID)
+	}
+	return nil
+}
+
 // --- Message editing ---
 
 // EditMessage edits a user message in-place (no regeneration).

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Session, ModelInfo, SessionStats, ToolCallInfo, WorkspaceInfo } from "../types";
+import type { ChatMessage, Session, ModelInfo, SessionStats, ToolCallInfo, WorkspaceInfo, ApprovalEvent } from "../types";
 
 export interface SessionMeta {
   id: string;
@@ -23,6 +23,8 @@ interface ChatState {
   model: ModelInfo | null;
   /** 全部已配置模型条目（模型切换下拉用） */
   models: ModelInfo[];
+  /** 等待用户答复的危险调用审批（key: toolCallId），仅当前会话 */
+  pendingApprovals: Record<string, ApprovalEvent>;
 
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
@@ -36,6 +38,8 @@ interface ChatState {
   /** 重试生成最后一条 assistant 回复（先回撤已渲染内容，再重新流式） */
   retry: () => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
+  /** 提交一次询问/审批的答复（value：confirm/deny、选项 id、文本、allow 等） */
+  answerAsk: (toolCallId: string, value: string, reason?: string) => Promise<void>;
   dismissError: () => void;
   /** 设置后端错误横幅（供聊天域之外的组件复用错误提示通道） */
   setBackendError: (msg: string) => void;
@@ -114,6 +118,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   stats: null,
   model: null,
   models: [],
+  pendingApprovals: {},
 
   init: () => {
     agentApi
@@ -238,8 +243,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
               : p,
           );
           messages[messages.length - 1] = { ...last, toolCalls, parts };
-          return { messages };
+          // 结果到达 = 该调用的审批已了结
+          const pendingApprovals = { ...s.pendingApprovals };
+          delete pendingApprovals[toolCallId];
+          return { messages, pendingApprovals };
         });
+      },
+      onApproval: (ev) => {
+        if (ev.sessionId !== get().activeId) return;
+        set((s) => ({
+          pendingApprovals: { ...s.pendingApprovals, [ev.toolCallId]: ev },
+        }));
       },
       onWorkspaceChanged: ({ sessionId, path, isCustom }) => {
         if (sessionId !== get().activeId) return;
@@ -257,12 +271,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   newSession: () => {
     if (get().isStreaming) return;
-    set({ activeId: null, messages: [], workspace: null, stats: null });
+    set({ activeId: null, messages: [], workspace: null, stats: null, pendingApprovals: {} });
   },
 
   selectSession: async (id) => {
     if (get().isStreaming || id === get().activeId) return;
-    set({ activeId: id, messages: [], workspace: null, stats: null });
+    set({ activeId: id, messages: [], workspace: null, stats: null, pendingApprovals: {} });
     try {
       const sess = await agentApi.getSession(id);
       set({ messages: mergeToolOutputs(sess.messages ?? []) });
@@ -286,6 +300,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         sessions: s.sessions.filter((c) => c.id !== id),
         ...(s.activeId === id ? { activeId: null, messages: [] } : {}),
       }));
+    } catch (e) {
+      set({ backendError: errText(e) });
+    }
+  },
+
+  answerAsk: async (toolCallId, value, reason = "") => {
+    try {
+      await agentApi.answerAskUser(toolCallId, value, reason);
     } catch (e) {
       set({ backendError: errText(e) });
     }

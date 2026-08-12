@@ -114,6 +114,9 @@ func (t *turn) run() {
 	// 工具经 tools.WorkDirFromCtx 读取；缺省会回退到全局根目录。
 	ctx = tools.WithWorkDir(ctx, store.GetSessionStore().ResolveWorkDir(sess.ID))
 
+	// 交互通道：ask_user 询问与危险调用审批经此阻塞等待用户答复。
+	ctx = tools.WithAsker(ctx, newAsker(sess))
+
 	cfg := config.Get()
 	ag := agent.New(cfg.Agent.MaxIterations, cfg.Agent.IterationTimeout, tools.DefaultManager(), modelWithTools)
 

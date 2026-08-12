@@ -30,6 +30,22 @@ type Info struct {
 	// Cancel 非 nil 表示有正在运行的轮（IsRunning），由 turn 包设置与清除。
 	// 轮运行期间消息列表只允许尾部追加，下标稳定。
 	Cancel context.CancelFunc `json:"-"`
+	// AllowedRisks 记录用户选择"本会话常允许"的危险操作类别（内存态，
+	// 重启清空）。键形如 "run_command:rm-recursive-force"。
+	AllowedRisks map[string]bool `json:"-"`
+}
+
+// RiskAllowed 报告某类危险操作是否已被用户常允许。
+func (i *Info) RiskAllowed(key string) bool {
+	return i.AllowedRisks[key]
+}
+
+// AllowRisk 把某类危险操作记入常允许表（"本会话常允许此类"）。
+func (i *Info) AllowRisk(key string) {
+	if i.AllowedRisks == nil {
+		i.AllowedRisks = make(map[string]bool)
+	}
+	i.AllowedRisks[key] = true
 }
 
 func NewInfo(id string) *Info {

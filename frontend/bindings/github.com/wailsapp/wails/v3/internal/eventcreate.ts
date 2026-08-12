@@ -15,27 +15,29 @@ import * as event$0 from "../../../../../tars/internal/event/models.js";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
-        "agent:chunk": $$createType0,
-        "agent:done": $$createType1,
-        "agent:error": $$createType2,
-        "agent:reasoning": $$createType3,
-        "agent:tool": $$createType4,
-        "agent:tool_result": $$createType5,
-        "model:changed": $$createType6,
-        "session:renamed": $$createType7,
-        "workspace:changed": $$createType8,
+        "agent:approval": $$createType0,
+        "agent:chunk": $$createType1,
+        "agent:done": $$createType2,
+        "agent:error": $$createType3,
+        "agent:reasoning": $$createType4,
+        "agent:tool": $$createType5,
+        "agent:tool_result": $$createType6,
+        "model:changed": $$createType7,
+        "session:renamed": $$createType8,
+        "workspace:changed": $$createType9,
     }));
 }
 
 // Private type creation functions
-const $$createType0 = event$0.StreamChunk.createFrom;
-const $$createType1 = event$0.StreamDone.createFrom;
-const $$createType2 = event$0.StreamError.createFrom;
-const $$createType3 = event$0.ReasoningEvent.createFrom;
-const $$createType4 = event$0.ToolEvent.createFrom;
-const $$createType5 = event$0.ToolResultEvent.createFrom;
-const $$createType6 = main$0.ModelChangedEvent.createFrom;
-const $$createType7 = event$0.SessionRenamedEvent.createFrom;
-const $$createType8 = main$0.WorkspaceChangedEvent.createFrom;
+const $$createType0 = event$0.ApprovalEvent.createFrom;
+const $$createType1 = event$0.StreamChunk.createFrom;
+const $$createType2 = event$0.StreamDone.createFrom;
+const $$createType3 = event$0.StreamError.createFrom;
+const $$createType4 = event$0.ReasoningEvent.createFrom;
+const $$createType5 = event$0.ToolEvent.createFrom;
+const $$createType6 = event$0.ToolResultEvent.createFrom;
+const $$createType7 = main$0.ModelChangedEvent.createFrom;
+const $$createType8 = event$0.SessionRenamedEvent.createFrom;
+const $$createType9 = main$0.WorkspaceChangedEvent.createFrom;
 
 configure();

@@ -58,3 +58,15 @@ type SessionRenamedEvent struct {
 	SessionID string `json:"sessionId"`
 	Title     string `json:"title"`
 }
+
+// ApprovalEvent "agent:approval"：执行层拦截危险工具调用后发起的安全审批请求。
+// 答复键即 ToolCallID；答复经 AgentService.AnswerAskUser 回写，
+// 终态（允许/拒绝/超时默认拒绝）随 agent:tool_result 到达。
+type ApprovalEvent struct {
+	SessionID      string `json:"sessionId"`
+	ToolCallID     string `json:"toolCallId"`
+	ToolName       string `json:"toolName"`
+	Summary        string `json:"summary"` // 待批准的危险内容（如完整命令）
+	Reason         string `json:"reason"`  // 命中的风险规则说明
+	TimeoutSeconds int    `json:"timeoutSeconds"`
+}

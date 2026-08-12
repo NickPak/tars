@@ -29,6 +29,7 @@ func init() {
 	application.RegisterEvent[event.ToolEvent]("agent:tool")
 	application.RegisterEvent[event.ToolResultEvent]("agent:tool_result")
 	application.RegisterEvent[event.ReasoningEvent]("agent:reasoning")
+	application.RegisterEvent[event.ApprovalEvent]("agent:approval")
 	application.RegisterEvent[event.SessionRenamedEvent]("session:renamed")
 	application.RegisterEvent[WorkspaceChangedEvent]("workspace:changed")
 	application.RegisterEvent[ModelChangedEvent]("model:changed")

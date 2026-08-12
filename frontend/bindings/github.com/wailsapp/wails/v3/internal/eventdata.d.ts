@@ -15,6 +15,7 @@ import type * as event$0 from "../../../../../tars/internal/event/models.js";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "agent:approval": event$0.ApprovalEvent;
             "agent:chunk": event$0.StreamChunk;
             "agent:done": event$0.StreamDone;
             "agent:error": event$0.StreamError;

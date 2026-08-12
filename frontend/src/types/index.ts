@@ -79,6 +79,37 @@ export interface SessionRenamedEvent {
   title: string;
 }
 
+/** 危险调用审批请求（"agent:approval" 事件负载，框架发起、模型不参与） */
+export interface ApprovalEvent {
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  /** 待批准的危险内容（如完整命令） */
+  summary: string;
+  /** 命中的风险规则说明 */
+  reason: string;
+  timeoutSeconds: number;
+}
+
+/** ask_user 工具的调用参数（从工具事件 args JSON 解析） */
+export interface AskUserParams {
+  type: "confirm" | "select" | "input";
+  question: string;
+  options?: { id: string; label: string; description?: string }[];
+  recommended?: string;
+  timeout_seconds?: number;
+  default?: string;
+}
+
+/** ask_user 的工具结果 JSON（已答复后的卡片展示用） */
+export interface AskAnswerPayload {
+  type: string;
+  answer: string;
+  label?: string;
+  reason?: string;
+  source: "user" | "timeout_default" | "rule";
+}
+
 /** token 用量统计 */
 export interface UsageInfo {
   promptTokens: number;
@@ -269,6 +300,7 @@ export const AgentEvents = {
   Reasoning: "agent:reasoning",
   Tool: "agent:tool",
   ToolResult: "agent:tool_result",
+  Approval: "agent:approval",
   WorkspaceChanged: "workspace:changed",
   ModelChanged: "model:changed",
 } as const;

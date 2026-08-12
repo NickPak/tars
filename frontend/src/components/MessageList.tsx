@@ -14,8 +14,9 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
-import type { UsageInfo } from "../types";
+import type { ToolCallInfo, UsageInfo } from "../types";
 import Markdown from "./Markdown";
+import { ApprovalCard, AskUserCard } from "./AskCards";
 
 export default function MessageList() {
   const messages = useChatStore((s) => s.messages);
@@ -82,12 +83,7 @@ export default function MessageList() {
                           {part.toolCalls && part.toolCalls.length > 0 && (
                             <div className="tool-calls">
                               {part.toolCalls.map((tc) => (
-                                <ToolCallCard
-                                  key={tc.id}
-                                  name={tc.name}
-                                  args={tc.args}
-                                  output={tc.output}
-                                />
+                                <ToolEntry key={tc.id} tc={tc} />
                               ))}
                             </div>
                           )}
@@ -101,12 +97,7 @@ export default function MessageList() {
                       {m.toolCalls && m.toolCalls.length > 0 && (
                         <div className="tool-calls">
                           {m.toolCalls.map((tc) => (
-                            <ToolCallCard
-                              key={tc.id}
-                              name={tc.name}
-                              args={tc.args}
-                              output={tc.output}
-                            />
+                            <ToolEntry key={tc.id} tc={tc} />
                           ))}
                         </div>
                       )}
@@ -237,6 +228,21 @@ function ReasoningBlock({
         </div>
       )}
     </div>
+  );
+}
+
+/** 单个工具调用的渲染入口：ask_user 渲染询问卡片；
+ *  危险调用在等待审批时叠加审批卡片；其余渲染普通工具卡片 */
+function ToolEntry({ tc }: { tc: ToolCallInfo }) {
+  const pending = useChatStore((s) => s.pendingApprovals[tc.id]);
+  if (tc.name === "ask_user") {
+    return <AskUserCard toolCall={tc} />;
+  }
+  return (
+    <>
+      <ToolCallCard name={tc.name} args={tc.args} output={tc.output} />
+      {pending && <ApprovalCard approval={pending} />}
+    </>
   );
 }
 
