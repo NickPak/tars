@@ -10,14 +10,14 @@ import (
 	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
-// workDirKey is the context key for the per-conversation workspace directory.
+// workDirKey is the context key for the per-session workspace directory.
 // Tools read it via WorkDirFromCtx; if absent they fall back to the workDir
 // passed to their constructor (the global work dir).
 type workDirKey struct{}
 
 // WithWorkDir returns a context carrying the given workspace directory.
 // Pass it through the agent loop so every tool invocation resolves paths
-// relative to the active conversation's workspace.
+// relative to the active session's workspace.
 func WithWorkDir(ctx context.Context, dir string) context.Context {
 	return context.WithValue(ctx, workDirKey{}, dir)
 }
@@ -43,7 +43,7 @@ func WorkDirFromCtx(ctx context.Context) string {
 // maxOutputBytes caps a single tool output to avoid blowing up the context.
 const maxOutputBytes = 64 * 1024
 
-// resolveWorkDir picks the per-conversation workspace from ctx, falling back
+// resolveWorkDir picks the per-session workspace from ctx, falling back
 // to the global workDir passed to the tool constructor.
 func resolveWorkDir(ctx context.Context, fallback string) string {
 	if wd := WorkDirFromCtx(ctx); wd != "" {

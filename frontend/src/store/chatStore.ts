@@ -1,15 +1,15 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Conversation, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
+import type { ChatMessage, Session, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
 
-export interface ConversationMeta {
+export interface SessionMeta {
   id: string;
   title: string;
   updatedAt: number;
 }
 
 interface ChatState {
-  conversations: ConversationMeta[];
+  sessions: SessionMeta[];
   activeId: string | null;
   messages: ChatMessage[];
   isStreaming: boolean;
@@ -27,10 +27,10 @@ interface ChatState {
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
   /** 切换到空白新会话（首次发送时才真正创建） */
-  newConversation: () => void;
-  selectConversation: (id: string) => Promise<void>;
-  deleteConversation: (id: string) => Promise<void>;
-  renameConversation: (id: string, title: string) => Promise<void>;
+  newSession: () => void;
+  selectSession: (id: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  renameSession: (id: string, title: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
   /** 重试生成最后一条 assistant 回复（先回撤已渲染内容，再重新流式） */
@@ -54,7 +54,7 @@ interface ChatState {
   setActiveModel: (id: string) => Promise<void>;
 }
 
-function toMeta(c: Conversation): ConversationMeta {
+function toMeta(c: Session): SessionMeta {
   return { id: c.id, title: c.title, updatedAt: c.updatedAt };
 }
 
@@ -77,7 +77,7 @@ function markLastAssistantError(
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  conversations: [],
+  sessions: [],
   activeId: null,
   messages: [],
   isStreaming: false,
@@ -89,11 +89,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   init: () => {
     agentApi
-      .listConversations()
+      .listSessions()
       .then((list) => {
-        const convs = (list ?? []).map(toMeta);
-        convs.sort((a, b) => b.updatedAt - a.updatedAt);
-        set({ conversations: convs });
+        const sessions = (list ?? []).map(toMeta);
+        sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+        set({ sessions });
       })
       .catch((e) => set({ backendError: errText(e) }));
 
@@ -102,8 +102,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     void get().refreshModels();
 
     return subscribeAgentEvents({
-      onChunk: ({ conversationId, chunk }) => {
-        if (!get().isStreaming || conversationId !== get().activeId) return;
+      onChunk: ({ sessionId, chunk }) => {
+        if (!get().isStreaming || sessionId !== get().activeId) return;
         set((s) => {
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
@@ -115,8 +115,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return { messages };
         });
       },
-      onDone: ({ conversationId, usage, elapsedMs }) => {
-        if (conversationId !== get().activeId) return;
+      onDone: ({ sessionId, usage, elapsedMs }) => {
+        if (sessionId !== get().activeId) return;
         set((s) => {
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
@@ -128,22 +128,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         void get().refreshStats();
       },
       onError: (err) => {
-        if (err.conversationId !== get().activeId) return;
+        if (err.sessionId !== get().activeId) return;
         set((s) => ({
           messages: markLastAssistantError(s.messages, err.error, err.kind),
           isStreaming: false,
         }));
         void get().refreshStats();
       },
-      onConversationRenamed: ({ conversationId, title }) => {
+      onSessionRenamed: ({ sessionId, title }) => {
         set((s) => ({
-          conversations: s.conversations.map((c) =>
-            c.id === conversationId ? { ...c, title } : c,
+          sessions: s.sessions.map((c) =>
+            c.id === sessionId ? { ...c, title } : c,
           ),
         }));
       },
-      onReasoning: ({ conversationId, content }) => {
-        if (!get().isStreaming || conversationId !== get().activeId) return;
+      onReasoning: ({ sessionId, content }) => {
+        if (!get().isStreaming || sessionId !== get().activeId) return;
         set((s) => {
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
@@ -156,8 +156,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return { messages };
         });
       },
-      onTool: ({ conversationId, toolCallId, toolName, args }) => {
-        if (conversationId !== get().activeId) return;
+      onTool: ({ sessionId, toolCallId, toolName, args }) => {
+        if (sessionId !== get().activeId) return;
         set((s) => {
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
@@ -167,8 +167,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return { messages };
         });
       },
-      onToolResult: ({ conversationId, toolCallId, output }) => {
-        if (conversationId !== get().activeId) return;
+      onToolResult: ({ sessionId, toolCallId, output }) => {
+        if (sessionId !== get().activeId) return;
         set((s) => {
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
@@ -180,8 +180,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return { messages };
         });
       },
-      onWorkspaceChanged: ({ conversationId, path, isCustom }) => {
-        if (conversationId !== get().activeId) return;
+      onWorkspaceChanged: ({ sessionId, path, isCustom }) => {
+        if (sessionId !== get().activeId) return;
         const name = path ? path.split(/[/\\]/).pop() || path : "";
         set({ workspace: { path, isCustom, name } });
       },
@@ -194,17 +194,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  newConversation: () => {
+  newSession: () => {
     if (get().isStreaming) return;
     set({ activeId: null, messages: [], workspace: null, stats: null });
   },
 
-  selectConversation: async (id) => {
+  selectSession: async (id) => {
     if (get().isStreaming || id === get().activeId) return;
     set({ activeId: id, messages: [], workspace: null, stats: null });
     try {
-      const conv = await agentApi.getConversation(id);
-      set({ messages: conv.messages ?? [] });
+      const sess = await agentApi.getSession(id);
+      set({ messages: sess.messages ?? [] });
     } catch (e) {
       set({ backendError: errText(e) });
     }
@@ -218,11 +218,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     void get().refreshStats();
   },
 
-  deleteConversation: async (id) => {
+  deleteSession: async (id) => {
     try {
-      await agentApi.deleteConversation(id);
+      await agentApi.deleteSession(id);
       set((s) => ({
-        conversations: s.conversations.filter((c) => c.id !== id),
+        sessions: s.sessions.filter((c) => c.id !== id),
         ...(s.activeId === id ? { activeId: null, messages: [] } : {}),
       }));
     } catch (e) {
@@ -230,11 +230,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  renameConversation: async (id, title) => {
+  renameSession: async (id, title) => {
     try {
-      await agentApi.renameConversation(id, title);
+      await agentApi.renameSession(id, title);
       set((s) => ({
-        conversations: s.conversations.map((c) =>
+        sessions: s.sessions.map((c) =>
           c.id === id ? { ...c, title } : c,
         ),
       }));
@@ -248,14 +248,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!content || get().isStreaming) return;
 
     // 新会话：首次发送时才请求后端创建
-    let convId = get().activeId;
-    if (!convId) {
+    let sessId = get().activeId;
+    if (!sessId) {
       try {
-        const conv = await agentApi.createConversation();
-        convId = conv.id;
+        const sess = await agentApi.createSession();
+        sessId = sess.id;
         set((s) => ({
-          conversations: [toMeta(conv), ...s.conversations],
-          activeId: convId,
+          sessions: [toMeta(sess), ...s.sessions],
+          activeId: sessId,
         }));
       } catch (e) {
         set({ backendError: errText(e) });
@@ -283,7 +283,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      await agentApi.sendMessage(convId, content);
+      await agentApi.sendMessage(sessId, content);
     } catch (e) {
       set((s) => ({
         messages: markLastAssistantError(s.messages, errText(e)),
@@ -373,13 +373,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (!dir) return; // 用户取消
       if (!activeId) {
         // 无活动会话时先创建
-        const conv = await agentApi.createConversation();
+        const sess = await agentApi.createSession();
         set((s) => ({
-          conversations: [{ id: conv.id, title: conv.title, updatedAt: conv.updatedAt }, ...s.conversations],
-          activeId: conv.id,
+          sessions: [{ id: sess.id, title: sess.title, updatedAt: sess.updatedAt }, ...s.sessions],
+          activeId: sess.id,
         }));
-        await agentApi.setWorkspaceDir(conv.id, dir);
-        const ws = await agentApi.getWorkspaceInfo(conv.id);
+        await agentApi.setWorkspaceDir(sess.id, dir);
+        const ws = await agentApi.getWorkspaceInfo(sess.id);
         set({ workspace: ws });
       } else {
         await agentApi.setWorkspaceDir(activeId, dir);

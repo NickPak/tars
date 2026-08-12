@@ -31,7 +31,7 @@ export interface ToolCallInfo {
   output?: string;
 }
 
-export interface Conversation {
+export interface Session {
   id: string;
   title: string;
   messages: ChatMessage[];
@@ -41,14 +41,14 @@ export interface Conversation {
 
 /** "agent:chunk" 事件 payload：助手回复的一个增量片段 */
 export interface StreamChunk {
-  conversationId: string;
+  sessionId: string;
   messageId: string;
   chunk: string;
 }
 
 /** "agent:done" 事件 payload：一条回复流式输出完毕 */
 export interface StreamDone {
-  conversationId: string;
+  sessionId: string;
   messageId: string;
   usage?: UsageInfo;
   elapsedMs?: number;
@@ -56,16 +56,16 @@ export interface StreamDone {
 
 /** "agent:error" 事件 payload：流式输出失败 */
 export interface StreamError {
-  conversationId: string;
+  sessionId: string;
   messageId: string;
   error: string;
   /** 错误分类："timeout"（模型调用超时，可能是服务商拥堵）| "error"（其他） */
   kind?: "timeout" | "error";
 }
 
-/** "conversation:renamed" 事件 payload：会话标题变更 */
-export interface ConversationRenamedEvent {
-  conversationId: string;
+/** "session:renamed" 事件 payload：会话标题变更 */
+export interface SessionRenamedEvent {
+  sessionId: string;
   title: string;
 }
 
@@ -128,14 +128,14 @@ export interface SessionStats {
 
 /** "agent:reasoning" 事件 payload：模型思考过程 */
 export interface ReasoningEvent {
-  conversationId: string;
+  sessionId: string;
   messageId: string;
   content: string;
 }
 
 /** "agent:tool" 事件 payload：模型发起了工具调用 */
 export interface ToolEvent {
-  conversationId: string;
+  sessionId: string;
   messageId: string;
   toolCallId: string;
   toolName: string;
@@ -144,7 +144,7 @@ export interface ToolEvent {
 
 /** "agent:tool_result" 事件 payload：一个工具执行完毕 */
 export interface ToolResultEvent {
-  conversationId: string;
+  sessionId: string;
   messageId: string;
   toolCallId: string;
   output: string;
@@ -174,30 +174,26 @@ export interface WorkspaceInfo {
 
 /** "workspace:changed" 事件 payload */
 export interface WorkspaceChangedEvent {
-  conversationId: string;
+  sessionId: string;
   path: string;
   isCustom: boolean;
 }
 
-// ===== 设置界面（与 Go 端 configservice.go 的视图结构对应） =====
+// ===== 设置界面（直接镜像 Go 端 config / llm 包的结构体；密钥原样传输，
+// UI 层默认掩码显示 + 眼睛按钮切换明文。缺省字段由 agentApi.getAppConfig
+// 归一化补齐，因此这里的字段均为必填，UI 代码无需空判） =====
 
-/** 供应商配置视图。密钥类字段读取时恒为空串；保存时非空才覆盖 */
-export interface ProviderView {
+/** 供应商配置（llm.ProviderConfig） */
+export interface ProviderConfig {
   id: string;
   /** 供应商类型（对应 eino 原生组件）：gemini | openai | claude | deepseek | qwen | ark | ollama | qianfan */
   type: string;
   apiKey: string;
-  /** 后端是否已配置 apiKey（用于显示"已配置"占位） */
-  apiKeySet: boolean;
   baseUrl: string;
-  /** 人类可读时长（如 "60s"、"2m"），空 = 不设超时 */
-  timeout: string;
-  /** 千帆 Access Key（读取脱敏为空） */
+  /** 千帆 Access Key */
   accessKey: string;
-  /** 千帆 Secret Key（读取脱敏为空） */
+  /** 千帆 Secret Key */
   secretKey: string;
-  /** AK/SK 是否均已配置 */
-  keySet: boolean;
   /** 火山引擎区域（ark），默认 cn-beijing */
   region: string;
   /** Claude 自动前缀缓存："5m" | "1h" | "" 关闭 */
@@ -206,9 +202,9 @@ export interface ProviderView {
   reasoningPolicy: string;
 }
 
-/** 模型条目配置视图 */
-export interface ModelView {
-  /** 条目唯一 ID，建议 "provider/modelId" 形式 */
+/** 模型条目配置（llm.ModelConfig） */
+export interface ModelConfig {
+  /** 条目唯一 ID，"provider/modelId" 形式 */
   id: string;
   /** 引用的供应商 ID */
   provider: string;
@@ -219,37 +215,41 @@ export interface ModelView {
   outputPricePerMillion: number;
   /** 最大输出 tokens（claude 必填；deepseek 默认 4096 上限 8192；其余可选） */
   maxTokens: number;
-  /** 字符串整数："" 默认 / "-1" 动态 / "0" 关闭 / ">0" 固定预算（仅 gemini 供应商） */
-  thinkingBudget: string;
-  /** 三态："" 默认 / "on" 开启 / "off" 关闭（仅 deepseek/qwen/ark/ollama 供应商） */
-  enableThinking: string;
+  /** 思考预算（仅 gemini）：null 默认 / -1 动态 / 0 关闭 / >0 固定预算 */
+  thinkingBudget: number | null;
+  /** 思考模式开关：null 默认 / true 开 / false 关（仅 deepseek/qwen/ark/ollama） */
+  enableThinking: boolean | null;
 }
 
-/** LLM 配置视图：供应商列表 + 模型列表 + 当前激活条目 */
-export interface LLMConfigView {
+/** LLM 配置（llm.Config）：供应商列表 + 模型列表 + 当前激活条目 */
+export interface LLMConfig {
   active: string;
-  providers: ProviderView[];
-  models: ModelView[];
+  providers: ProviderConfig[];
+  models: ModelConfig[];
 }
 
-export interface AgentConfigView {
+/** Agent 运行时配置（config.AgentConfig） */
+export interface AgentConfig {
   maxIterations: number;
   compressionThreshold: number;
+  /** time.Duration 的 JSON 形式为纳秒数 */
+  iterationTimeout: number;
 }
 
-export interface TraceConfigView {
+/** 追踪配置（config.TraceConfig） */
+export interface TraceConfig {
   /** 追踪总开关：关闭时即使配置了端点也不产生任何 span */
   enabled: boolean;
   otlpHttpEndpoint: string;
   otlpGrpcEndpoint: string;
 }
 
-/** 设置界面读写的完整配置视图 */
-export interface AppConfigView {
-  llm: LLMConfigView;
+/** 完整应用配置（config.AppConfig） */
+export interface AppConfig {
+  llm: LLMConfig;
   workDir: string;
-  agent: AgentConfigView;
-  trace: TraceConfigView;
+  agent: AgentConfig;
+  trace: TraceConfig;
 }
 
 /** 与 Go 端 main.go 中注册的事件名保持一致 */
@@ -257,7 +257,7 @@ export const AgentEvents = {
   Chunk: "agent:chunk",
   Done: "agent:done",
   Error: "agent:error",
-  ConversationRenamed: "conversation:renamed",
+  SessionRenamed: "session:renamed",
   Reasoning: "agent:reasoning",
   Tool: "agent:tool",
   ToolResult: "agent:tool_result",

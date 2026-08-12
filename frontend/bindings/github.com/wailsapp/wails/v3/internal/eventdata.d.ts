@@ -18,8 +18,8 @@ declare module "@wailsio/runtime" {
             "agent:reasoning": main$0.ReasoningEvent;
             "agent:tool": main$0.ToolEvent;
             "agent:tool_result": main$0.ToolResultEvent;
-            "conversation:renamed": main$0.ConversationRenamedEvent;
             "model:changed": main$0.ModelChangedEvent;
+            "session:renamed": main$0.SessionRenamedEvent;
             "workspace:changed": main$0.WorkspaceChangedEvent;
         }
     }

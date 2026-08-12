@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,13 +12,12 @@ const sampleYAML = `# 顶部注释
 llm:
   active: gemini/gemini-3.1-flash-lite
   providers:
-    - id: gemini
+    gemini:
       type: gemini
       # 用环境变量注入密钥
       apiKey: ${TARS_API_KEY}
-      timeout: 60s
   models:
-    - id: gemini/gemini-3.1-flash-lite
+    gemini/gemini-3.1-flash-lite:
       provider: gemini
       modelId: gemini-3.1-flash-lite
       inputPricePerMillion: 0.075
@@ -33,30 +31,38 @@ trace:
 `
 
 func TestSaveAppConfigFileMerge(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
+	// SaveAppConfigFile / LoadAppConfig 使用全局 AppConfigPath，
+	// 测试中把它指向临时文件
+	path := t.TempDir() + "/config.yaml"
 	if err := os.WriteFile(path, []byte(sampleYAML), 0644); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("TARS_CONFIG_PATH", path) // 假设 Init 支持环境变量覆盖
+
+	// 直接覆盖包级变量
+	oldPath := AppConfigPath
+	defer func() { AppConfigPath = oldPath }()
+	AppConfigPath = path
 
 	budget := int32(-1)
 	cfg := &AppConfig{
 		LLM: &llm.Config{
 			Active: "gemini/gemini-3.6-flash",
-			Providers: []llm.ProviderConfig{
+			Providers: map[string]*llm.ProviderConfig{
 				// ApiKey 留空 → 必须保留文件中的 ${TARS_API_KEY} 引用
-				{ID: "gemini", Type: "gemini", Timeout: "2m0s"},
-				{ID: "deepseek", Type: "openai", ApiKey: "sk-new", BaseUrl: "https://api.deepseek.com/v1"},
+				"gemini":   {Type: "gemini"},
+				"deepseek": {Type: "openai", ApiKey: "sk-new", BaseUrl: "https://api.deepseek.com/v1"},
 			},
-			Models: []llm.ModelConfig{
-				{ID: "gemini/gemini-3.6-flash", Provider: "gemini", ModelId: "gemini-3.6-flash",
+			Models: map[string]*llm.ModelConfig{
+				"gemini/gemini-3.6-flash": {Provider: "gemini", ModelId: "gemini-3.6-flash",
 					ContextWindow: 1048576, InputPricePerMillion: 0.075, ThinkingBudget: &budget},
-				{ID: "deepseek/deepseek-chat", Provider: "deepseek", ModelId: "deepseek-chat"},
+				"deepseek/deepseek-chat": {Provider: "deepseek", ModelId: "deepseek-chat"},
 			},
 		},
 		Agent: &AgentConfig{MaxIterations: 50, CompressionThreshold: 0.8},
 		Trace: &TraceConfig{OTLPHTTPEndpoint: "localhost:4318"}, // gRPC 留空 → 删除
 	}
-	if err := SaveAppConfigFile(path, cfg); err != nil {
+	if err := SaveAppConfigFile(cfg); err != nil {
 		t.Fatalf("SaveAppConfigFile: %v", err)
 	}
 
@@ -90,15 +96,18 @@ func TestSaveAppConfigFileMerge(t *testing.T) {
 
 	// 写回结果仍可被 LoadAppConfig 解析（apiKey 环境变量展开）
 	t.Setenv("TARS_API_KEY", "secret")
-	loaded, err := LoadAppConfig(path)
-	if err != nil {
+	if err := LoadAppConfig(); err != nil {
 		t.Fatalf("reload: %v", err)
+	}
+	loaded := Get()
+	if loaded == nil {
+		t.Fatal("Get() returned nil after LoadAppConfig")
 	}
 	if loaded.LLM.Active != "gemini/gemini-3.6-flash" {
 		t.Errorf("active mismatch: %q", loaded.LLM.Active)
 	}
 	g := loaded.LLM.FindProvider("gemini")
-	if g == nil || g.ApiKey != "secret" || g.Timeout != "2m0s" {
+	if g == nil || g.ApiKey != "secret" {
 		t.Errorf("gemini provider mismatch: %+v", g)
 	}
 	m := loaded.LLM.FindModel("gemini/gemini-3.6-flash")

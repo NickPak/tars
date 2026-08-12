@@ -141,7 +141,7 @@ func TestRun_PlainTextAnswer(t *testing.T) {
 	m := &stubModel{responses: []*schema.Message{
 		{Role: schema.Assistant, Content: "hello"},
 	}}
-	a := New(m, newTestManager(nil), 5)
+	a := New("", 5, 0, newTestManager(nil), m)
 
 	h := &recordingHooks{}
 	res, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "hi"}}, h)
@@ -177,7 +177,7 @@ func TestRun_OneToolRound(t *testing.T) {
 	mgr := newTestManager(map[string]tools.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "abc", nil },
 	})
-	a := New(m, mgr, 5)
+	a := New("", 5, 0, mgr, m)
 
 	h := &recordingHooks{}
 	res, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
@@ -215,7 +215,7 @@ func TestRun_UnknownTool(t *testing.T) {
 		}},
 		{Role: schema.Assistant, Content: "recovered"},
 	}}
-	a := New(m, newTestManager(nil), 5)
+	a := New("", 5, 0, newTestManager(nil), m)
 
 	h := &recordingHooks{}
 	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
@@ -237,7 +237,7 @@ func TestRun_ToolPanicRecovered(t *testing.T) {
 	mgr := newTestManager(map[string]tools.Handler{
 		"boom": func(ctx context.Context, args json.RawMessage) (string, error) { panic("exploded") },
 	})
-	a := New(m, mgr, 5)
+	a := New("", 5, 0, mgr, m)
 
 	h := &recordingHooks{}
 	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
@@ -257,7 +257,7 @@ func TestRun_MaxIterationsExceeded(t *testing.T) {
 	mgr := newTestManager(map[string]tools.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "x", nil },
 	})
-	a := New(m, mgr, 2)
+	a := New("", 2, 0, mgr, m)
 
 	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, &recordingHooks{})
 	if err == nil {
@@ -270,7 +270,7 @@ func TestRun_ContextCancelled(t *testing.T) {
 	cancel()
 
 	m := &stubModel{responses: []*schema.Message{{Role: schema.Assistant, Content: "x"}}}
-	a := New(m, newTestManager(nil), 5)
+	a := New("", 5, 0, newTestManager(nil), m)
 
 	_, err := a.Run(ctx, []*schema.Message{{Role: schema.User, Content: "go"}}, &recordingHooks{})
 	if !errors.Is(err, context.Canceled) {
@@ -280,7 +280,7 @@ func TestRun_ContextCancelled(t *testing.T) {
 
 func TestRun_NilHooks(t *testing.T) {
 	m := &stubModel{responses: []*schema.Message{{Role: schema.Assistant, Content: "hi"}}}
-	a := New(m, newTestManager(nil), 1)
+	a := New("", 1, 0, newTestManager(nil), m)
 
 	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, nil)
 	if err != nil {
@@ -297,7 +297,7 @@ func TestRun_OnErrorRetryThenSuccess(t *testing.T) {
 		},
 		errs: []error{errors.New("provider 503"), nil},
 	}
-	a := New(m, newTestManager(nil), 5)
+	a := New("", 5, 0, newTestManager(nil), m)
 
 	h := &recordingHooks{
 		onError: func(iter, attempt, chunks int, err error) (bool, time.Duration) {
@@ -324,7 +324,7 @@ func TestRun_OnErrorDeclineAborts(t *testing.T) {
 		responses: []*schema.Message{{Role: schema.Assistant, Content: "x"}},
 		errs:      []error{errors.New("provider down")},
 	}
-	a := New(m, newTestManager(nil), 5)
+	a := New("", 5, 0, newTestManager(nil), m)
 
 	h := &recordingHooks{} // default: no retry
 	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
@@ -343,7 +343,7 @@ func TestRun_CancelDoesNotTriggerOnError(t *testing.T) {
 		responses: []*schema.Message{{Role: schema.Assistant, Content: "x"}},
 		errs:      []error{context.Canceled}, // model call fails because ctx died
 	}
-	a := New(m, newTestManager(nil), 5)
+	a := New("", 5, 0, newTestManager(nil), m)
 	cancel() // parent ctx already done
 
 	h := &recordingHooks{}
@@ -357,7 +357,7 @@ func TestRun_CancelDoesNotTriggerOnError(t *testing.T) {
 }
 
 func TestRun_IterationTimeoutTriggersOnError(t *testing.T) {
-	a := New(&stuckModel{}, newTestManager(nil), 5)
+	a := New("", 5, 0, newTestManager(nil), &stuckModel{})
 	a.IterationTimeout = 50 * time.Millisecond
 
 	var gotChunks int = -1

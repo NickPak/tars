@@ -72,6 +72,29 @@ func NewManager() *Manager {
 	}
 }
 
+// --- 全局单例 ---
+
+var defaultManager *Manager
+
+// InitManager 创建全局 Manager 单例并注册全部内置工具。
+// 进程启动时调用一次；之后通过 DefaultManager 取用。
+// 内置工具集合是 tools 包的内部知识，新增内置工具在此登记。
+func InitManager(workDir string) {
+	m := NewManager()
+	m.Register(CodeInterpreter(workDir))
+	m.Register(RunCommand(workDir))
+	m.Register(ReadFile(workDir))
+	m.Register(WriteFile(workDir))
+	m.Register(EditFile(workDir))
+	m.Register(GlobFiles(workDir))
+	m.Register(GrepFiles(workDir))
+	m.Register(TodoWrite())
+	defaultManager = m
+}
+
+// DefaultManager 返回全局 Manager 实例；InitManager 之前调用返回 nil。
+func DefaultManager() *Manager { return defaultManager }
+
 // Register 注册一个工具，重名会覆盖旧定义。
 func (m *Manager) Register(def *Definition) {
 	m.mu.Lock()

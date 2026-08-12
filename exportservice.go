@@ -8,30 +8,32 @@ import (
 	"strings"
 	"time"
 
+	"tars/internal/session"
+
+	"github.com/cloudwego/eino/schema"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// ExportConversation renders the conversation as Markdown, prompts the user
+// ExportSession renders the session as Markdown, prompts the user
 // for a destination via the OS save dialog, and writes the file.
 // Returns the chosen path ("" if the user cancelled).
-func (s *AgentService) ExportConversation(conversationID string) (string, error) {
-	conv, ok := s.getConversation(conversationID)
-	if !ok {
-		return "", fmt.Errorf("conversation not found: %s", conversationID)
+func (s *AgentService) ExportSession(sessionID string) (string, error) {
+	// 渲染 Markdown（只读快照，避免持锁期间做字符串拼接）
+	var title string
+	var msgs []Message
+	if !session.GetManager().WithSession(sessionID, func(s *session.SessionState) {
+		title = s.Title
+		msgs = append([]Message{}, s.Messages...)
+	}) {
+		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	// 渲染 Markdown（只读快照，避免持锁期间做字符串拼接）
-	s.mu.RLock()
-	title := conv.Title
-	msgs := append([]Message{}, conv.Messages...)
-	s.mu.RUnlock()
-
-	md := renderConversationMarkdown(title, msgs)
+	md := renderSessionMarkdown(title, msgs)
 
 	// 弹出保存对话框，默认文件名从标题生成
 	target, err := application.Get().Dialog.SaveFile().
 		SetMessage("导出对话").
-		SetFilename(sanitizeFilename(title) + ".md").
+		SetFilename(sanitizeFilename(title)+".md").
 		AddFilter("Markdown 文件", "*.md").
 		SetButtonText("导出").
 		CanCreateDirectories(true).
@@ -49,11 +51,11 @@ func (s *AgentService) ExportConversation(conversationID string) (string, error)
 	return target, nil
 }
 
-// renderConversationMarkdown 把会话消息渲染为可读的 Markdown 文档：
+// renderSessionMarkdown 把会话消息渲染为可读的 Markdown 文档：
 //   - user → ## 👤 用户
 //   - assistant → ## 🤖 TARS（工具调用以状态行 + 折叠块呈现）
 //   - tool 消息不单独渲染（其结果已通过 assistant 的 ToolCalls.Output 合并）
-func renderConversationMarkdown(title string, msgs []Message) string {
+func renderSessionMarkdown(title string, msgs []Message) string {
 	var b strings.Builder
 	b.WriteString("# " + title + "\n\n")
 	if len(msgs) > 0 {
@@ -63,11 +65,11 @@ func renderConversationMarkdown(title string, msgs []Message) string {
 
 	for _, m := range msgs {
 		switch m.Role {
-		case RoleUser:
+		case schema.User:
 			b.WriteString("## 👤 用户\n\n")
 			b.WriteString(strings.TrimSpace(m.Content) + "\n\n")
 
-		case RoleAssistant:
+		case schema.Assistant:
 			b.WriteString("## 🤖 TARS\n\n")
 			if m.Reasoning != "" {
 				reasoning := m.Reasoning
@@ -88,21 +90,13 @@ func renderConversationMarkdown(title string, msgs []Message) string {
 						b.WriteString(" `" + args + "`")
 					}
 					b.WriteString("\n\n")
-					if tc.Output != "" {
-						out := tc.Output
-						if len(out) > 2000 {
-							out = out[:2000] + "\n…(已截断)"
-						}
-						b.WriteString("<details><summary>执行结果</summary>\n\n```\n")
-						b.WriteString(out + "\n```\n\n</details>\n\n")
-					}
 				}
 			}
 			if strings.TrimSpace(m.Content) != "" {
 				b.WriteString(strings.TrimSpace(m.Content) + "\n\n")
 			}
 		}
-		// RoleTool / RoleSystem 不导出（工具结果已合并进 assistant 消息）
+		// tool/system 角色不导出（工具结果已合并进 assistant 消息）
 	}
 	return b.String()
 }
@@ -114,7 +108,7 @@ func sanitizeFilename(title string) string {
 	name := invalidFilenameChars.ReplaceAllString(title, "")
 	name = strings.TrimSpace(name)
 	if name == "" {
-		name = "conversation"
+		name = "session"
 	}
 	// Windows 文件名上限 255，给扩展名和路径留余量
 	runes := []rune(name)
@@ -124,7 +118,7 @@ func sanitizeFilename(title string) string {
 	// 去掉尾部点/空格（Windows 不允许）
 	name = strings.TrimRight(name, ". ")
 	if name == "" {
-		name = "conversation"
+		name = "session"
 	}
 	return filepath.Base(name) // 双保险：去掉任何路径成分
 }

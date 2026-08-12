@@ -2,6 +2,12 @@ package main
 
 import (
 	"fmt"
+	"tars/internal/config"
+	"tars/internal/session"
+	"tars/pkg/llm"
+	"tars/pkg/store"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 // SessionStats 是会话级聚合统计，供底部状态栏展示。
@@ -43,29 +49,27 @@ type ModelPrice struct {
 	Output float64 `json:"output"`
 }
 
-// setModelHealthy 记录最近一次 LLM 调用的健康状态。
-func (s *AgentService) setModelHealthy(ok bool) {
-	s.modelHealthy.Store(ok)
-}
-
 // GetSessionStats 返回指定会话的聚合统计。空会话返回带模型/价格信息的零值。
-func (s *AgentService) GetSessionStats(conversationID string) (*SessionStats, error) {
-	if !s.hasConversation(conversationID) {
-		return nil, fmt.Errorf("conversation not found: %s", conversationID)
+func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) {
+	sessionMgr := session.GetManager()
+	if !sessionMgr.Has(sessionID) {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	cfg := s.currentConfig()
-	stats := &SessionStats{ModelHealthy: s.modelHealthy.Load()}
+	cfg := config.Get()
+	stats := &SessionStats{ModelHealthy: true}
 	var activeIn, activeOut float64
 	var contextWindow int
 	if cfg != nil && cfg.LLM != nil {
 		if active := cfg.LLM.ActiveModel(); active != nil {
+			// 健康状态跟随当前激活的模型条目（per-model 记录在 Registry）
+			stats.ModelHealthy = llm.GetRegistry().IsHealthy(active.ID)
 			stats.ModelID = active.ModelId
 			stats.ContextWindow = active.ContextWindow
 			activeIn, activeOut = active.InputPricePerMillion, active.OutputPricePerMillion
 			contextWindow = active.ContextWindow
 		}
-		stats.CompressionThreshold = cfg.CompressionThresholdOrDefault()
+		stats.CompressionThreshold = cfg.Agent.CompressionThreshold
 		stats.InputPricePerMillion = activeIn
 		stats.OutputPricePerMillion = activeOut
 		stats.ModelPrices = make(map[string]ModelPrice, len(cfg.LLM.Models))
@@ -77,23 +81,22 @@ func (s *AgentService) GetSessionStats(conversationID string) (*SessionStats, er
 		}
 	}
 
-	s.mu.RLock()
-	conv, ok := s.convs[conversationID]
-	if !ok {
-		s.mu.RUnlock()
+	var msgs []store.Message
+	sessionMgr.WithSession(sessionID, func(conv *session.SessionState) {
+		// 拷贝消息切片头，缩短持锁时间（统计只读 Usage/CreatedAt 等标量字段）
+		msgs = append([]store.Message{}, conv.Messages...)
+	})
+	if msgs == nil {
 		return stats, nil
 	}
-	// 拷贝消息切片头，缩短持锁时间（统计只读 Usage/CreatedAt 等标量字段）
-	msgs := append([]Message{}, conv.Messages...)
-	s.mu.RUnlock()
 
 	var totalPrompt, totalCached int
 	var lastPromptTokens int
 	for _, m := range msgs {
 		switch m.Role {
-		case RoleUser:
+		case schema.User:
 			stats.Rounds++
-		case RoleAssistant:
+		case schema.Assistant:
 			if m.Usage == nil {
 				continue
 			}

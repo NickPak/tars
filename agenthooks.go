@@ -9,6 +9,11 @@ import (
 	"time"
 
 	"tars/internal/agent"
+	"tars/internal/config"
+	"tars/internal/session"
+	"tars/pkg/llm"
+	"tars/pkg/prompt"
+	"tars/pkg/store"
 	"tars/pkg/tools"
 	"tars/pkg/trace"
 
@@ -21,14 +26,11 @@ import (
 // agentHooks implements agent.Hooks for AgentService: bridges loop events to
 // Wails frontend events, jsonl persistence, and OpenTelemetry tracing.
 type agentHooks struct {
-	svc            *AgentService
-	conversationID string
+	sessionID      string
 	assistantID    string
 	assistantIndex int
-	tracer         *trace.Tracer
 	modelID        string // 真实模型名（trace 展示用）
 	modelEntry     string // 配置条目 ID（usage 费用核算用）
-	basePrompt     string
 	toolSchemas    []string
 	turnCtx        context.Context // turn span ctx, for tool spans
 
@@ -41,39 +43,12 @@ type agentHooks struct {
 }
 
 func (h *agentHooks) IterationStart(ctx context.Context, iter int, messages []*schema.Message) {
-	// 把 eino schema.Message 转为 trace 的 ChatMessage，传入完整上下文
-	// （system + 历史 user/assistant/tool + 状态栏），Phoenix 据此渲染
-	// LLM span 的 input messages 视图。
-	traceMsgs := make([]trace.ChatMessage, 0, len(messages))
-	for _, m := range messages {
-		traceMsgs = append(traceMsgs, schemaToTraceMsg(m))
-	}
-	_, span := h.tracer.StartLLMCall(h.turnCtx, h.conversationID, h.modelID,
-		h.basePrompt, iter-1, traceMsgs, h.toolSchemas)
+	// 直接传入 schema.Message——trace 包内部按需提取字段并展平。
+	// 传入完整上下文（system + 历史 user/assistant/tool + 状态栏），
+	// Phoenix 据此渲染 LLM span 的 input messages 视图。
+	_, span := trace.StartLLMCall(h.turnCtx, h.sessionID, h.modelID,
+		prompt.SystemPrompt(), iter-1, messages, h.toolSchemas)
 	h.llmSpan = span
-}
-
-// schemaToTraceMsg 把 eino schema.Message 转为 trace.ChatMessage。
-func schemaToTraceMsg(m *schema.Message) trace.ChatMessage {
-	tm := trace.ChatMessage{
-		Role:      string(m.Role),
-		Content:   m.Content,
-		Reasoning: m.ReasoningContent,
-	}
-	if m.ToolCallID != "" {
-		tm.ToolCallID = m.ToolCallID
-	}
-	if len(m.ToolCalls) > 0 {
-		tm.ToolCalls = make([]trace.ToolCallRef, len(m.ToolCalls))
-		for i, tc := range m.ToolCalls {
-			tm.ToolCalls[i] = trace.ToolCallRef{
-				ID:   tc.ID,
-				Name: tc.Function.Name,
-				Args: tc.Function.Arguments,
-			}
-		}
-	}
-	return tm
 }
 
 // IterationEnd fires after one full iteration (LLM call + any tool runs).
@@ -89,45 +64,48 @@ func (h *agentHooks) IterationEnd(ctx context.Context, iter int, full []*schema.
 	h.finalOutput.WriteString(assistantMsg.Content)
 
 	// End the LLM span for this iteration.
-	h.tracer.EndLLMCall(h.llmSpan, nil, assistantMsg.Content, assistantMsg.ReasoningContent,
-		schemaToolCallsToTrace(assistantMsg.ToolCalls), "stop", usageToTraceUsage(h.usage))
+	promptTokens, completionTokens, totalTokens := 0, 0, 0
+	if h.usage != nil {
+		promptTokens, completionTokens, totalTokens = h.usage.PromptTokens, h.usage.CompletionTokens, h.usage.TotalTokens
+	}
+	trace.EndLLMCall(h.llmSpan, nil, assistantMsg.Content, assistantMsg.ReasoningContent,
+		assistantMsg.ToolCalls, "stop", promptTokens, completionTokens, totalTokens)
 
 	// Sync assistant content/reasoning/tool_calls to the in-memory
-	// conversation and persist a snapshot (crash-safe: partial progress
-	// is kept). Reasoning accumulates across iterations, same as content.
-	h.svc.mu.Lock()
-	if c, ok := h.svc.convs[h.conversationID]; ok && h.assistantIndex < len(c.Messages) {
-		c.Messages[h.assistantIndex].Content += assistantMsg.Content
-		c.Messages[h.assistantIndex].Reasoning += assistantMsg.ReasoningContent
-		for _, tc := range assistantMsg.ToolCalls {
-			c.Messages[h.assistantIndex].ToolCalls = append(
-				c.Messages[h.assistantIndex].ToolCalls,
-				ToolCall{ID: tc.ID, Name: tc.Function.Name, Args: tc.Function.Arguments},
-			)
+	// session and persist a snapshot (crash-safe: partial progress
+	// is kept). Reasoning Accumulates across iterations, same as content.
+	sessionMgr := session.GetManager()
+	sessionMgr.WithSession(h.sessionID, func(c *session.SessionState) {
+		if h.assistantIndex < len(c.Messages) {
+			c.Messages[h.assistantIndex].Content += assistantMsg.Content
+			c.Messages[h.assistantIndex].Reasoning += assistantMsg.ReasoningContent
+			for _, tc := range assistantMsg.ToolCalls {
+				c.Messages[h.assistantIndex].ToolCalls = append(
+					c.Messages[h.assistantIndex].ToolCalls,
+					store.ToolCall{ID: tc.ID, Name: tc.Function.Name, Args: tc.Function.Arguments},
+				)
+			}
+			c.UpdatedAt = time.Now().UnixMilli()
 		}
-		c.UpdatedAt = time.Now().UnixMilli()
-	}
-	h.svc.mu.Unlock()
-	h.svc.persistAssistantSnapshot(h.conversationID, h.assistantIndex)
+	})
+	sessionMgr.AppendAssistantSnapshot(h.sessionID, h.assistantIndex)
 
 	// Append and persist tool result messages.
 	for _, m := range delta[1:] {
 		if m.Role != schema.Tool {
 			continue
 		}
-		toolMsg := Message{
+		toolMsg := store.Message{
 			ID:         uuid.NewString(),
-			Role:       RoleTool,
+			Role:       schema.Tool,
 			Content:    m.Content,
 			ToolCallID: m.ToolCallID,
 			CreatedAt:  time.Now().UnixMilli(),
 		}
-		h.svc.mu.Lock()
-		if c, ok := h.svc.convs[h.conversationID]; ok {
+		sessionMgr.WithSession(h.sessionID, func(c *session.SessionState) {
 			c.Messages = append(c.Messages, toolMsg)
-		}
-		h.svc.mu.Unlock()
-		h.svc.persistMessage(h.conversationID, toolMsg)
+		})
+		sessionMgr.AppendMessage(h.sessionID, toolMsg)
 	}
 }
 
@@ -145,16 +123,16 @@ func (h *agentHooks) StreamChunk(ctx context.Context, iter int, chunk *schema.Me
 
 	if chunk.ReasoningContent != "" {
 		application.Get().Event.Emit("agent:reasoning", ReasoningEvent{
-			ConversationID: h.conversationID,
-			MessageID:      h.assistantID,
-			Content:        chunk.ReasoningContent,
+			SessionID: h.sessionID,
+			MessageID: h.assistantID,
+			Content:   chunk.ReasoningContent,
 		})
 	}
 	if chunk.Content != "" {
 		application.Get().Event.Emit("agent:chunk", StreamChunk{
-			ConversationID: h.conversationID,
-			MessageID:      h.assistantID,
-			Chunk:          chunk.Content,
+			SessionID: h.sessionID,
+			MessageID: h.assistantID,
+			Chunk:     chunk.Content,
 		})
 	}
 }
@@ -162,27 +140,27 @@ func (h *agentHooks) StreamChunk(ctx context.Context, iter int, chunk *schema.Me
 func (h *agentHooks) ToolsStart(ctx context.Context, calls []schema.ToolCall) {
 	h.toolSpans = make(map[string]oteltrace.Span, len(calls))
 	for _, c := range calls {
-		_, span := h.tracer.StartToolCall(h.turnCtx, h.conversationID, c.ID, c.Function.Name, c.Function.Arguments)
+		_, span := trace.StartToolCall(h.turnCtx, h.sessionID, c.ID, c.Function.Name, c.Function.Arguments)
 		h.toolSpans[c.ID] = span
 		application.Get().Event.Emit("agent:tool", ToolEvent{
-			ConversationID: h.conversationID,
-			MessageID:      h.assistantID,
-			ToolCallID:     c.ID,
-			ToolName:       c.Function.Name,
-			Args:           c.Function.Arguments,
+			SessionID:  h.sessionID,
+			MessageID:  h.assistantID,
+			ToolCallID: c.ID,
+			ToolName:   c.Function.Name,
+			Args:       c.Function.Arguments,
 		})
 	}
 }
 
 func (h *agentHooks) ToolResult(ctx context.Context, r tools.ToolResult) {
 	if span, ok := h.toolSpans[r.ID]; ok {
-		h.tracer.EndToolCall(span, r.Output)
+		trace.EndToolCall(span, r.Output)
 	}
 	application.Get().Event.Emit("agent:tool_result", ToolResultEvent{
-		ConversationID: h.conversationID,
-		MessageID:      h.assistantID,
-		ToolCallID:     r.ID,
-		Output:         r.Output,
+		SessionID:  h.sessionID,
+		MessageID:  h.assistantID,
+		ToolCallID: r.ID,
+		Output:     r.Output,
 	})
 }
 
@@ -203,7 +181,7 @@ func (h *agentHooks) ToolsEnd(ctx context.Context, results []tools.ToolResult) {
 // is the common case). Either way the user should decide.
 func (h *agentHooks) OnError(ctx context.Context, iter, attempt, streamedChunks int, err error) (bool, time.Duration) {
 	slog.Warn("Model call failed",
-		"conv", h.conversationID,
+		"session", h.sessionID,
 		"iteration", iter,
 		"attempt", attempt,
 		"streamedChunks", streamedChunks,
@@ -211,59 +189,52 @@ func (h *agentHooks) OnError(ctx context.Context, iter, attempt, streamedChunks 
 	)
 	// Close this iteration's LLM span with the error (IterationEnd will not
 	// fire for the failed round).
-	h.tracer.EndLLMCall(h.llmSpan, err, "", "", nil, "", nil)
+	trace.EndLLMCall(h.llmSpan, err, "", "", nil, "", 0, 0, 0)
 	return false, 0
 }
 
-
 // runAgentLoop runs the ReAct loop via internal/agent, wiring all side
 // effects (events, persistence, tracing) through agentHooks.
-func (s *AgentService) runAgentLoop(ctx context.Context, conversationID, assistantID string, assistantIndex int, messages []*schema.Message, userText string) {
-	tracer := s.getTracer(conversationID)
+func (s *AgentService) runAgentLoop(ctx context.Context, sessionID, assistantID string, assistantIndex int, messages []*schema.Message, userText string) {
 	startTime := time.Now()
 
-	ctx, turnSpan := tracer.StartTurn(ctx, conversationID, assistantID, userText)
+	ctx, turnSpan := trace.StartTurn(ctx, sessionID, assistantID, userText)
 	var turnErr error
 
-	chatModel, modelCfg, err := s.currentModel()
+	chatModel, modelCfg, err := llm.GetRegistry().Active()
 	if err != nil {
 		turnErr = err
 		application.Get().Event.Emit("agent:error", StreamError{
-			ConversationID: conversationID, MessageID: assistantID, Error: turnErr.Error(),
+			SessionID: sessionID, MessageID: assistantID, Error: turnErr.Error(),
 		})
-		tracer.EndTurn(turnSpan, turnErr, time.Since(startTime).Milliseconds(), "")
-		s.unregisterCancel(conversationID)
+		trace.EndTurn(turnSpan, turnErr, time.Since(startTime).Milliseconds(), "")
+		session.GetManager().UnregisterCancel(sessionID)
 		return
 	}
-	modelWithTools, err := chatModel.WithTools(s.toolMgr.ToolInfos())
+	modelWithTools, err := chatModel.WithTools(tools.DefaultManager().ToolInfos())
 	if err != nil {
 		turnErr = fmt.Errorf("failed to bind tools: %w", err)
 		application.Get().Event.Emit("agent:error", StreamError{
-			ConversationID: conversationID, MessageID: assistantID, Error: turnErr.Error(),
+			SessionID: sessionID, MessageID: assistantID, Error: turnErr.Error(),
 		})
-		tracer.EndTurn(turnSpan, turnErr, time.Since(startTime).Milliseconds(), "")
-		s.unregisterCancel(conversationID)
+		trace.EndTurn(turnSpan, turnErr, time.Since(startTime).Milliseconds(), "")
+		session.GetManager().UnregisterCancel(sessionID)
 		return
 	}
 
-	cfg := s.currentConfig()
+	cfg := config.Get()
 	hooks := &agentHooks{
-		svc:            s,
-		conversationID: conversationID,
+		sessionID:      sessionID,
 		assistantID:    assistantID,
 		assistantIndex: assistantIndex,
-		tracer:         tracer,
 		modelID:        modelCfg.ModelId, // 真实模型名，用于 trace 展示
 		modelEntry:     modelCfg.ID,      // 配置条目 ID，用于费用核算
-		basePrompt:     s.basePrompt,
-		toolSchemas:    s.toolMgr.ToolSchemasJSON(),
+		toolSchemas:    tools.DefaultManager().ToolSchemasJSON(),
 		turnCtx:        ctx,
 		turnSpan:       turnSpan,
 	}
 
-	ag := agent.New(modelWithTools, s.toolMgr, cfg.MaxIterationsOrDefault())
-	// Generous per-iteration deadline: busy providers may queue requests.
-	ag.IterationTimeout = iterationTimeout
+	ag := agent.New(sessionID, cfg.Agent.MaxIterations, cfg.Agent.IterationTimeout, tools.DefaultManager(), modelWithTools)
 
 	result, err := ag.Run(ctx, messages, hooks)
 
@@ -280,12 +251,13 @@ func (s *AgentService) runAgentLoop(ctx context.Context, conversationID, assista
 		// Cancel is treated as a clean stop, not an error.
 		if ctx.Err() != nil {
 			application.Get().Event.Emit("agent:done", StreamDone{
-				ConversationID: conversationID, MessageID: assistantID,
+				SessionID: sessionID, MessageID: assistantID,
 				ElapsedMs: elapsedMs,
 			})
 		} else {
+
 			turnErr = err
-			s.setModelHealthy(false)
+			llm.GetRegistry().SetHealthy(modelCfg.ID, false)
 			// Classify iteration timeouts so the frontend can show a
 			// targeted hint ("provider congested, retry?") instead of a
 			// generic failure.
@@ -294,27 +266,28 @@ func (s *AgentService) runAgentLoop(ctx context.Context, conversationID, assista
 				kind = "timeout"
 			}
 			application.Get().Event.Emit("agent:error", StreamError{
-				ConversationID: conversationID, MessageID: assistantID, Error: err.Error(), Kind: kind,
+				SessionID: sessionID, MessageID: assistantID, Error: err.Error(), Kind: kind,
 			})
 		}
 	} else {
-		s.setModelHealthy(true)
+		llm.GetRegistry().SetHealthy(modelCfg.ID, true)
 		application.Get().Event.Emit("agent:done", StreamDone{
-			ConversationID: conversationID, MessageID: assistantID, Usage: hooks.usage,
+			SessionID: sessionID, MessageID: assistantID, Usage: hooks.usage,
 			ElapsedMs: elapsedMs,
 		})
 	}
 
 	// 把本轮的 token 统计与总耗时写入内存会话并持久化，
 	// 历史会话重新打开后每条消息的用量信息才能恢复。
-	s.mu.Lock()
-	if c, ok := s.convs[conversationID]; ok && assistantIndex < len(c.Messages) {
-		c.Messages[assistantIndex].Usage = hooks.usage
-		c.Messages[assistantIndex].ElapsedMs = elapsedMs
-	}
-	s.mu.Unlock()
-	s.persistAssistantSnapshot(conversationID, assistantIndex)
+	sessionMgr := session.GetManager()
+	sessionMgr.WithSession(sessionID, func(c *session.SessionState) {
+		if assistantIndex < len(c.Messages) {
+			c.Messages[assistantIndex].Usage = hooks.usage
+			c.Messages[assistantIndex].ElapsedMs = elapsedMs
+		}
+	})
+	sessionMgr.AppendAssistantSnapshot(sessionID, assistantIndex)
 
-	tracer.EndTurn(turnSpan, turnErr, elapsedMs, finalOutput)
-	s.unregisterCancel(conversationID)
+	trace.EndTurn(turnSpan, turnErr, elapsedMs, finalOutput)
+	sessionMgr.UnregisterCancel(sessionID)
 }

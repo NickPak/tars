@@ -3,27 +3,54 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"tars/pkg/llm"
+	"tars/pkg/trace"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-// TraceConfig controls OpenTelemetry span export.
-// Spans are only exported to the configured OTLP collectors; there is no
-// local file sink. Enabled=false (the default when absent) disables all
-// tracing regardless of configured endpoints.
-type TraceConfig struct {
-	// Enabled is the master switch for tracing. Absent/false = 不产生任何 span。
-	Enabled bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
-	// OTLPHTTPEndpoint exports spans to an OTLP/HTTP collector
-	// (e.g. "localhost:4318" for Jaeger). Empty disables this exporter.
-	OTLPHTTPEndpoint string `yaml:"otlpHttpEndpoint,omitempty" json:"otlpHttpEndpoint,omitempty"`
-	// OTLPGrpcEndpoint exports spans to an OTLP/gRPC collector
-	// (e.g. "localhost:4317" for Arize Phoenix). Empty disables this exporter.
-	OTLPGrpcEndpoint string `yaml:"otlpGrpcEndpoint,omitempty" json:"otlpGrpcEndpoint,omitempty"`
+var (
+	instance atomic.Pointer[AppConfig]
+
+	// AppConfigPath 是应用配置文件的路径（相对工作目录）。
+	// 声明为 var 以便测试覆盖。
+	AppConfigPath = "config/config.yaml"
+)
+
+const (
+	// DefaultMaxIterations is used when agent.maxIterations is unset or
+	// non-positive. 100 covers long multi-file tasks while still bounding cost.
+	DefaultMaxIterations = 100
+
+	// DefaultCompressionThreshold is used when agent.compressionThreshold is
+	// unset or out of range.
+	DefaultCompressionThreshold = 0.8
+
+	// DefaultIterationTimeout is used when agent.iterationTimeout is unset or
+	// zero. 120s is generous enough for busy providers that queue requests,
+	// while still catching truly stuck connections.
+	DefaultIterationTimeout = 120 * time.Second
+)
+
+// DefaultDataDir returns the default data directory under the user's
+// home directory: ~/tars on all platforms.
+// 它是 WorkDir 配置字段为空时的默认值（Validate 时填充）。
+func DefaultDataDir() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, "tars")
+	}
+	return "."
 }
+
+// TraceConfig 由 pkg/trace 定义，config 包仅引用。
+type TraceConfig = trace.TraceConfig
 
 // AgentConfig controls the ReAct loop runtime behavior.
 type AgentConfig struct {
@@ -35,23 +62,11 @@ type AgentConfig struct {
 	// compression should kick in (compression itself is not implemented yet;
 	// the threshold is surfaced in the status bar for now).
 	CompressionThreshold float64 `yaml:"compressionThreshold,omitempty" json:"compressionThreshold,omitempty"`
-}
-
-// DefaultMaxIterations is used when agent.maxIterations is unset or
-// non-positive. 100 covers long multi-file tasks while still bounding cost.
-const DefaultMaxIterations = 100
-
-// DefaultCompressionThreshold is used when agent.compressionThreshold is
-// unset or out of range.
-const DefaultCompressionThreshold = 0.8
-
-// CompressionThresholdOrDefault returns the configured compression threshold,
-// falling back to DefaultCompressionThreshold when unset or out of (0,1].
-func (c *AppConfig) CompressionThresholdOrDefault() float64 {
-	if c == nil || c.Agent == nil || c.Agent.CompressionThreshold <= 0 || c.Agent.CompressionThreshold > 1 {
-		return DefaultCompressionThreshold
-	}
-	return c.Agent.CompressionThreshold
+	// IterationTimeout is the per-iteration timeout for a single model call.
+	// Protects against provider congestion / silent stalls where the stream
+	// hangs without error. Does NOT truncate normal streaming — only fires
+	// when no response arrives at all. Zero = 120s default.
+	IterationTimeout time.Duration `yaml:"iterationTimeout,omitempty" json:"iterationTimeout,omitempty"`
 }
 
 type AppConfig struct {
@@ -61,37 +76,72 @@ type AppConfig struct {
 	Agent   *AgentConfig `yaml:"agent,omitempty" json:"agent,omitempty"`
 }
 
-// MaxIterationsOrDefault returns the configured ReAct loop limit, falling
-// back to DefaultMaxIterations when unset or non-positive.
-func (c *AppConfig) MaxIterationsOrDefault() int {
-	if c == nil || c.Agent == nil || c.Agent.MaxIterations <= 0 {
-		return DefaultMaxIterations
-	}
-	return c.Agent.MaxIterations
+func Get() *AppConfig {
+	return instance.Load()
 }
 
-// OTLPEndpoints returns the configured OTLP/HTTP and OTLP/gRPC endpoints
-// ("" when unset).
-func (c *AppConfig) OTLPEndpoints() (httpEndpoint, grpcEndpoint string) {
-	if c == nil || c.Trace == nil {
-		return "", ""
-	}
-	return c.Trace.OTLPHTTPEndpoint, c.Trace.OTLPGrpcEndpoint
+func Set(cfg *AppConfig) {
+	instance.Store(cfg)
 }
 
-func LoadAppConfig(path string) (*AppConfig, error) {
-	data, err := os.ReadFile(path)
+func LoadAppConfig() error {
+	data, err := os.ReadFile(AppConfigPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// 展开 ${VAR} / $VAR 形式的环境变量引用，使密钥等敏感值
 	// 可以通过环境变量注入而不必写入配置文件
 	expanded := os.ExpandEnv(string(data))
 	appConfig := &AppConfig{}
 	if err = yaml.Unmarshal([]byte(expanded), appConfig); err != nil {
-		return nil, err
+		return err
 	}
-	return appConfig, nil
+	// 校验并修正。LLM 结构性错误不阻塞启动（修正已生效），
+	// 首次对话时由注册表暴露，用户可通过设置界面修复。
+	if err := appConfig.Validate(); err != nil {
+		slog.Warn("LLM config invalid at startup, continuing", "error", err)
+	}
+	Set(appConfig)
+	return nil
+}
+
+// Validate 校验并修正整个配置：
+//   - nil 子结构补空对象，可修正的非法字段改为默认值（Load/Save 共用）；
+//   - LLM 结构性错误（不可自动修正）返回 error。
+//
+// 调用方拿到 AppConfig 后直接访问字段即可，无需运行时回退。
+func (c *AppConfig) Validate() error {
+	if c.Agent == nil {
+		c.Agent = &AgentConfig{}
+	}
+	c.Agent.Validate()
+	if c.Trace == nil {
+		c.Trace = &TraceConfig{}
+	}
+	c.WorkDir = strings.TrimSpace(c.WorkDir)
+	if c.WorkDir == "" {
+		c.WorkDir = DefaultDataDir()
+	}
+	if c.LLM != nil {
+		if err := c.LLM.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Validate 修正非法字段为默认值。
+// 这些字段都有明确的内置默认，静默修正即可，无需报错。
+func (c *AgentConfig) Validate() {
+	if c.MaxIterations <= 0 {
+		c.MaxIterations = DefaultMaxIterations
+	}
+	if c.CompressionThreshold <= 0 || c.CompressionThreshold > 1 {
+		c.CompressionThreshold = DefaultCompressionThreshold
+	}
+	if c.IterationTimeout <= 0 {
+		c.IterationTimeout = DefaultIterationTimeout
+	}
 }
 
 // SaveAppConfigFile 把 cfg 合并写回 YAML 配置文件。
@@ -99,11 +149,10 @@ func LoadAppConfig(path string) (*AppConfig, error) {
 // 与"整体序列化覆盖"不同，这里基于 yaml.Node 做键级合并：
 //   - 保留原文件中的注释、键顺序和未知字段；
 //   - apiKey 为空字符串时保留文件中的原值（原值可能是 ${ENV_VAR} 引用，
-//     避免把展开后的真实密钥写回磁盘，或把引用清空）；
-//   - 其他字段空字符串/0 值表示"删除该键"，回退到内置默认值。
-func SaveAppConfigFile(path string, cfg *AppConfig) error {
+//     避免把展开后的真实密钥写回磁盘，或把引用清空）。
+func SaveAppConfigFile(cfg *AppConfig) error {
 	var root yaml.Node
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(AppConfigPath)
 	switch {
 	case err == nil && len(bytes.TrimSpace(data)) > 0:
 		if err := yaml.Unmarshal(data, &root); err != nil {
@@ -126,25 +175,26 @@ func SaveAppConfigFile(path string, cfg *AppConfig) error {
 	setOrDelStr(m, "workDir", cfg.WorkDir, false)
 
 	if cfg.LLM != nil {
-		// llm 段含列表结构，键级合并成本高且易错，改为整段替换：
+		// llm 段为 map 结构，键级合并成本高且易错，改为整段替换：
 		// 段内注释会丢失（段外注释保留）；密钥类字段（apiKey/accessKey/
-		// secretKey）为空时按供应商 ID 沿用文件中的原值
+		// secretKey）为空时按供应商 ID（map key）沿用文件中的原值
 		//（保留 ${ENV_VAR} 引用）。
 		llmCopy := *cfg.LLM
 		oldKeys := readFileProviderKeys(m)
-		providers := make([]llm.ProviderConfig, len(llmCopy.Providers))
-		copy(providers, llmCopy.Providers)
-		for i := range providers {
-			saved := oldKeys[providers[i].ID]
-			if providers[i].ApiKey == "" {
-				providers[i].ApiKey = saved["apiKey"]
+		providers := make(map[string]*llm.ProviderConfig, len(llmCopy.Providers))
+		for id, p := range llmCopy.Providers {
+			cp := *p
+			saved := oldKeys[id]
+			if cp.ApiKey == "" {
+				cp.ApiKey = saved["apiKey"]
 			}
-			if providers[i].AccessKey == "" {
-				providers[i].AccessKey = saved["accessKey"]
+			if cp.AccessKey == "" {
+				cp.AccessKey = saved["accessKey"]
 			}
-			if providers[i].SecretKey == "" {
-				providers[i].SecretKey = saved["secretKey"]
+			if cp.SecretKey == "" {
+				cp.SecretKey = saved["secretKey"]
 			}
+			providers[id] = &cp
 		}
 		llmCopy.Providers = providers
 		node := &yaml.Node{}
@@ -155,8 +205,9 @@ func SaveAppConfigFile(path string, cfg *AppConfig) error {
 	}
 	if cfg.Agent != nil {
 		am := ensureMap(m, "agent")
-		setOrDelInt(am, "maxIterations", int64(cfg.Agent.MaxIterations))
-		setOrDelFloat(am, "compressionThreshold", cfg.Agent.CompressionThreshold)
+		setScalar(am, "maxIterations", "!!int", strconv.FormatInt(int64(cfg.Agent.MaxIterations), 10))
+		setScalar(am, "compressionThreshold", "!!float", strconv.FormatFloat(cfg.Agent.CompressionThreshold, 'f', -1, 64))
+		setScalar(am, "iterationTimeout", "!!str", cfg.Agent.IterationTimeout.String())
 	}
 	if cfg.Trace != nil {
 		tm := ensureMap(m, "trace")
@@ -178,12 +229,13 @@ func SaveAppConfigFile(path string, cfg *AppConfig) error {
 	if err := enc.Close(); err != nil {
 		return err
 	}
-	return os.WriteFile(path, buf.Bytes(), 0644)
+	return os.WriteFile(AppConfigPath, buf.Bytes(), 0644)
 }
 
 // readFileProviderKeys 从当前文件的 llm 段读取各供应商的密钥字段原文
 // （apiKey/accessKey/secretKey，未展开环境变量），用于写回时保留
 // ${ENV_VAR} 引用。返回值：map[供应商ID]map[字段名]值。
+// 供应商在文件中以 map 表达，key 即供应商 ID。
 func readFileProviderKeys(root *yaml.Node) map[string]map[string]string {
 	keys := map[string]map[string]string{}
 	for i := 0; i+1 < len(root.Content); i += 2 {
@@ -198,22 +250,22 @@ func readFileProviderKeys(root *yaml.Node) map[string]map[string]string {
 			if lm.Content[j].Value != "providers" {
 				continue
 			}
-			seq := lm.Content[j+1]
-			if seq.Kind != yaml.SequenceNode {
+			pm := lm.Content[j+1]
+			if pm.Kind != yaml.MappingNode {
 				continue
 			}
-			for _, item := range seq.Content {
+			// map 形式：key 即供应商 ID，value 是供应商配置映射
+			for k := 0; k+1 < len(pm.Content); k += 2 {
+				id := pm.Content[k].Value
+				item := pm.Content[k+1]
 				if item.Kind != yaml.MappingNode {
 					continue
 				}
-				var id string
 				fields := map[string]string{}
-				for k := 0; k+1 < len(item.Content); k += 2 {
-					switch item.Content[k].Value {
-					case "id":
-						id = item.Content[k+1].Value
+				for n := 0; n+1 < len(item.Content); n += 2 {
+					switch item.Content[n].Value {
 					case "apiKey", "accessKey", "secretKey":
-						fields[item.Content[k].Value] = item.Content[k+1].Value
+						fields[item.Content[n].Value] = item.Content[n+1].Value
 					}
 				}
 				if id != "" {

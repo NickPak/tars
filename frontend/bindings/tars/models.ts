@@ -5,153 +5,12 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-/**
- * AgentConfigView 是 Agent 运行时配置对前端的视图。
- */
-export class AgentConfigView {
-    "maxIterations": number;
-    "compressionThreshold": number;
-
-    /** Creates a new AgentConfigView instance. */
-    constructor($$source: Partial<AgentConfigView> = {}) {
-        if (!("maxIterations" in $$source)) {
-            this["maxIterations"] = 0;
-        }
-        if (!("compressionThreshold" in $$source)) {
-            this["compressionThreshold"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new AgentConfigView instance from a string or object.
-     */
-    static createFrom($$source: any = {}): AgentConfigView {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new AgentConfigView($$parsedSource as Partial<AgentConfigView>);
-    }
-}
-
-/**
- * AppConfigView 是设置界面读写的完整配置视图。
- */
-export class AppConfigView {
-    "llm": LLMConfigView;
-    "workDir": string;
-    "agent": AgentConfigView;
-    "trace": TraceConfigView;
-
-    /** Creates a new AppConfigView instance. */
-    constructor($$source: Partial<AppConfigView> = {}) {
-        if (!("llm" in $$source)) {
-            this["llm"] = (new LLMConfigView());
-        }
-        if (!("workDir" in $$source)) {
-            this["workDir"] = "";
-        }
-        if (!("agent" in $$source)) {
-            this["agent"] = (new AgentConfigView());
-        }
-        if (!("trace" in $$source)) {
-            this["trace"] = (new TraceConfigView());
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new AppConfigView instance from a string or object.
-     */
-    static createFrom($$source: any = {}): AppConfigView {
-        const $$createField0_0 = $$createType0;
-        const $$createField2_0 = $$createType1;
-        const $$createField3_0 = $$createType2;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("llm" in $$parsedSource) {
-            $$parsedSource["llm"] = $$createField0_0($$parsedSource["llm"]);
-        }
-        if ("agent" in $$parsedSource) {
-            $$parsedSource["agent"] = $$createField2_0($$parsedSource["agent"]);
-        }
-        if ("trace" in $$parsedSource) {
-            $$parsedSource["trace"] = $$createField3_0($$parsedSource["trace"]);
-        }
-        return new AppConfigView($$parsedSource as Partial<AppConfigView>);
-    }
-}
-
-/**
- * Conversation is a chat session with an ordered list of messages.
- */
-export class Conversation {
-    "id": string;
-    "title": string;
-    "messages": Message[];
-    "createdAt": number;
-    "updatedAt": number;
-
-    /** Creates a new Conversation instance. */
-    constructor($$source: Partial<Conversation> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-        if (!("messages" in $$source)) {
-            this["messages"] = [];
-        }
-        if (!("createdAt" in $$source)) {
-            this["createdAt"] = 0;
-        }
-        if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Conversation instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Conversation {
-        const $$createField2_0 = $$createType4;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("messages" in $$parsedSource) {
-            $$parsedSource["messages"] = $$createField2_0($$parsedSource["messages"]);
-        }
-        return new Conversation($$parsedSource as Partial<Conversation>);
-    }
-}
-
-/**
- * ConversationRenamedEvent is the payload of the "conversation:renamed" event.
- */
-export class ConversationRenamedEvent {
-    "conversationId": string;
-    "title": string;
-
-    /** Creates a new ConversationRenamedEvent instance. */
-    constructor($$source: Partial<ConversationRenamedEvent> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
-        }
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ConversationRenamedEvent instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ConversationRenamedEvent {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ConversationRenamedEvent($$parsedSource as Partial<ConversationRenamedEvent>);
-    }
-}
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as session$0 from "./internal/session/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as store$0 from "./pkg/store/models.js";
 
 /**
  * FileEntry represents a single file or directory in the workspace file tree.
@@ -193,112 +52,12 @@ export class FileEntry {
      * Creates a new FileEntry instance from a string or object.
      */
     static createFrom($$source: any = {}): FileEntry {
-        const $$createField4_0 = $$createType6;
+        const $$createField4_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField4_0($$parsedSource["children"]);
         }
         return new FileEntry($$parsedSource as Partial<FileEntry>);
-    }
-}
-
-/**
- * LLMConfigView 是 LLM 配置对前端的视图。
- */
-export class LLMConfigView {
-    "active": string;
-    "providers": ProviderView[];
-    "models": ModelView[];
-
-    /** Creates a new LLMConfigView instance. */
-    constructor($$source: Partial<LLMConfigView> = {}) {
-        if (!("active" in $$source)) {
-            this["active"] = "";
-        }
-        if (!("providers" in $$source)) {
-            this["providers"] = [];
-        }
-        if (!("models" in $$source)) {
-            this["models"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LLMConfigView instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LLMConfigView {
-        const $$createField1_0 = $$createType8;
-        const $$createField2_0 = $$createType10;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("providers" in $$parsedSource) {
-            $$parsedSource["providers"] = $$createField1_0($$parsedSource["providers"]);
-        }
-        if ("models" in $$parsedSource) {
-            $$parsedSource["models"] = $$createField2_0($$parsedSource["models"]);
-        }
-        return new LLMConfigView($$parsedSource as Partial<LLMConfigView>);
-    }
-}
-
-/**
- * Message is a single chat message within a conversation.
- */
-export class Message {
-    "id": string;
-    "role": string;
-    "content": string;
-    "toolCalls"?: ToolCall[];
-    "toolCallId"?: string;
-    "createdAt": number;
-
-    /**
-     * Reasoning 仅 assistant 消息有值：模型思考过程。它既用于历史会话
-     * 重新展示，也随 buildLLMMessages 回传给模型（Gemini function call
-     * 场景要求 thinking 随消息回放）。
-     */
-    "reasoning"?: string;
-
-    /**
-     * Usage 与 ElapsedMs 仅 assistant 消息有值：记录这一轮的 token 消耗
-     * 与总耗时（含所有迭代），供状态栏/消息底部展示与费用估算。
-     */
-    "usage"?: UsageInfo | null;
-    "elapsedMs"?: number;
-
-    /** Creates a new Message instance. */
-    constructor($$source: Partial<Message> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("role" in $$source)) {
-            this["role"] = "";
-        }
-        if (!("content" in $$source)) {
-            this["content"] = "";
-        }
-        if (!("createdAt" in $$source)) {
-            this["createdAt"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Message instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Message {
-        const $$createField3_0 = $$createType12;
-        const $$createField7_0 = $$createType14;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("toolCalls" in $$parsedSource) {
-            $$parsedSource["toolCalls"] = $$createField3_0($$parsedSource["toolCalls"]);
-        }
-        if ("usage" in $$parsedSource) {
-            $$parsedSource["usage"] = $$createField7_0($$parsedSource["usage"]);
-        }
-        return new Message($$parsedSource as Partial<Message>);
     }
 }
 
@@ -321,7 +80,7 @@ export class ModelChangedEvent {
      * Creates a new ModelChangedEvent instance from a string or object.
      */
     static createFrom($$source: any = {}): ModelChangedEvent {
-        const $$createField0_0 = $$createType15;
+        const $$createField0_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("model" in $$parsedSource) {
             $$parsedSource["model"] = $$createField0_0($$parsedSource["model"]);
@@ -425,194 +184,15 @@ export class ModelPrice {
     }
 }
 
-/**
- * ModelView 是模型条目对前端的视图。
- */
-export class ModelView {
-    "id": string;
-    "provider": string;
-    "modelId": string;
-    "contextWindow": number;
-    "inputPricePerMillion": number;
-    "outputPricePerMillion": number;
-
-    /**
-     * MaxTokens 最大输出 tokens（claude 必填；deepseek 默认 4096 上限 8192；其余可选）
-     */
-    "maxTokens": number;
-
-    /**
-     * ThinkingBudget 字符串形式整数："" 默认 / "-1" 动态 / "0" 关闭 / ">0" 固定预算
-     * （仅 gemini 类型供应商的模型使用）
-     */
-    "thinkingBudget": string;
-
-    /**
-     * EnableThinking 三态："" 默认 / "on" 开启 / "off" 关闭
-     * （仅 deepseek/qwen/ark/ollama 类型供应商的模型使用）
-     */
-    "enableThinking": string;
-
-    /** Creates a new ModelView instance. */
-    constructor($$source: Partial<ModelView> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("provider" in $$source)) {
-            this["provider"] = "";
-        }
-        if (!("modelId" in $$source)) {
-            this["modelId"] = "";
-        }
-        if (!("contextWindow" in $$source)) {
-            this["contextWindow"] = 0;
-        }
-        if (!("inputPricePerMillion" in $$source)) {
-            this["inputPricePerMillion"] = 0;
-        }
-        if (!("outputPricePerMillion" in $$source)) {
-            this["outputPricePerMillion"] = 0;
-        }
-        if (!("maxTokens" in $$source)) {
-            this["maxTokens"] = 0;
-        }
-        if (!("thinkingBudget" in $$source)) {
-            this["thinkingBudget"] = "";
-        }
-        if (!("enableThinking" in $$source)) {
-            this["enableThinking"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ModelView instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ModelView {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ModelView($$parsedSource as Partial<ModelView>);
-    }
-}
-
-/**
- * ProviderView 是供应商配置对前端的视图。
- * 安全约定：ApiKey 读取时恒为空串（不落网传输已保存的密钥），
- * 仅返回 ApiKeySet 标记"是否已配置"；保存时 ApiKey 非空才覆盖。
- */
-export class ProviderView {
-    "id": string;
-
-    /**
-     * gemini | openai | claude | deepseek | qwen | ark | ollama | qianfan
-     */
-    "type": string;
-    "apiKey": string;
-    "apiKeySet": boolean;
-    "baseUrl": string;
-
-    /**
-     * Timeout 人类可读的时长字符串（如 "60s"、"2m"），空 = 不设超时
-     */
-    "timeout": string;
-
-    /**
-     * ---- 供应商私有字段 ----
-     * qianfan AK（读取时脱敏为空）
-     */
-    "accessKey": string;
-
-    /**
-     * qianfan SK（读取时脱敏为空）
-     */
-    "secretKey": string;
-
-    /**
-     * AK/SK 是否均已配置
-     */
-    "keySet": boolean;
-
-    /**
-     * ark 区域，默认 cn-beijing
-     */
-    "region": string;
-
-    /**
-     * claude 自动前缀缓存："5m"/"1h"/"" 关闭
-     */
-    "cacheTTL": string;
-
-    /**
-     * ReasoningPolicy 历史 reasoning 回放策略："" 内置默认 / replay / strip / keep。
-     * 留空用供应商类型的内置默认（DeepSeek/Qwen/ARK=strip，Gemini=replay，其余=keep）
-     */
-    "reasoningPolicy": string;
-
-    /** Creates a new ProviderView instance. */
-    constructor($$source: Partial<ProviderView> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("type" in $$source)) {
-            this["type"] = "";
-        }
-        if (!("apiKey" in $$source)) {
-            this["apiKey"] = "";
-        }
-        if (!("apiKeySet" in $$source)) {
-            this["apiKeySet"] = false;
-        }
-        if (!("baseUrl" in $$source)) {
-            this["baseUrl"] = "";
-        }
-        if (!("timeout" in $$source)) {
-            this["timeout"] = "";
-        }
-        if (!("accessKey" in $$source)) {
-            this["accessKey"] = "";
-        }
-        if (!("secretKey" in $$source)) {
-            this["secretKey"] = "";
-        }
-        if (!("keySet" in $$source)) {
-            this["keySet"] = false;
-        }
-        if (!("region" in $$source)) {
-            this["region"] = "";
-        }
-        if (!("cacheTTL" in $$source)) {
-            this["cacheTTL"] = "";
-        }
-        if (!("reasoningPolicy" in $$source)) {
-            this["reasoningPolicy"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ProviderView instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ProviderView {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ProviderView($$parsedSource as Partial<ProviderView>);
-    }
-}
-
-/**
- * ReasoningEvent is the payload of the "agent:reasoning" event: the model's
- * thinking process (reasoning content) for the current turn. Emitted when
- * the model returns ReasoningContent alongside its response.
- */
 export class ReasoningEvent {
-    "conversationId": string;
+    "sessionId": string;
     "messageId": string;
     "content": string;
 
     /** Creates a new ReasoningEvent instance. */
     constructor($$source: Partial<ReasoningEvent> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
         }
         if (!("messageId" in $$source)) {
             this["messageId"] = "";
@@ -630,6 +210,34 @@ export class ReasoningEvent {
     static createFrom($$source: any = {}): ReasoningEvent {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new ReasoningEvent($$parsedSource as Partial<ReasoningEvent>);
+    }
+}
+
+export const Session = session$0.SessionState;
+export type Session = session$0.SessionState;
+
+export class SessionRenamedEvent {
+    "sessionId": string;
+    "title": string;
+
+    /** Creates a new SessionRenamedEvent instance. */
+    constructor($$source: Partial<SessionRenamedEvent> = {}) {
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SessionRenamedEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SessionRenamedEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SessionRenamedEvent($$parsedSource as Partial<SessionRenamedEvent>);
     }
 }
 
@@ -748,7 +356,7 @@ export class SessionStats {
      * Creates a new SessionStats instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionStats {
-        const $$createField12_0 = $$createType17;
+        const $$createField12_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("modelPrices" in $$parsedSource) {
             $$parsedSource["modelPrices"] = $$createField12_0($$parsedSource["modelPrices"]);
@@ -757,18 +365,15 @@ export class SessionStats {
     }
 }
 
-/**
- * StreamChunk is the payload of the "agent:chunk" event.
- */
 export class StreamChunk {
-    "conversationId": string;
+    "sessionId": string;
     "messageId": string;
     "chunk": string;
 
     /** Creates a new StreamChunk instance. */
     constructor($$source: Partial<StreamChunk> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
         }
         if (!("messageId" in $$source)) {
             this["messageId"] = "";
@@ -789,19 +394,16 @@ export class StreamChunk {
     }
 }
 
-/**
- * StreamDone is the payload of the "agent:done" event.
- */
 export class StreamDone {
-    "conversationId": string;
+    "sessionId": string;
     "messageId": string;
     "usage"?: UsageInfo | null;
     "elapsedMs": number;
 
     /** Creates a new StreamDone instance. */
     constructor($$source: Partial<StreamDone> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
         }
         if (!("messageId" in $$source)) {
             this["messageId"] = "";
@@ -817,7 +419,7 @@ export class StreamDone {
      * Creates a new StreamDone instance from a string or object.
      */
     static createFrom($$source: any = {}): StreamDone {
-        const $$createField2_0 = $$createType14;
+        const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("usage" in $$parsedSource) {
             $$parsedSource["usage"] = $$createField2_0($$parsedSource["usage"]);
@@ -826,25 +428,16 @@ export class StreamDone {
     }
 }
 
-/**
- * StreamError is the payload of the "agent:error" event.
- */
 export class StreamError {
-    "conversationId": string;
+    "sessionId": string;
     "messageId": string;
     "error": string;
-
-    /**
-     * Kind classifies the failure for the frontend: "timeout" (model call
-     * exceeded the iteration deadline — likely provider congestion) or
-     * "error" (anything else). Empty means "error".
-     */
     "kind"?: string;
 
     /** Creates a new StreamError instance. */
     constructor($$source: Partial<StreamError> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
         }
         if (!("messageId" in $$source)) {
             this["messageId"] = "";
@@ -865,46 +458,8 @@ export class StreamError {
     }
 }
 
-/**
- * ToolCall 记录模型请求的一次工具调用。
- * Output 不参与持久化与 LLM 上下文构建，仅在 GetConversation 返回时
- * 从对应 tool 消息合并填充，供前端展示工具执行结果。
- */
-export class ToolCall {
-    "id": string;
-    "name": string;
-    "args": string;
-    "output"?: string;
-
-    /** Creates a new ToolCall instance. */
-    constructor($$source: Partial<ToolCall> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("args" in $$source)) {
-            this["args"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ToolCall instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ToolCall {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ToolCall($$parsedSource as Partial<ToolCall>);
-    }
-}
-
-/**
- * ToolEvent is the payload of the "agent:tool" event.
- */
 export class ToolEvent {
-    "conversationId": string;
+    "sessionId": string;
     "messageId": string;
     "toolCallId": string;
     "toolName": string;
@@ -912,8 +467,8 @@ export class ToolEvent {
 
     /** Creates a new ToolEvent instance. */
     constructor($$source: Partial<ToolEvent> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
         }
         if (!("messageId" in $$source)) {
             this["messageId"] = "";
@@ -940,19 +495,16 @@ export class ToolEvent {
     }
 }
 
-/**
- * ToolResultEvent is the payload of the "agent:tool_result" event.
- */
 export class ToolResultEvent {
-    "conversationId": string;
+    "sessionId": string;
     "messageId": string;
     "toolCallId": string;
     "output": string;
 
     /** Creates a new ToolResultEvent instance. */
     constructor($$source: Partial<ToolResultEvent> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
         }
         if (!("messageId" in $$source)) {
             this["messageId"] = "";
@@ -976,97 +528,21 @@ export class ToolResultEvent {
     }
 }
 
-/**
- * TraceConfigView 是追踪配置对前端的视图。
- */
-export class TraceConfigView {
-    /**
-     * Enabled 追踪总开关：false 时即使配置了端点也不产生任何 span
-     */
-    "enabled": boolean;
-    "otlpHttpEndpoint": string;
-    "otlpGrpcEndpoint": string;
-
-    /** Creates a new TraceConfigView instance. */
-    constructor($$source: Partial<TraceConfigView> = {}) {
-        if (!("enabled" in $$source)) {
-            this["enabled"] = false;
-        }
-        if (!("otlpHttpEndpoint" in $$source)) {
-            this["otlpHttpEndpoint"] = "";
-        }
-        if (!("otlpGrpcEndpoint" in $$source)) {
-            this["otlpGrpcEndpoint"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new TraceConfigView instance from a string or object.
-     */
-    static createFrom($$source: any = {}): TraceConfigView {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new TraceConfigView($$parsedSource as Partial<TraceConfigView>);
-    }
-}
-
-/**
- * UsageInfo carries token usage statistics for the completed response.
- */
-export class UsageInfo {
-    "promptTokens": number;
-    "completionTokens": number;
-    "totalTokens": number;
-
-    /**
-     * CachedTokens 提示词中命中服务端缓存的 token 数（Gemini 隐式缓存），
-     * 用于计算缓存命中率 = CachedTokens / PromptTokens。
-     */
-    "cachedTokens"?: number;
-
-    /**
-     * ModelEntry 产生该用量的模型条目 ID（配置中的 models[].id），
-     * 多模型下用于按条目价格表核算费用。
-     */
-    "modelEntry"?: string;
-
-    /** Creates a new UsageInfo instance. */
-    constructor($$source: Partial<UsageInfo> = {}) {
-        if (!("promptTokens" in $$source)) {
-            this["promptTokens"] = 0;
-        }
-        if (!("completionTokens" in $$source)) {
-            this["completionTokens"] = 0;
-        }
-        if (!("totalTokens" in $$source)) {
-            this["totalTokens"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new UsageInfo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): UsageInfo {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new UsageInfo($$parsedSource as Partial<UsageInfo>);
-    }
-}
+export const UsageInfo = store$0.UsageInfo;
+export type UsageInfo = store$0.UsageInfo;
 
 /**
  * WorkspaceChangedEvent is the payload of the "workspace:changed" event.
  */
 export class WorkspaceChangedEvent {
-    "conversationId": string;
+    "sessionId": string;
     "path": string;
     "isCustom": boolean;
 
     /** Creates a new WorkspaceChangedEvent instance. */
     constructor($$source: Partial<WorkspaceChangedEvent> = {}) {
-        if (!("conversationId" in $$source)) {
-            this["conversationId"] = "";
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
         }
         if (!("path" in $$source)) {
             this["path"] = "";
@@ -1088,7 +564,7 @@ export class WorkspaceChangedEvent {
 }
 
 /**
- * WorkspaceInfo describes the current workspace state of a conversation.
+ * WorkspaceInfo describes the current workspace state of a session.
  */
 export class WorkspaceInfo {
     /**
@@ -1132,21 +608,10 @@ export class WorkspaceInfo {
 }
 
 // Private type creation functions
-const $$createType0 = LLMConfigView.createFrom;
-const $$createType1 = AgentConfigView.createFrom;
-const $$createType2 = TraceConfigView.createFrom;
-const $$createType3 = Message.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = FileEntry.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = ProviderView.createFrom;
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = ModelView.createFrom;
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = ToolCall.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = UsageInfo.createFrom;
-const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = ModelInfo.createFrom;
-const $$createType16 = ModelPrice.createFrom;
-const $$createType17 = $Create.Map($Create.Any, $$createType16);
+const $$createType0 = FileEntry.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = ModelInfo.createFrom;
+const $$createType3 = ModelPrice.createFrom;
+const $$createType4 = $Create.Map($Create.Any, $$createType3);
+const $$createType5 = store$0.UsageInfo.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);

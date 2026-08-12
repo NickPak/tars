@@ -126,7 +126,7 @@ func (s *termSession) applyState(dump string) {
 // (working directory and environment preserved across calls), capturing
 // stdout/stderr with an explicit timeout.
 func RunCommand(workDir string) *Definition {
-	// Sessions are keyed by workspace directory: each conversation gets its
+	// Sessions are keyed by workspace directory: each session gets its
 	// own persistent terminal state.
 	var sessions sync.Map
 

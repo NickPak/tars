@@ -5,10 +5,13 @@ import (
 	"log/slog"
 	"path/filepath"
 
+	"tars/internal/session"
+	"tars/pkg/store"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// WorkspaceInfo describes the current workspace state of a conversation.
+// WorkspaceInfo describes the current workspace state of a session.
 type WorkspaceInfo struct {
 	// Path is the effective workspace directory path.
 	Path string `json:"path"`
@@ -21,7 +24,7 @@ type WorkspaceInfo struct {
 
 // OpenDirectoryDialog shows the OS native directory picker and returns the
 // selected path (empty string if the user cancels). This does NOT change the
-// conversation's workspace — call SetWorkspaceDir to apply the selection.
+// session's workspace — call SetWorkspaceDir to apply the selection.
 func (s *AgentService) OpenDirectoryDialog() (string, error) {
 	dialog := application.Get().Dialog.OpenFile().
 		SetTitle("选择工作区目录").
@@ -36,47 +39,47 @@ func (s *AgentService) OpenDirectoryDialog() (string, error) {
 	return result, nil
 }
 
-// SetWorkspaceDir sets a custom workspace directory for the given conversation.
+// SetWorkspaceDir sets a custom workspace directory for the given session.
 // All subsequent agent file operations will operate within this directory.
 // Pass an empty string to reset to the default isolated workspace.
-func (s *AgentService) SetWorkspaceDir(conversationID string, dir string) error {
-	if !s.hasConversation(conversationID) {
-		return fmt.Errorf("conversation not found: %s", conversationID)
+func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
+	if !session.GetManager().Has(sessionID) {
+		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
 	// Persist to meta.json
-	meta, err := s.store.LoadMeta(conversationID)
+	meta, err := store.GetSessionStore().LoadMeta(sessionID)
 	if err != nil || meta == nil {
-		return fmt.Errorf("load meta for %s: %w", conversationID, err)
+		return fmt.Errorf("load meta for %s: %w", sessionID, err)
 	}
 	meta.CustomWorkDir = dir
-	if err := s.store.SaveMeta(conversationID, meta); err != nil {
+	if err := store.GetSessionStore().SaveMeta(sessionID, meta); err != nil {
 		return fmt.Errorf("save meta: %w", err)
 	}
 
 	// Emit event so frontend updates（工作区路径按需从 meta 读取，内存无需同步）
 	application.Get().Event.Emit("workspace:changed", WorkspaceChangedEvent{
-		ConversationID: conversationID,
-		Path:           dir,
-		IsCustom:       dir != "",
+		SessionID: sessionID,
+		Path:      dir,
+		IsCustom:  dir != "",
 	})
 
-	slog.Info("Workspace changed", "conv", conversationID, "dir", dir, "custom", dir != "")
+	slog.Info("Workspace changed", "session", sessionID, "dir", dir, "custom", dir != "")
 	return nil
 }
 
-// GetWorkspaceInfo returns the current workspace info for a conversation.
-func (s *AgentService) GetWorkspaceInfo(conversationID string) (*WorkspaceInfo, error) {
-	if !s.hasConversation(conversationID) {
-		return nil, fmt.Errorf("conversation not found: %s", conversationID)
+// GetWorkspaceInfo returns the current workspace info for a session.
+func (s *AgentService) GetWorkspaceInfo(sessionID string) (*WorkspaceInfo, error) {
+	if !session.GetManager().Has(sessionID) {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	meta, err := s.store.LoadMeta(conversationID)
+	meta, err := store.GetSessionStore().LoadMeta(sessionID)
 	if err != nil || meta == nil {
 		return nil, fmt.Errorf("load meta: %w", err)
 	}
 
-	path := s.store.WorkspaceDir(conversationID)
+	path := store.GetSessionStore().WorkspaceDir(sessionID)
 	isCustom := false
 	if meta.CustomWorkDir != "" {
 		path = meta.CustomWorkDir
@@ -84,15 +87,15 @@ func (s *AgentService) GetWorkspaceInfo(conversationID string) (*WorkspaceInfo, 
 	}
 
 	return &WorkspaceInfo{
-		Path:    path,
+		Path:     path,
 		IsCustom: isCustom,
-		Name:    filepath.Base(path),
+		Name:     filepath.Base(path),
 	}, nil
 }
 
 // WorkspaceChangedEvent is the payload of the "workspace:changed" event.
 type WorkspaceChangedEvent struct {
-	ConversationID string `json:"conversationId"`
-	Path           string `json:"path"`
-	IsCustom       bool   `json:"isCustom"`
+	SessionID string `json:"sessionId"`
+	Path      string `json:"path"`
+	IsCustom  bool   `json:"isCustom"`
 }

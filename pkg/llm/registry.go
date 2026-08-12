@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cloudwego/eino-ext/components/model/ark"
 	"github.com/cloudwego/eino-ext/components/model/claude"
@@ -19,6 +20,12 @@ import (
 	"google.golang.org/genai"
 )
 
+// --- 全局单例 ---
+
+var (
+	defaultRegistry atomic.Pointer[Registry]
+)
+
 // Registry 管理模型条目到 ChatModel 的工厂与缓存。
 //
 // 缓存语义：ChatModel 实例按模型条目 ID 惰性构建并缓存；
@@ -29,6 +36,10 @@ type Registry struct {
 	mu     sync.RWMutex
 	cfg    *Config
 	models map[string]model.ToolCallingChatModel
+	// healthy 按模型条目 ID 记录最近一次调用的成败（状态栏绿/红灯）。
+	// 无记录时视为健康（乐观默认）；SaveAppConfig 成功后重置——
+	// 配置修改可能已修复密钥/端点，旧的失败记录随之失效。
+	healthy map[string]bool
 }
 
 // NewRegistry 创建注册表。启动期容错：配置非法或激活模型构建失败
@@ -38,12 +49,47 @@ func NewRegistry(cfg *Config) *Registry {
 	if cfg == nil {
 		cfg = &Config{}
 	}
-	r := &Registry{cfg: cfg, models: map[string]model.ToolCallingChatModel{}}
+	r := &Registry{
+		cfg:     cfg,
+		models:  map[string]model.ToolCallingChatModel{},
+		healthy: map[string]bool{},
+	}
 	if err := cfg.Validate(); err == nil {
 		// 预构建激活模型，尽早暴露配置问题（错误延迟到 Active() 暴露）
 		_, _, _ = r.Active()
 	}
 	return r
+}
+
+// InitRegistry 从配置创建全局 Registry 单例，进程启动时调用一次。
+// 之后由 UpdateConfig 原地热更新，不再重建。
+func InitRegistry(cfg *Config) {
+	defaultRegistry.Store(NewRegistry(cfg))
+}
+
+// GetRegistry 返回全局 Registry 实例；Init 之前调用返回 nil。
+func GetRegistry() *Registry { return defaultRegistry.Load() }
+
+// SetHealthy 记录指定模型条目最近一次调用的成败。
+func (r *Registry) SetHealthy(modelID string, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.healthy[modelID] = ok
+}
+
+// IsHealthy 返回指定模型条目的健康状态；无记录时返回 true（乐观默认）。
+func (r *Registry) IsHealthy(modelID string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ok, recorded := r.healthy[modelID]
+	return !recorded || ok
+}
+
+// ResetHealth 清空所有健康记录（配置保存后调用，给修复后的配置一次全新尝试）。
+func (r *Registry) ResetHealth() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.healthy = map[string]bool{}
 }
 
 // UpdateConfig 热更新配置：校验 → 预构建激活模型（失败则不生效）→ 替换并清空缓存。

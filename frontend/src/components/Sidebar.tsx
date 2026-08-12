@@ -7,12 +7,12 @@ import RenameDialog, { ConfirmDialog } from "./Dialog";
 import ResizeHandle from "./ResizeHandle";
 
 export default function Sidebar() {
-  const conversations = useChatStore((s) => s.conversations);
+  const sessions = useChatStore((s) => s.sessions);
   const activeId = useChatStore((s) => s.activeId);
-  const newConversation = useChatStore((s) => s.newConversation);
-  const selectConversation = useChatStore((s) => s.selectConversation);
-  const deleteConversation = useChatStore((s) => s.deleteConversation);
-  const renameConversation = useChatStore((s) => s.renameConversation);
+  const newSession = useChatStore((s) => s.newSession);
+  const selectSession = useChatStore((s) => s.selectSession);
+  const deleteSession = useChatStore((s) => s.deleteSession);
+  const renameSession = useChatStore((s) => s.renameSession);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
@@ -37,25 +37,25 @@ export default function Sidebar() {
         </button>
       </div>
 
-      <button className="new-chat-btn" onClick={newConversation}>
+      <button className="new-chat-btn" onClick={newSession}>
         <Plus size={16} />
         新对话
       </button>
 
       <div className="sidebar-section">最近</div>
 
-      <nav className="conversation-list">
-        {conversations.length === 0 && (
-          <div className="conversation-empty">暂无历史对话</div>
+      <nav className="session-list">
+        {sessions.length === 0 && (
+          <div className="session-empty">暂无历史对话</div>
         )}
-        {conversations.map((c) => (
+        {sessions.map((c) => (
           <div
             key={c.id}
-            className={`conversation-item${c.id === activeId ? " active" : ""}`}
-            onClick={() => void selectConversation(c.id)}
+            className={`session-item${c.id === activeId ? " active" : ""}`}
+            onClick={() => void selectSession(c.id)}
           >
-            <span className="conversation-title">{c.title || "新对话"}</span>
-            <span className="conversation-actions">
+            <span className="session-title">{c.title || "新对话"}</span>
+            <span className="session-actions">
               <button
                 aria-label="重命名"
                 title="重命名"
@@ -99,7 +99,7 @@ export default function Sidebar() {
         onCancel={() => setRenameTarget(null)}
         onConfirm={(title) => {
           if (renameTarget && title !== renameTarget.title) {
-            void renameConversation(renameTarget.id, title);
+            void renameSession(renameTarget.id, title);
           }
           setRenameTarget(null);
         }}
@@ -112,7 +112,7 @@ export default function Sidebar() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) {
-            void deleteConversation(deleteTarget);
+            void deleteSession(deleteTarget);
           }
           setDeleteTarget(null);
         }}

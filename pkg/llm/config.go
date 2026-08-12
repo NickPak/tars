@@ -1,22 +1,8 @@
-// Package llm 管理模型供应商与模型条目的配置，并提供 ChatModel 工厂与缓存。
-//
-// 配置模型是两级结构：
-//   - ProviderConfig：供应商（一组鉴权/端点参数），type 为封闭枚举
-//     （见 ProviderXxx 常量），每个类型对应 eino-ext 的原生组件——
-//     不走 OpenAI 兼容接口转译，保留各模型的私有特性
-//     （Claude 前缀缓存、DeepSeek/Qwen/ARK/Ollama 的思考开关等）。
-//   - ModelConfig：模型条目（模型 ID + 上下文窗口 + 价格表 + 供应商私有参数），
-//     通过 provider 字段引用供应商。
-//
-// 设计取舍：私有参数以显式字段挂在 Provider/Model 结构上（不用 map），
-// 工厂构建时按供应商类型映射到组件原生字段；不支持的类型忽略。
-// 新增供应商类型 = 扩展 ProviderXxx 常量 + 工厂 switch 一个 case。
 package llm
 
 import (
 	"fmt"
 	"strings"
-	"time"
 )
 
 // 支持的供应商类型（各对应 eino-ext 原生组件，保留模型私有特性）。
@@ -39,8 +25,8 @@ func ProviderTypes() []string {
 	}
 }
 
-// isValidProviderType 校验供应商类型。
-func isValidProviderType(t string) bool {
+// IsValidProviderType 校验供应商类型。
+func IsValidProviderType(t string) bool {
 	switch t {
 	case ProviderGemini, ProviderOpenAI, ProviderClaude, ProviderDeepSeek,
 		ProviderQwen, ProviderArk, ProviderOllama, ProviderQianfan:
@@ -51,15 +37,13 @@ func isValidProviderType(t string) bool {
 }
 
 // ProviderConfig 是一个模型供应商的接入配置。
+// ID 不进 YAML——文件中 map key 即 ID，Validate 时归一化回填。
 type ProviderConfig struct {
-	ID     string `yaml:"id" json:"id"`     // 唯一键，如 "gemini"、"my-deepseek"
+	ID     string `yaml:"-" json:"id"`      // 唯一键（= providers map 的 key），如 "gemini"
 	Type   string `yaml:"type" json:"type"` // 见 ProviderXxx 常量
 	ApiKey string `yaml:"apiKey,omitempty" json:"apiKey,omitempty"`
 	// BaseUrl 可覆盖官方端点（openai/qwen 类型必填；ollama 默认 http://localhost:11434）
 	BaseUrl string `yaml:"baseUrl,omitempty" json:"baseUrl,omitempty"`
-	// Timeout 请求超时（"60s"、"2m" 形式）。注意：不传给底层 HTTP 客户端——
-	// http.Client.Timeout 会截断流式响应；取消由 agent 层的迭代超时（context）负责。
-	Timeout string `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 
 	// ---- 供应商私有字段 ----
 
@@ -113,8 +97,9 @@ func (p *ProviderConfig) ReasoningReplayMode() string {
 }
 
 // ModelConfig 是一个可用模型条目。
+// ID 不进 YAML——文件中 map key 即 ID，Validate 时归一化回填。
 type ModelConfig struct {
-	ID       string `yaml:"id" json:"id"`             // 唯一键，如 "gemini/gemini-3.1-flash-lite"
+	ID       string `yaml:"-" json:"id"`              // 唯一键（= models map 的 key），如 "gemini/gemini-3.1-flash-lite"
 	Provider string `yaml:"provider" json:"provider"` // 引用 ProviderConfig.ID
 	// ModelId 发送给 API 的模型名。注意 ark 类型填的是推理接入点 endpoint ID（ep-xxx）。
 	ModelId string `yaml:"modelId" json:"modelId"`
@@ -136,81 +121,81 @@ type ModelConfig struct {
 	EnableThinking *bool `yaml:"enableThinking,omitempty" json:"enableThinking,omitempty"`
 }
 
-// Config 是 LLM 配置：供应商列表 + 模型列表 + 当前激活条目。
+// Config 是 LLM 配置：供应商 + 模型条目注册表 + 当前激活条目。
+//
+// Providers/Models 以 map 存储，map key 即条目 ID（YAML/JSON 中同样以
+// key 表达，条目结构内的 ID 字段不参与 YAML 序列化，避免双写）。
+// Validate 会把条目内的 ID 归一化为 map key（条件写入，不触碰已一致的
+// 共享条目）。Config 在发布后不可变（整体替换语义），map 查找无并发问题。
 type Config struct {
-	Active    string           `yaml:"active,omitempty" json:"active,omitempty"` // 当前使用的 ModelConfig.ID
-	Providers []ProviderConfig `yaml:"providers,omitempty" json:"providers,omitempty"`
-	Models    []ModelConfig    `yaml:"models,omitempty" json:"models,omitempty"`
+	Active    string                     `yaml:"active,omitempty" json:"active,omitempty"` // 当前使用的 ModelConfig.ID
+	Providers map[string]*ProviderConfig `yaml:"providers,omitempty" json:"providers,omitempty"`
+	Models    map[string]*ModelConfig    `yaml:"models,omitempty" json:"models,omitempty"`
 }
 
 // FindProvider 按 ID 查找供应商，未找到返回 nil。
 func (c *Config) FindProvider(id string) *ProviderConfig {
-	for i := range c.Providers {
-		if c.Providers[i].ID == id {
-			return &c.Providers[i]
-		}
-	}
-	return nil
+	return c.Providers[id]
 }
 
 // FindModel 按 ID 查找模型条目，未找到返回 nil。
 func (c *Config) FindModel(id string) *ModelConfig {
-	for i := range c.Models {
-		if c.Models[i].ID == id {
-			return &c.Models[i]
-		}
-	}
-	return nil
+	return c.Models[id]
 }
 
-// ActiveModel 返回当前激活的模型条目；active 未设置或失效时回退到第一个条目。
+// ActiveModel 返回当前激活的模型条目；active 未设置或失效时回退到
+// key 排序后的第一个条目（map 无序，回退必须确定性）。
 // 没有任何模型条目时返回 nil。
 func (c *Config) ActiveModel() *ModelConfig {
 	if m := c.FindModel(c.Active); m != nil {
 		return m
 	}
-	if len(c.Models) > 0 {
-		return &c.Models[0]
+	first := ""
+	for id := range c.Models {
+		if first == "" || id < first {
+			first = id
+		}
 	}
-	return nil
+	if first == "" {
+		return nil
+	}
+	return c.Models[first]
 }
 
-// Validate 校验配置的引用完整性。允许零模型条目（启动期容忍，
-// 首次对话时 Active() 才报错，便于用户通过设置界面修复配置）。
+// Validate 校验配置的引用完整性，并把条目的 ID 归一化为 map key。
+// 允许零模型条目（启动期容忍，首次对话时 Active() 才报错，
+// 便于用户通过设置界面修复配置）。
 func (c *Config) Validate() error {
-	seen := map[string]bool{}
-	for _, p := range c.Providers {
-		if p.ID == "" {
+	for id, p := range c.Providers {
+		if id == "" {
 			return fmt.Errorf("供应商 ID 不能为空")
 		}
-		if seen["p:"+p.ID] {
-			return fmt.Errorf("供应商 ID %q 重复", p.ID)
+		if p == nil {
+			return fmt.Errorf("供应商 %q 配置为空", id)
 		}
-		seen["p:"+p.ID] = true
-		if !isValidProviderType(p.Type) {
+		if p.ID != id {
+			p.ID = id // 归一化：map key 是身份的唯一来源
+		}
+		if !IsValidProviderType(p.Type) {
 			return fmt.Errorf("供应商 %q 的类型 %q 不支持（可选：%s）",
-				p.ID, p.Type, strings.Join(ProviderTypes(), " / "))
-		}
-		if p.Timeout != "" {
-			if _, err := time.ParseDuration(p.Timeout); err != nil {
-				return fmt.Errorf("供应商 %q 的超时格式无效（示例：60s、2m）：%w", p.ID, err)
-			}
+				id, p.Type, strings.Join(ProviderTypes(), " / "))
 		}
 	}
-	seen = map[string]bool{}
-	for _, m := range c.Models {
-		if m.ID == "" {
+	for id, m := range c.Models {
+		if id == "" {
 			return fmt.Errorf("模型条目 ID 不能为空")
 		}
-		if seen[m.ID] {
-			return fmt.Errorf("模型条目 ID %q 重复", m.ID)
+		if m == nil {
+			return fmt.Errorf("模型条目 %q 配置为空", id)
 		}
-		seen[m.ID] = true
+		if m.ID != id {
+			m.ID = id
+		}
 		if m.ModelId == "" {
-			return fmt.Errorf("模型条目 %q 的模型 ID 不能为空", m.ID)
+			return fmt.Errorf("模型条目 %q 的模型 ID 不能为空", id)
 		}
 		if c.FindProvider(m.Provider) == nil {
-			return fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", m.ID, m.Provider)
+			return fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", id, m.Provider)
 		}
 	}
 	if c.Active != "" && c.FindModel(c.Active) == nil {

@@ -5,6 +5,8 @@ import {
   Bot,
   Brain,
   Check,
+  Eye,
+  EyeOff,
   FolderOpen,
   Info,
   Palette,
@@ -17,7 +19,7 @@ import { agentApi } from "../services/agentApi";
 import { useChatStore } from "../store/chatStore";
 import { useSettingsStore } from "../store/settingsStore";
 import type { SettingsTab } from "../store/settingsStore";
-import type { AppConfigView, LLMConfigView, ModelView, ProviderView } from "../types";
+import type { AppConfig, LLMConfig, ModelConfig, ProviderConfig } from "../types";
 import { ConfirmDialog } from "./Dialog";
 
 interface NavItem {
@@ -57,8 +59,8 @@ export default function SettingsPanel() {
   const setTab = useSettingsStore((s) => s.setTab);
   const closeSettings = useSettingsStore((s) => s.closeSettings);
 
-  const [draft, setDraft] = useState<AppConfigView | null>(null);
-  const [baseline, setBaseline] = useState<AppConfigView | null>(null);
+  const [draft, setDraft] = useState<AppConfig | null>(null);
+  const [baseline, setBaseline] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,11 +109,11 @@ export default function SettingsPanel() {
 
   if (!open) return null;
 
-  const update = (fn: (d: AppConfigView) => AppConfigView) => {
+  const update = (fn: (d: AppConfig) => AppConfig) => {
     setDraft((d) => (d ? fn(d) : d));
     setSaved(false);
   };
-  const updateLLM = (patch: Partial<LLMConfigView>) =>
+  const updateLLM = (patch: Partial<LLMConfig>) =>
     update((d) => ({ ...d, llm: { ...d.llm, ...patch } }));
 
   const handleSave = async () => {
@@ -120,7 +122,7 @@ export default function SettingsPanel() {
     setError(null);
     try {
       await agentApi.saveAppConfig(draft);
-      // 重新拉取（apiKey 被消费后回到脱敏状态）
+      // 重新拉取（后端归一化后的生效值，如 apiKey 引用展开结果）
       const fresh = await agentApi.getAppConfig();
       setDraft(fresh);
       setBaseline(fresh);
@@ -353,12 +355,45 @@ function Seg<T extends string>({
 
 /* ===== 各分类页面 ===== */
 
+/** 密钥输入框：默认掩码显示，眼睛按钮切换明文/掩码 */
+function SecretInput({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder?: string;
+  onChange: (v: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="settings-secret">
+      <input
+        className="settings-input"
+        type={show ? "text" : "password"}
+        value={value}
+        placeholder={placeholder}
+        autoComplete="off"
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        className="settings-secret-eye"
+        title={show ? "隐藏密钥" : "显示密钥"}
+        aria-label={show ? "隐藏密钥" : "显示密钥"}
+        onClick={() => setShow((s) => !s)}
+      >
+        {show ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </div>
+  );
+}
+
 function GeneralPage({
   draft,
   update,
 }: {
-  draft: AppConfigView;
-  update: (fn: (d: AppConfigView) => AppConfigView) => void;
+  draft: AppConfig;
+  update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
   const handleBrowse = async () => {
     const dir = await agentApi.openDirectoryDialog();
@@ -486,8 +521,8 @@ function ModelPage({
   draft,
   updateLLM,
 }: {
-  draft: AppConfigView;
-  updateLLM: (patch: Partial<LLMConfigView>) => void;
+  draft: AppConfig;
+  updateLLM: (patch: Partial<LLMConfig>) => void;
 }) {
   const llm = draft.llm;
   // 手风琴展开的条目 key："p:<索引>" 供应商 / "m:<索引>" 模型。
@@ -506,11 +541,11 @@ function ModelPage({
   const genModelId = (provider: string, modelId: string) =>
     modelId ? `${provider}/${modelId}` : "";
 
-  const patchProvider = (idx: number, patch: Partial<ProviderView>) => {
+  const patchProvider = (idx: number, patch: Partial<ProviderConfig>) => {
     const providers = llm.providers.map((p, i) =>
       i === idx ? { ...p, ...patch } : p,
     );
-    const out: Partial<LLMConfigView> = { providers };
+    const out: Partial<LLMConfig> = { providers };
     // 供应商 ID 变更时级联：引用它的模型条目跟随改 provider 并重新生成条目 ID
     const oldId = llm.providers[idx]?.id;
     const newId = providers[idx]?.id;
@@ -535,8 +570,8 @@ function ModelPage({
       providers: [
         ...llm.providers,
         {
-          id, type: "openai", apiKey: "", apiKeySet: false, baseUrl: "",
-          timeout: "", accessKey: "", secretKey: "", keySet: false,
+          id, type: "openai", apiKey: "", baseUrl: "",
+          accessKey: "", secretKey: "",
           region: "", cacheTTL: "", reasoningPolicy: "",
         },
       ],
@@ -549,13 +584,13 @@ function ModelPage({
   };
 
   // --- 模型条目增删改 ---
-  const patchModel = (idx: number, patch: Partial<ModelView>) => {
+  const patchModel = (idx: number, patch: Partial<ModelConfig>) => {
     const models = llm.models.map((m, i) => {
       if (i !== idx) return m;
       const next = { ...m, ...patch };
       return { ...next, id: genModelId(next.provider, next.modelId) };
     });
-    const out: Partial<LLMConfigView> = { models };
+    const out: Partial<LLMConfig> = { models };
     // 条目 ID 自动重算后若变化，激活引用同步跟随
     const oldId = llm.models[idx]?.id;
     const newId = models[idx]?.id;
@@ -566,7 +601,7 @@ function ModelPage({
   };
   const addModel = () => {
     const provider = llm.providers[0]?.id ?? "";
-    let m: ModelView = {
+    const m: ModelConfig = {
       id: "",
       provider,
       modelId: "",
@@ -574,8 +609,8 @@ function ModelPage({
       inputPricePerMillion: 0,
       outputPricePerMillion: 0,
       maxTokens: 0,
-      thinkingBudget: "",
-      enableThinking: "",
+      thinkingBudget: null,
+      enableThinking: null,
     };
     updateLLM({ models: [...llm.models, m] });
     setExpanded("m:" + llm.models.length); // 新条目的索引
@@ -762,9 +797,9 @@ function ModelPage({
                     >
                       <Seg
                         value={
-                          m.enableThinking === "on"
+                          m.enableThinking === true
                             ? "on"
-                            : m.enableThinking === "off"
+                            : m.enableThinking === false
                               ? "off"
                               : "default"
                         }
@@ -775,7 +810,7 @@ function ModelPage({
                         ]}
                         onChange={(v) =>
                           patchModel(idx, {
-                            enableThinking: v === "default" ? "" : v,
+                            enableThinking: v === "default" ? null : v === "on",
                           })
                         }
                       />
@@ -802,11 +837,11 @@ function ModelPage({
                 <span className="settings-item-sub">
                   {providerMeta(p.type).label}
                   {providerMeta(p.type).needAkSk
-                    ? p.keySet
+                    ? p.accessKey && p.secretKey
                       ? " · 已配置 AK/SK"
                       : " · 未配置 AK/SK"
                     : providerMeta(p.type).needApiKey
-                      ? p.apiKeySet
+                      ? p.apiKey
                         ? " · 已配置 Key"
                         : " · 未配置 Key"
                       : ""}
@@ -850,19 +885,12 @@ function ModelPage({
                   {providerMeta(p.type).needApiKey && (
                     <Field
                       label="API Key"
-                      hint={
-                        p.apiKeySet
-                          ? "已配置。输入新值以更换；留空保持不变。"
-                          : "尚未配置 API Key。"
-                      }
+                      hint={p.apiKey ? "已配置，点击眼睛图标查看明文。" : "尚未配置 API Key。"}
                     >
-                      <input
-                        className="settings-input"
-                        type="password"
+                      <SecretInput
                         value={p.apiKey}
-                        placeholder={p.apiKeySet ? "已配置（未修改）" : "输入 API Key"}
-                        autoComplete="off"
-                        onChange={(e) => patchProvider(idx, { apiKey: e.target.value })}
+                        placeholder="输入 API Key"
+                        onChange={(v) => patchProvider(idx, { apiKey: v })}
                       />
                     </Field>
                   )}
@@ -870,25 +898,19 @@ function ModelPage({
                     <>
                       <Field
                         label="Access Key"
-                        hint={p.keySet ? "已配置。输入新值以更换；留空保持不变。" : "千帆平台 AK。"}
+                        hint={p.accessKey ? "已配置，点击眼睛图标查看明文。" : "千帆平台 AK。"}
                       >
-                        <input
-                          className="settings-input"
-                          type="password"
+                        <SecretInput
                           value={p.accessKey}
-                          placeholder={p.keySet ? "已配置（未修改）" : "输入 Access Key"}
-                          autoComplete="off"
-                          onChange={(e) => patchProvider(idx, { accessKey: e.target.value })}
+                          placeholder="输入 Access Key"
+                          onChange={(v) => patchProvider(idx, { accessKey: v })}
                         />
                       </Field>
                       <Field label="Secret Key" hint="千帆平台 SK。">
-                        <input
-                          className="settings-input"
-                          type="password"
+                        <SecretInput
                           value={p.secretKey}
-                          placeholder={p.keySet ? "已配置（未修改）" : "输入 Secret Key"}
-                          autoComplete="off"
-                          onChange={(e) => patchProvider(idx, { secretKey: e.target.value })}
+                          placeholder="输入 Secret Key"
+                          onChange={(v) => patchProvider(idx, { secretKey: v })}
                         />
                       </Field>
                     </>
@@ -928,14 +950,6 @@ function ModelPage({
                       />
                     </Field>
                   )}
-                  <Field label="请求超时" hint="如 60s、2m；留空不设超时。">
-                    <input
-                      className="settings-input small"
-                      value={p.timeout}
-                      placeholder="60s"
-                      onChange={(e) => patchProvider(idx, { timeout: e.target.value })}
-                    />
-                  </Field>
                   <Field
                     label="思考链回放"
                     hint={`历史消息中 reasoning 的处理策略。这是协议要求而非偏好：选错会导致 400（DeepSeek/Qwen/ARK 必须剥离，Gemini 必须回放）。当前内置默认：${REASONING_POLICY_LABELS[REASONING_POLICY_DEFAULTS[p.type] ?? "keep"]}。`}
@@ -971,20 +985,20 @@ function ModelPage({
   );
 }
 
-/** 思考预算分段控件（gemini 模型条目用） */
+/** 思考预算分段控件（gemini 模型条目用）。值语义：null 默认 / -1 动态 / 0 关闭 / >0 固定预算 */
 function ThinkingBudgetSeg({
   value,
   onChange,
 }: {
-  value: string;
-  onChange: (v: string) => void;
+  value: number | null;
+  onChange: (v: number | null) => void;
 }) {
   const mode =
-    value === ""
+    value === null
       ? "default"
-      : value === "-1"
+      : value === -1
         ? "dynamic"
-        : value === "0"
+        : value === 0
           ? "off"
           : "custom";
   return (
@@ -999,13 +1013,7 @@ function ThinkingBudgetSeg({
         ]}
         onChange={(m) =>
           onChange(
-            m === "default"
-              ? ""
-              : m === "dynamic"
-                ? "-1"
-                : m === "off"
-                  ? "0"
-                  : "1024",
+            m === "default" ? null : m === "dynamic" ? -1 : m === "off" ? 0 : 1024,
           )
         }
       />
@@ -1014,8 +1022,8 @@ function ThinkingBudgetSeg({
           className="settings-input small"
           type="number"
           min={1}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={value ?? 1024}
+          onChange={(e) => onChange(Math.max(1, e.target.valueAsNumber || 1))}
         />
       )}
     </>
@@ -1026,8 +1034,8 @@ function AgentPage({
   draft,
   update,
 }: {
-  draft: AppConfigView;
-  update: (fn: (d: AppConfigView) => AppConfigView) => void;
+  draft: AppConfig;
+  update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
   return (
     <PageShell title="Agent" desc="ReAct 循环运行时行为，保存后立即生效。">
@@ -1086,8 +1094,8 @@ function TracePage({
   draft,
   update,
 }: {
-  draft: AppConfigView;
-  update: (fn: (d: AppConfigView) => AppConfigView) => void;
+  draft: AppConfig;
+  update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
   return (
     <PageShell

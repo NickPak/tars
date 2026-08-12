@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"tars/internal/session"
+	"tars/pkg/store"
 )
 
 // FileEntry represents a single file or directory in the workspace file tree.
@@ -23,15 +25,16 @@ type FileEntry struct {
 // with very deep or large directory trees.
 const maxTreeDepth = 5
 
-// ListWorkspaceFiles returns a recursive file tree of the given conversation's
-// workspace directory. The workspace dir is per-conversation: {workDir}/conversations/{id}/workspace/.
-// If the directory doesn't exist yet (new conversation), an empty slice is returned.
-func (s *AgentService) ListWorkspaceFiles(conversationID string) ([]FileEntry, error) {
-	if !s.hasConversation(conversationID) {
-		return nil, fmt.Errorf("conversation not found: %s", conversationID)
+// ListWorkspaceFiles returns a recursive file tree of the given session's
+// workspace directory. The workspace dir is per-session: {workDir}/sessions/{id}/workspace/.
+// If the directory doesn't exist yet (new session), an empty slice is returned.
+func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error) {
+	if !session.GetManager().Has(sessionID) {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := s.store.ResolveWorkDir(conversationID)
+	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
+
 	if _, err := os.Stat(wsDir); os.IsNotExist(err) {
 		return []FileEntry{}, nil
 	}
@@ -44,13 +47,13 @@ func (s *AgentService) ListWorkspaceFiles(conversationID string) ([]FileEntry, e
 }
 
 // OpenFile opens a file with the OS default application (not hardcoded to any
-// specific editor). The path should be relative to the conversation's workspace.
-func (s *AgentService) OpenFile(conversationID string, relPath string) error {
-	if !s.hasConversation(conversationID) {
-		return fmt.Errorf("conversation not found: %s", conversationID)
+// specific editor). The path should be relative to the session's workspace.
+func (s *AgentService) OpenFile(sessionID string, relPath string) error {
+	if !session.GetManager().Has(sessionID) {
+		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := s.store.ResolveWorkDir(conversationID)
+	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
 	fullPath := filepath.Join(wsDir, relPath)
 
 	if _, err := os.Stat(fullPath); err != nil {
@@ -60,15 +63,15 @@ func (s *AgentService) OpenFile(conversationID string, relPath string) error {
 	return openWithSystemDefault(fullPath)
 }
 
-// RevealInExplorer opens the OS file manager at the conversation's workspace
+// RevealInExplorer opens the OS file manager at the session's workspace
 // directory. On Windows this is Explorer, on macOS Finder, on Linux the
 // default file manager via xdg-open.
-func (s *AgentService) RevealInExplorer(conversationID string) error {
-	if !s.hasConversation(conversationID) {
-		return fmt.Errorf("conversation not found: %s", conversationID)
+func (s *AgentService) RevealInExplorer(sessionID string) error {
+	if !session.GetManager().Has(sessionID) {
+		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := s.store.ResolveWorkDir(conversationID)
+	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
 	if _, err := os.Stat(wsDir); err != nil {
 		return fmt.Errorf("workspace not found: %s", wsDir)
 	}
@@ -78,13 +81,13 @@ func (s *AgentService) RevealInExplorer(conversationID string) error {
 
 // RevealFileInExplorer reveals a specific file in the OS file manager
 // (selects the file in Explorer/Finder). The path should be relative to the
-// conversation's workspace.
-func (s *AgentService) RevealFileInExplorer(conversationID string, relPath string) error {
-	if !s.hasConversation(conversationID) {
-		return fmt.Errorf("conversation not found: %s", conversationID)
+// session's workspace.
+func (s *AgentService) RevealFileInExplorer(sessionID string, relPath string) error {
+	if !session.GetManager().Has(sessionID) {
+		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := s.store.ResolveWorkDir(conversationID)
+	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
 	fullPath := filepath.Join(wsDir, relPath)
 
 	if _, err := os.Stat(fullPath); err != nil {

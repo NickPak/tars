@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
+	"tars/pkg/store"
 	"tars/pkg/tools"
 	"time"
 
@@ -27,7 +29,7 @@ type LoopResult struct {
 }
 
 // Agent runs the ReAct loop. The loop itself is stateless; a single Agent can
-// serve multiple conversations as long as messages/hooks are passed per-call.
+// serve multiple sessions as long as messages/hooks are passed per-call.
 type Agent struct {
 	// Model is the chat model (must support tool calling).
 	model model.ToolCallingChatModel
@@ -49,19 +51,41 @@ type Agent struct {
 	// statusBar 是 Agent 的内部状态栏（每轮迭代前注入 <agent_status>）。
 	// 在 New 中创建，无需外部设置。
 	statusBar *StatusBar
+
+	// todoStore 是 per-session 的 TODO 状态机（设计文档 2.10）。
+	// Agent 内部创建并管理：InitTodoStore 完成 New + Load + 绑定 StatusBar。
+	// 工具执行时 Agent 把它放入 ctx，让 todo_write Handler 能取到。
+	todoStore *store.TodoStore
 }
 
 // New creates an Agent from the given config.
-func New(model model.ToolCallingChatModel, executor *tools.Manager, maxIterations int) *Agent {
+// sessionID 用于从全局 SessionStore 定位会话目录，自动初始化 TodoStore
+// （todo.json 在会话目录下，跨会话恢复）。多 Agent 时子 Agent 传自己的 ID。
+func New(sessionID string, maxIterations int, timeout time.Duration, executor *tools.Manager, model model.ToolCallingChatModel) *Agent {
 	if maxIterations <= 0 {
 		maxIterations = 1
 	}
-	return &Agent{
-		model:         model,
-		executor:      executor,
-		maxIterations: maxIterations,
-		statusBar:     NewStatusBar(),
+	a := &Agent{
+		model:            model,
+		executor:         executor,
+		maxIterations:    maxIterations,
+		IterationTimeout: timeout,
+		statusBar:        NewStatusBar(),
 	}
+	a.initTodoStore(sessionID)
+	return a
+}
+
+func (a *Agent) initTodoStore(sessionID string) {
+	baseDir := ""
+	if ss := store.GetSessionStore(); ss != nil && sessionID != "" {
+		baseDir = ss.SessionDir(sessionID)
+	}
+	a.todoStore = store.NewTodoStore(baseDir)
+	if err := a.todoStore.Load(); err != nil {
+		slog.Error("failed to load todo store", "session", sessionID, "error", err)
+	}
+	a.statusBar.SetTodoStore(a.todoStore)
 }
 
 // Run executes the ReAct loop over the given message history.
@@ -70,6 +94,12 @@ func New(model model.ToolCallingChatModel, executor *tools.Manager, maxIteration
 func (a *Agent) Run(ctx context.Context, messages []*schema.Message, hooks Hooks) (*LoopResult, error) {
 	if hooks == nil {
 		hooks = nopHooks{}
+	}
+
+	// 工具 Handler 通过 ctx 获取 per-session 的 TodoStore
+	//（todo_write 工具需要）。StatusBar 不经 ctx，直接持有引用。
+	if a.todoStore != nil {
+		ctx = store.WithTodoStore(ctx, a.todoStore)
 	}
 
 	msgs := append([]*schema.Message{}, messages...)

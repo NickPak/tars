@@ -18,8 +18,8 @@ function configure() {
         "agent:reasoning": $$createType3,
         "agent:tool": $$createType4,
         "agent:tool_result": $$createType5,
-        "conversation:renamed": $$createType6,
-        "model:changed": $$createType7,
+        "model:changed": $$createType6,
+        "session:renamed": $$createType7,
         "workspace:changed": $$createType8,
     }));
 }
@@ -31,8 +31,8 @@ const $$createType2 = main$0.StreamError.createFrom;
 const $$createType3 = main$0.ReasoningEvent.createFrom;
 const $$createType4 = main$0.ToolEvent.createFrom;
 const $$createType5 = main$0.ToolResultEvent.createFrom;
-const $$createType6 = main$0.ConversationRenamedEvent.createFrom;
-const $$createType7 = main$0.ModelChangedEvent.createFrom;
+const $$createType6 = main$0.ModelChangedEvent.createFrom;
+const $$createType7 = main$0.SessionRenamedEvent.createFrom;
 const $$createType8 = main$0.WorkspaceChangedEvent.createFrom;
 
 configure();

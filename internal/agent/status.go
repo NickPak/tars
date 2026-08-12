@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"tars/pkg/store"
 	"tars/pkg/tools"
 
 	"github.com/cloudwego/eino/schema"
@@ -25,7 +26,7 @@ import (
 // 不产生中间 []string 切片；静态 env 前缀在 New 时预算好。
 // git 采集带 5 秒 TTL 缓存（fork 两个 git 进程太贵，不能每轮都跑）。
 //
-// 当前实现 env + counters 两区；todo/loaded/events 三区待对应功能落地后扩展。
+// 当前实现 env + todo + counters 三区；loaded/events 两区待对应功能落地后扩展。
 type StatusBar struct {
 	// ---- 静态字段（进程内不变，New 时初始化）----
 	// envStatic 是 env 区静态行（os/shell/python），预拼接好，
@@ -36,6 +37,14 @@ type StatusBar struct {
 	time string
 	cwd  string
 	git  string
+
+	// ---- todo（从 TodoStore 读取，设计文档 2.10 数据流）----
+	// todoStore 由 Agent 注入（SetTodoStore），nil 时跳过 todo 区。
+	// 不再从 ctx 取——StatusBar 是 Agent 内部组件，直接持有引用。
+	todoStore       *store.TodoStore
+	todos           []store.Todo
+	todoVersion     int64 // 上次看到的 TodoStore 版本号
+	todoChangedIter int   // 版本号变化时的迭代号，用于"未更新轮数"提醒
 
 	// ---- counters（由循环本身维护）----
 	calls             map[string]int
@@ -82,14 +91,30 @@ func NewStatusBar() *StatusBar {
 	return sb
 }
 
+// SetTodoStore 注入 per-session 的 TODO 状态机。
+// 由 Agent.SetTodoStore 调用；nil 时 todo 区不渲染。
+func (sb *StatusBar) SetTodoStore(ts *store.TodoStore) {
+	sb.todoStore = ts
+}
+
 // Render 渲染当前迭代的状态栏消息，追加到上下文尾部。
 // 动态字段（time/cwd/git）每次调用实时采集。
+// todo 数据直接从持有的 todoStore 读取，不经 ctx。
 func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message {
 	sb.iteration = iteration
 	sb.time = nowFormatted()
 	if wd := tools.WorkDirFromCtx(ctx); wd != "" {
 		sb.cwd = wd
 		sb.git = gitStatus(ctx, wd)
+	}
+	// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
+	if sb.todoStore != nil {
+		todos, version := sb.todoStore.Snapshot()
+		if version != sb.todoVersion {
+			sb.todoVersion = version
+			sb.todoChangedIter = iteration
+		}
+		sb.todos = todos
 	}
 	return sb.render()
 }
@@ -137,6 +162,22 @@ func (sb *StatusBar) render() *schema.Message {
 	b.WriteString(sb.envStatic) // 预拼接的 os/shell/python 行
 	b.WriteString("  </env>\n")
 
+	// ---- todo ----
+	// 从 TodoStore 快照渲染（设计文档 2.10 数据流投影）
+	if len(sb.todos) > 0 {
+		b.WriteString("  <todo>\n")
+		for i, t := range sb.todos {
+			b.WriteString("    [")
+			b.WriteString(strconv.Itoa(i + 1))
+			b.WriteString("] ")
+			b.WriteString(truncateLine(t.Content, 60))
+			b.WriteString(" — ")
+			b.WriteString(t.Status)
+			b.WriteByte('\n')
+		}
+		b.WriteString("  </todo>\n")
+	}
+
 	// ---- counters ----
 	b.WriteString("  <counters>\n    iteration: ")
 	b.WriteString(strconv.Itoa(sb.iteration))
@@ -173,6 +214,24 @@ func (sb *StatusBar) render() *schema.Message {
 			b.WriteString("）")
 		}
 		b.WriteString(" → 勿原样重试，换方案或向用户说明\n")
+	}
+
+	// TODO 陈旧提醒：列表存在且 N 轮未更新且有未完成项时提示推进
+	if len(sb.todos) > 0 {
+		pending := 0
+		for _, t := range sb.todos {
+			if t.Status == store.TodoPending || t.Status == store.TodoInProgress {
+				pending++
+			}
+		}
+		stale := sb.iteration - sb.todoChangedIter
+		if stale >= 3 && pending > 0 {
+			b.WriteString("    todo: 已 ")
+			b.WriteString(strconv.Itoa(stale))
+			b.WriteString(" 轮未更新（")
+			b.WriteString(strconv.Itoa(pending))
+			b.WriteString(" 项待处理）→ 检查是否需要推进或更新\n")
+		}
 	}
 
 	b.WriteString("  </counters>\n</agent_status>")

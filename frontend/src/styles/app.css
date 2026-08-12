@@ -244,7 +244,7 @@ body.resizing-col .resize-handle::after {
   color: var(--text-dim);
 }
 
-.conversation-list {
+.session-list {
   flex: 1;
   overflow-y: auto;
   display: flex;
@@ -252,13 +252,13 @@ body.resizing-col .resize-handle::after {
   gap: 2px;
 }
 
-.conversation-empty {
+.session-empty {
   padding: 12px 8px;
   color: var(--text-dim);
   font-size: 13px;
 }
 
-.conversation-item {
+.session-item {
   display: flex;
   align-items: center;
   padding: 9px 10px;
@@ -267,15 +267,15 @@ body.resizing-col .resize-handle::after {
   color: var(--text);
 }
 
-.conversation-item:hover {
+.session-item:hover {
   background: var(--hover);
 }
 
-.conversation-item.active {
+.session-item.active {
   background: rgba(168, 199, 250, 0.14);
 }
 
-.conversation-title {
+.session-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -284,16 +284,16 @@ body.resizing-col .resize-handle::after {
   font-size: 14px;
 }
 
-.conversation-actions {
+.session-actions {
   display: none;
   gap: 2px;
 }
 
-.conversation-item:hover .conversation-actions {
+.session-item:hover .session-actions {
   display: flex;
 }
 
-.conversation-actions button {
+.session-actions button {
   display: grid;
   place-items: center;
   width: 28px;
@@ -305,7 +305,7 @@ body.resizing-col .resize-handle::after {
   cursor: pointer;
 }
 
-.conversation-actions button:hover {
+.session-actions button:hover {
   background: var(--hover);
   color: var(--text);
 }
@@ -1852,6 +1852,38 @@ body.resizing-col .resize-handle::after {
 
 .settings-input.small {
   width: 120px;
+}
+
+/* 密钥输入框：默认掩码显示，右侧眼睛按钮切换明文 */
+.settings-secret {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settings-secret .settings-input {
+  padding-right: 32px;
+}
+
+.settings-secret-eye {
+  position: absolute;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.settings-secret-eye:hover {
+  color: var(--text);
+  background: var(--hover);
 }
 
 /* 只读值展示（如自动生成的条目 ID） */

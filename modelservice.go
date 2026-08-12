@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"sort"
+	"tars/internal/config"
 	"tars/pkg/llm"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -42,7 +44,7 @@ func modelInfoOf(m *llm.ModelConfig, cfg *llm.Config) ModelInfo {
 // GetModelInfo returns the currently active model (TopicBar/状态栏展示用）。
 // 未配置任何模型时返回空对象（前端退化为不显示）。
 func (s *AgentService) GetModelInfo() (*ModelInfo, error) {
-	cfg := s.llmReg.Config()
+	cfg := llm.GetRegistry().Config()
 	m := cfg.ActiveModel()
 	if m == nil {
 		return &ModelInfo{}, nil
@@ -52,11 +54,17 @@ func (s *AgentService) GetModelInfo() (*ModelInfo, error) {
 }
 
 // ListModels returns all configured model entries（TopicBar 切换下拉用）。
+// 按条目 ID 排序返回（map 无序，下拉列表需要确定性顺序）。
 func (s *AgentService) ListModels() ([]ModelInfo, error) {
-	cfg := s.llmReg.Config()
-	infos := make([]ModelInfo, 0, len(cfg.Models))
-	for i := range cfg.Models {
-		infos = append(infos, modelInfoOf(&cfg.Models[i], cfg))
+	cfg := llm.GetRegistry().Config()
+	ids := make([]string, 0, len(cfg.Models))
+	for id := range cfg.Models {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	infos := make([]ModelInfo, 0, len(ids))
+	for _, id := range ids {
+		infos = append(infos, modelInfoOf(cfg.Models[id], cfg))
 	}
 	return infos, nil
 }
@@ -64,7 +72,7 @@ func (s *AgentService) ListModels() ([]ModelInfo, error) {
 // SetActiveModel switches the active model: 预构建目标模型（失败则不切换），
 // 热更新注册表并落盘（active 键），最后广播 model:changed 事件。
 func (s *AgentService) SetActiveModel(id string) error {
-	cfg := s.llmReg.Config()
+	cfg := llm.GetRegistry().Config()
 	if cfg.FindModel(id) == nil {
 		return fmt.Errorf("模型条目 %q 不存在", id)
 	}
@@ -75,17 +83,15 @@ func (s *AgentService) SetActiveModel(id string) error {
 	newLLM := *cfg
 	newLLM.Active = id
 	// UpdateConfig 会预构建激活模型，配置错误在此暴露，不影响现状
-	if err := s.llmReg.UpdateConfig(&newLLM); err != nil {
+	if err := llm.GetRegistry().UpdateConfig(&newLLM); err != nil {
 		return err
 	}
 
-	s.cfgMu.Lock()
-	if s.appConfig != nil {
-		newCfg := *s.appConfig
+	if cur := config.Get(); cur != nil {
+		newCfg := *cur
 		newCfg.LLM = &newLLM
-		s.appConfig = &newCfg
+		config.Set(&newCfg)
 	}
-	s.cfgMu.Unlock()
 
 	if err := s.persistConfigFile(); err != nil {
 		// 内存已切换，落盘失败仅警告（重启后回退到文件中的 active）

@@ -52,7 +52,7 @@ export default function TopicBar() {
     setMenuOpen(false);
     if (!activeId) return;
     try {
-      await agentApi.exportConversation(activeId);
+      await agentApi.exportSession(activeId);
     } catch (e) {
       setBackendError(`导出失败: ${e instanceof Error ? e.message : String(e)}`);
     }
