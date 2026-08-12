@@ -38,7 +38,6 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
           secretKey: v.secretKey ?? "",
           region: v.region ?? "",
           cacheTTL: v.cacheTTL ?? "",
-          reasoningPolicy: v.reasoningPolicy ?? "",
         };
       }),
       models: Object.entries(llm?.models ?? {}).map(([id, m]) => {

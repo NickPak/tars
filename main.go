@@ -4,6 +4,8 @@ import (
 	"embed"
 	"log"
 
+	"tars/internal/event"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -21,13 +23,13 @@ var iconPNG []byte
 func init() {
 	// Register custom events with their payload types. The binding generator
 	// picks these up and provides a strongly typed JS/TS API for them.
-	application.RegisterEvent[StreamChunk]("agent:chunk")
-	application.RegisterEvent[StreamDone]("agent:done")
-	application.RegisterEvent[StreamError]("agent:error")
-	application.RegisterEvent[ToolEvent]("agent:tool")
-	application.RegisterEvent[ToolResultEvent]("agent:tool_result")
-	application.RegisterEvent[ReasoningEvent]("agent:reasoning")
-	application.RegisterEvent[SessionRenamedEvent]("session:renamed")
+	application.RegisterEvent[event.StreamChunk]("agent:chunk")
+	application.RegisterEvent[event.StreamDone]("agent:done")
+	application.RegisterEvent[event.StreamError]("agent:error")
+	application.RegisterEvent[event.ToolEvent]("agent:tool")
+	application.RegisterEvent[event.ToolResultEvent]("agent:tool_result")
+	application.RegisterEvent[event.ReasoningEvent]("agent:reasoning")
+	application.RegisterEvent[event.SessionRenamedEvent]("session:renamed")
 	application.RegisterEvent[WorkspaceChangedEvent]("workspace:changed")
 	application.RegisterEvent[ModelChangedEvent]("model:changed")
 }

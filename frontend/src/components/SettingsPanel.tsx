@@ -498,24 +498,6 @@ function providerMeta(type: string) {
 /** 哪些供应商类型的模型条目显示"思考模式"开关 */
 const THINKING_SWITCH_TYPES = ["deepseek", "qwen", "ark", "ollama"];
 
-/** 各供应商类型的内置 reasoning 回放策略（与后端 defaultReasoningPolicies 对应） */
-const REASONING_POLICY_DEFAULTS: Record<string, string> = {
-  gemini: "replay",
-  deepseek: "strip",
-  qwen: "strip",
-  ark: "strip",
-  openai: "keep",
-  claude: "keep",
-  ollama: "keep",
-  qianfan: "keep",
-};
-
-const REASONING_POLICY_LABELS: Record<string, string> = {
-  replay: "回放",
-  strip: "剥离",
-  keep: "透传",
-};
-
 /** 模型页：供应商列表 + 模型列表（多供应商管理） */
 function ModelPage({
   draft,
@@ -572,7 +554,7 @@ function ModelPage({
         {
           id, type: "openai", apiKey: "", baseUrl: "",
           accessKey: "", secretKey: "",
-          region: "", cacheTTL: "", reasoningPolicy: "",
+          region: "", cacheTTL: "",
         },
       ],
     });
@@ -950,28 +932,6 @@ function ModelPage({
                       />
                     </Field>
                   )}
-                  <Field
-                    label="思考链回放"
-                    hint={`历史消息中 reasoning 的处理策略。这是协议要求而非偏好：选错会导致 400（DeepSeek/Qwen/ARK 必须剥离，Gemini 必须回放）。当前内置默认：${REASONING_POLICY_LABELS[REASONING_POLICY_DEFAULTS[p.type] ?? "keep"]}。`}
-                  >
-                    <Seg
-                      value={p.reasoningPolicy || "default"}
-                      options={[
-                        {
-                          value: "default",
-                          label: `默认（${REASONING_POLICY_LABELS[REASONING_POLICY_DEFAULTS[p.type] ?? "keep"]}）`,
-                        },
-                        { value: "replay", label: "回放" },
-                        { value: "strip", label: "剥离" },
-                        { value: "keep", label: "透传" },
-                      ]}
-                      onChange={(v) =>
-                        patchProvider(idx, {
-                          reasoningPolicy: v === "default" ? "" : v,
-                        })
-                      }
-                    />
-                  </Field>
                 </div>
               )}
             </div>

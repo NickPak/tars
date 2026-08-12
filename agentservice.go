@@ -5,80 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
 	"tars/internal/config"
+	"tars/internal/event"
 	"tars/internal/session"
+	"tars/internal/turn"
 	"tars/pkg/llm"
 	"tars/pkg/prompt"
 	"tars/pkg/store"
 	"tars/pkg/tools"
 	"tars/pkg/trace"
 
-	"github.com/cloudwego/eino/schema"
-	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// ============================================================================
-// Types re-exported for backward compatibility（Wails 绑定生成器只扫描
-// main 包；其他 main 内文件与前端 bindings 仍引用这些名字）。
-// ============================================================================
-
-type ToolCall = store.ToolCall
-type UsageInfo = store.UsageInfo
-type Message = store.Message
-type Session = session.SessionState
-
-// ============================================================================
-// Stream event payloads（Wails 事件系统）
-// ============================================================================
-
-type StreamChunk struct {
-	SessionID string `json:"sessionId"`
-	MessageID string `json:"messageId"`
-	Chunk     string `json:"chunk"`
-}
-
-type StreamDone struct {
-	SessionID string     `json:"sessionId"`
-	MessageID string     `json:"messageId"`
-	Usage     *UsageInfo `json:"usage,omitempty"`
-	ElapsedMs int64      `json:"elapsedMs"`
-}
-
-type StreamError struct {
-	SessionID string `json:"sessionId"`
-	MessageID string `json:"messageId"`
-	Error     string `json:"error"`
-	Kind      string `json:"kind,omitempty"`
-}
-
-type ToolEvent struct {
-	SessionID  string `json:"sessionId"`
-	MessageID  string `json:"messageId"`
-	ToolCallID string `json:"toolCallId"`
-	ToolName   string `json:"toolName"`
-	Args       string `json:"args"`
-}
-
-type ToolResultEvent struct {
-	SessionID  string `json:"sessionId"`
-	MessageID  string `json:"messageId"`
-	ToolCallID string `json:"toolCallId"`
-	Output     string `json:"output"`
-}
-
-type ReasoningEvent struct {
-	SessionID string `json:"sessionId"`
-	MessageID string `json:"messageId"`
-	Content   string `json:"content"`
-}
-
-type SessionRenamedEvent struct {
-	SessionID string `json:"sessionId"`
-	Title     string `json:"title"`
-}
+// 事件载荷类型统一定义在 internal/event 包。
 
 // ============================================================================
 // AgentService —— 对前端暴露的 API 层。
@@ -162,11 +103,11 @@ func (s *AgentService) ServiceShutdown() error {
 
 // --- Session management API ---
 
-func (s *AgentService) CreateSession() (*Session, error) {
+func (s *AgentService) CreateSession() (*session.Info, error) {
 	return session.GetManager().Create()
 }
 
-func (s *AgentService) ListSessions() ([]Session, error) {
+func (s *AgentService) ListSessions() ([]*session.Info, error) {
 	return session.GetManager().List(), nil
 }
 
@@ -176,8 +117,8 @@ func (s *AgentService) DeleteSession(id string) error {
 
 // --- Session queries ---
 
-func (s *AgentService) GetSession(id string) (*Session, error) {
-	sess, ok := session.GetManager().Get(id)
+func (s *AgentService) GetSession(id string) (*session.Info, error) {
+	sess, ok := session.GetManager().Find(id)
 	if !ok {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
@@ -188,60 +129,18 @@ func (s *AgentService) GetSession(id string) (*Session, error) {
 
 // SendMessage sends a user message and starts the agent loop.
 func (s *AgentService) SendMessage(sessionID, content string) error {
-	sessionMgr := session.GetManager()
-	sess, ok := sessionMgr.Get(sessionID)
+	sess, ok := session.GetManager().Find(sessionID)
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-
-	now := time.Now().UnixMilli()
-
-	userMsg := Message{
-		ID:        uuid.NewString(),
-		Role:      schema.User,
-		Content:   content,
-		CreatedAt: now,
-	}
-	assistantMsg := Message{
-		ID:        uuid.NewString(),
-		Role:      schema.Assistant,
-		CreatedAt: now,
+	// 轮运行中禁止再次发送：会覆盖运行中轮的 cancel，
+	// 且旧 goroutine 注销时会误删新轮的标记。
+	if sess.IsRunning() {
+		return fmt.Errorf("turn in progress, cancel it first")
 	}
 
-	sessionMgr.WithSession(sessionID, func(s *session.SessionState) {
-		s.Messages = append(s.Messages, userMsg, assistantMsg)
-		s.UpdatedAt = now
-		if s.Title == "新对话" {
-			title := content
-			if len(title) > 50 {
-				title = title[:50]
-			}
-			s.Title = title
-			if err := store.GetSessionStore().SaveMeta(sessionID, &store.SessionMeta{
-				Title:     s.Title,
-				CreatedAt: s.CreatedAt,
-				UpdatedAt: s.UpdatedAt,
-			}); err != nil {
-				slog.Warn("Failed to save session meta", "id", sessionID, "error", err)
-			}
-		}
-	})
-
-	if err := s.persistMessage(sessionID, userMsg); err != nil {
-		return err
-	}
-	if err := s.persistMessage(sessionID, assistantMsg); err != nil {
-		return err
-	}
-
-	assistantIndex := len(sess.Messages) - 1
-
-	messages := s.buildLLMMessages(sess)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	sessionMgr.RegisterCancel(sessionID, cancel)
-
-	go s.runAgentLoop(ctx, sessionID, assistantMsg.ID, assistantIndex, messages, content)
+	sess.AppendUserTurn(content) // 消息准备：尾部留下本轮空 assistant 锚点
+	turn.Start(sess, content)
 	return nil
 }
 
@@ -255,113 +154,35 @@ func (s *AgentService) CancelMessage(sessionID string) error {
 	return nil
 }
 
-// DeleteMessage deletes a message by ID and returns its index.
+// DeleteMessage deletes a message by ID — along with all messages after it
+// (truncate semantics, matching the frontend) — and returns its index.
+// Rejected while a turn is running: the message list is frozen mid-turn.
 func (s *AgentService) DeleteMessage(sessionID, messageID string) (int, error) {
-	sessionMgr := session.GetManager()
-	sess, ok := sessionMgr.Get(sessionID)
+	sess, ok := session.GetManager().Find(sessionID)
 	if !ok {
 		return -1, fmt.Errorf("session not found: %s", sessionID)
 	}
-
-	index := -1
-	sessionMgr.WithSession(sessionID, func(s *session.SessionState) {
-		for i, m := range s.Messages {
-			if m.ID == messageID {
-				index = i
-				s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
-				break
-			}
-		}
-	})
-	if index == -1 {
-		return -1, fmt.Errorf("message not found: %s", messageID)
+	if sess.IsRunning() {
+		return -1, fmt.Errorf("turn in progress, cancel it first")
 	}
-
-	if err := s.rewriteMessages(sessionID, sess.Messages); err != nil {
-		return -1, err
-	}
-	return index, nil
+	return sess.DeleteFrom(messageID)
 }
 
 // RetryMessage retries the last turn (or the turn containing the given
 // assistant message). It regenerates the assistant response for that turn.
 func (s *AgentService) RetryMessage(sessionID string, messageID string) error {
-	sessionMgr := session.GetManager()
-	sess, ok := sessionMgr.Get(sessionID)
+	sess, ok := session.GetManager().Find(sessionID)
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-
-	if len(sess.Messages) == 0 {
-		return fmt.Errorf("no messages to retry")
+	if sess.IsRunning() {
+		return fmt.Errorf("turn in progress, cancel it first")
 	}
-
-	var userIndex = -1
-	sessionMgr.WithSession(sessionID, func(s *session.SessionState) {
-		targetAssistant := -1
-		if messageID == "" {
-			for i := len(s.Messages) - 1; i >= 0; i-- {
-				if s.Messages[i].Role == schema.Assistant {
-					targetAssistant = i
-					break
-				}
-			}
-		} else {
-			for i, m := range s.Messages {
-				if m.ID == messageID && m.Role == schema.Assistant {
-					targetAssistant = i
-					break
-				}
-			}
-		}
-		if targetAssistant == -1 {
-			return
-		}
-
-		for i := targetAssistant - 1; i >= 0; i-- {
-			if s.Messages[i].Role == schema.User {
-				userIndex = i
-				break
-			}
-		}
-		if userIndex == -1 {
-			return
-		}
-
-		s.Messages = s.Messages[:userIndex+1]
-
-		now := time.Now().UnixMilli()
-		s.Messages = append(s.Messages, Message{
-			ID:        uuid.NewString(),
-			Role:      schema.Assistant,
-			CreatedAt: now,
-		})
-		s.UpdatedAt = now
-	})
-
-	if userIndex == -1 {
-		return fmt.Errorf("no previous user message found to retry")
-	}
-
-	if err := s.rewriteMessages(sessionID, sess.Messages); err != nil {
+	userText, err := sess.PrepareRetry(messageID)
+	if err != nil {
 		return err
 	}
-
-	assistantIndex := len(sess.Messages) - 1
-	messages := s.buildLLMMessages(sess)
-
-	userText := ""
-	for i := userIndex; i >= 0; i-- {
-		if sess.Messages[i].Role == schema.User {
-			userText = sess.Messages[i].Content
-			break
-		}
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	sessionMgr.RegisterCancel(sessionID, cancel)
-
-	go s.runAgentLoop(ctx, sessionID, sess.Messages[assistantIndex].ID, assistantIndex, messages, userText)
+	turn.Start(sess, userText)
 	return nil
 }
 
@@ -369,117 +190,26 @@ func (s *AgentService) RetryMessage(sessionID string, messageID string) error {
 
 // EditMessage edits a user message in-place (no regeneration).
 func (s *AgentService) EditMessage(sessionID, messageID, content string) error {
-	sessionMgr := session.GetManager()
-	sess, ok := sessionMgr.Get(sessionID)
+	sess, ok := session.GetManager().Find(sessionID)
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-
-	index := -1
-	sessionMgr.WithSession(sessionID, func(s *session.SessionState) {
-		for i, m := range s.Messages {
-			if m.ID == messageID {
-				if m.Role != schema.User {
-					return
-				}
-				s.Messages[i].Content = content
-				s.UpdatedAt = time.Now().UnixMilli()
-				index = i
-				break
-			}
-		}
-	})
-	if index == -1 {
-		return fmt.Errorf("message not found or not editable: %s", messageID)
-	}
-
-	return s.rewriteMessages(sessionID, sess.Messages)
+	return sess.EditUserMessage(messageID, content)
 }
 
 // --- Session rename ---
 
 func (s *AgentService) RenameSession(id, title string) error {
-	sessionMgr := session.GetManager()
-	sess, ok := sessionMgr.Get(id)
+	sess, ok := session.GetManager().Find(id)
 	if !ok {
 		return fmt.Errorf("session not found: %s", id)
 	}
-
-	sessionMgr.WithSession(id, func(s *session.SessionState) {
-		s.Title = title
-		s.UpdatedAt = time.Now().UnixMilli()
-	})
-
-	if err := store.GetSessionStore().SaveMeta(id, &store.SessionMeta{
-		Title:     sess.Title,
-		CreatedAt: sess.CreatedAt,
-		UpdatedAt: sess.UpdatedAt,
-	}); err != nil {
+	if err := sess.SetTitle(title); err != nil {
 		return err
 	}
-
-	application.Get().Event.Emit("session:renamed", SessionRenamedEvent{
+	application.Get().Event.Emit("session:renamed", event.SessionRenamedEvent{
 		SessionID: id,
 		Title:     title,
 	})
 	return nil
-}
-
-// --- LLM message construction ---
-
-// buildLLMMessages 把会话存储里的消息转成 Eino schema.Message 格式。
-// 系统提示词 = base + 静态 env（OS/tools），不含会话工作目录——
-// 该信息由 StatusBar 的 cwd 字段每轮迭代注入。
-func (s *AgentService) buildLLMMessages(sess *session.SessionState) []*schema.Message {
-	msgs := make([]*schema.Message, 0, len(sess.Messages)+1)
-	msgs = append(msgs, schema.SystemMessage(prompt.SystemPrompt()))
-
-	policy := s.reasoningPolicy()
-	for _, m := range sess.Messages {
-		if m.Role == schema.Assistant && m.Reasoning != "" {
-			m2 := m
-			applyReasoningPolicy(&m2, policy)
-			msgs = append(msgs, m2.ToSchemaMessage())
-			continue
-		}
-		msgs = append(msgs, m.ToSchemaMessage())
-	}
-	return msgs
-}
-
-// applyReasoningPolicy 按供应商策略调整 assistant 消息的 reasoning 回放。
-func applyReasoningPolicy(m *Message, policy string) {
-	switch policy {
-	case llm.ReasoningReplay:
-		// 透传，不做调整
-	case llm.ReasoningStrip:
-		m.Reasoning = ""
-	case llm.ReasoningKeep:
-		// 保持原样
-	}
-}
-
-// reasoningPolicy 返回当前激活模型供应商的 reasoning 回放策略
-// （replay/strip/keep）。配置缺失时保守取 keep（透传）。
-func (s *AgentService) reasoningPolicy() string {
-	cfg := llm.GetRegistry().Config()
-	m := cfg.ActiveModel()
-	if m == nil {
-		return llm.ReasoningKeep
-	}
-	p := cfg.FindProvider(m.Provider)
-	if p == nil {
-		return llm.ReasoningKeep
-	}
-	return p.ReasoningReplayMode()
-}
-
-// --- Persistence helpers（委托给 session.Manager） ---
-
-func (s *AgentService) persistMessage(sessionID string, msg Message) error {
-	return session.GetManager().AppendMessage(sessionID, msg)
-}
-
-func (s *AgentService) rewriteMessages(sessionID string, msgs []Message) error {
-	return session.GetManager().RewriteMessages(sessionID, msgs)
 }

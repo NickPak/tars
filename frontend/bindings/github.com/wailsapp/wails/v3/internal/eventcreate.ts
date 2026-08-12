@@ -9,6 +9,9 @@ import { Create as $Create } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as main$0 from "../../../../../tars/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as event$0 from "../../../../../tars/internal/event/models.js";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
@@ -25,14 +28,14 @@ function configure() {
 }
 
 // Private type creation functions
-const $$createType0 = main$0.StreamChunk.createFrom;
-const $$createType1 = main$0.StreamDone.createFrom;
-const $$createType2 = main$0.StreamError.createFrom;
-const $$createType3 = main$0.ReasoningEvent.createFrom;
-const $$createType4 = main$0.ToolEvent.createFrom;
-const $$createType5 = main$0.ToolResultEvent.createFrom;
+const $$createType0 = event$0.StreamChunk.createFrom;
+const $$createType1 = event$0.StreamDone.createFrom;
+const $$createType2 = event$0.StreamError.createFrom;
+const $$createType3 = event$0.ReasoningEvent.createFrom;
+const $$createType4 = event$0.ToolEvent.createFrom;
+const $$createType5 = event$0.ToolResultEvent.createFrom;
 const $$createType6 = main$0.ModelChangedEvent.createFrom;
-const $$createType7 = main$0.SessionRenamedEvent.createFrom;
+const $$createType7 = event$0.SessionRenamedEvent.createFrom;
 const $$createType8 = main$0.WorkspaceChangedEvent.createFrom;
 
 configure();

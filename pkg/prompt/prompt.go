@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 //go:embed system.md
@@ -70,7 +72,10 @@ func BuildSystemPrompt(env EnvironmentContext) string {
 
 // --- 全局单例 ---
 
-var systemPrompt string
+var (
+	systemPrompt  string
+	systemMessage *schema.Message
+)
 
 // InitSystemPrompt 在进程启动时构建一次全局系统提示词。
 // 必须在 tools.InitManager 之后调用（工具列表需要完整）。
@@ -80,10 +85,16 @@ func InitSystemPrompt(toolNames []string) {
 		Platform: runtime.GOARCH,
 		Tools:    toolNames,
 	})
+
+	systemMessage = schema.SystemMessage(systemPrompt)
 }
 
-// SystemPrompt 返回进程级系统提示词；InitSystemPrompt 之前调用返回空串。
-func SystemPrompt() string { return systemPrompt }
+// GetSystemPrompt 返回进程级系统提示词；InitSystemPrompt 之前调用返回空串。
+func GetSystemPrompt() string { return systemPrompt }
+
+func GetSystemMessage() *schema.Message {
+	return systemMessage
+}
 
 // fallbackPrompt is used only if the embedded file cannot be read (should
 // never happen with go:embed). It provides a minimal inline prompt so the

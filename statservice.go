@@ -81,11 +81,11 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 		}
 	}
 
-	var msgs []store.Message
-	sessionMgr.WithSession(sessionID, func(conv *session.SessionState) {
-		// 拷贝消息切片头，缩短持锁时间（统计只读 Usage/CreatedAt 等标量字段）
-		msgs = append([]store.Message{}, conv.Messages...)
-	})
+	// 拷贝消息切片头做只读快照（统计只读 Usage/CreatedAt 等标量字段）
+	var msgs []*store.Message
+	if sess, ok := sessionMgr.Find(sessionID); ok {
+		msgs = append([]*store.Message{}, sess.Messages...)
+	}
 	if msgs == nil {
 		return stats, nil
 	}

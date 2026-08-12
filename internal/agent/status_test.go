@@ -17,7 +17,7 @@ func TestRun_StatusBarInjectedAndNotPersisted(t *testing.T) {
 	m := &stubModel{responses: []*schema.Message{
 		{Role: schema.Assistant, Content: "hello"},
 	}}
-	a := New("", 5, 0, newTestManager(nil), m)
+	a := New(5, 0, newTestManager(nil), m)
 
 	h := &recordingHooks{}
 	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "hi"}}, h)
@@ -110,7 +110,7 @@ func TestRun_ToolErrorOutputNoPanic(t *testing.T) {
 			return "permission denied", fmt.Errorf("permission denied")
 		},
 	})
-	a := New("", 5, 0, mgr, m)
+	a := New(5, 0, mgr, m)
 
 	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, &recordingHooks{})
 	if err != nil {
@@ -127,9 +127,8 @@ func TestStatusBar_TodoZoneRendersFromStore(t *testing.T) {
 		{ID: "1", Content: "搭建 MCP 服务器", Status: store.TodoInProgress},
 		{ID: "2", Content: "编写测试", Status: store.TodoPending},
 	})
-	sb.SetTodoStore(todoStore)
 
-	msg := sb.Render(context.Background(), 1)
+	msg := sb.Render(store.WithTodoStore(context.Background(), todoStore), 1)
 
 	if !strings.Contains(msg.Content, "<todo>") {
 		t.Errorf("expected <todo> zone: %q", msg.Content)
@@ -148,9 +147,8 @@ func TestStatusBar_TodoZoneRendersFromStore(t *testing.T) {
 func TestStatusBar_TodoZoneOmittedWhenEmpty(t *testing.T) {
 	sb := NewStatusBar()
 	todoStore := store.NewTodoStore("")
-	sb.SetTodoStore(todoStore)
 
-	msg := sb.Render(context.Background(), 1)
+	msg := sb.Render(store.WithTodoStore(context.Background(), todoStore), 1)
 
 	if strings.Contains(msg.Content, "<todo>") {
 		t.Errorf("empty todo should not render <todo> zone: %q", msg.Content)
@@ -159,7 +157,7 @@ func TestStatusBar_TodoZoneOmittedWhenEmpty(t *testing.T) {
 
 func TestStatusBar_TodoZoneOmittedWhenNoStore(t *testing.T) {
 	sb := NewStatusBar()
-	// 不调用 SetTodoStore — todoStore 为 nil
+	// ctx 中不注入 TodoStore
 	msg := sb.Render(context.Background(), 1)
 	if strings.Contains(msg.Content, "<todo>") {
 		t.Errorf("nil todoStore should not render <todo> zone: %q", msg.Content)
@@ -172,16 +170,16 @@ func TestStatusBar_TodoStalenessReminder(t *testing.T) {
 	todoStore.Replace([]store.Todo{
 		{ID: "1", Content: "任务A", Status: store.TodoPending},
 	})
-	sb.SetTodoStore(todoStore)
+	ctx := store.WithTodoStore(context.Background(), todoStore)
 
 	// 第 1 轮：刚创建，不提示
-	msg := sb.Render(context.Background(), 1)
+	msg := sb.Render(ctx, 1)
 	if strings.Contains(msg.Content, "未更新") {
 		t.Errorf("iteration 1 should not show staleness: %q", msg.Content)
 	}
 
 	// 第 4 轮：已 3 轮未更新，应提示
-	msg = sb.Render(context.Background(), 4)
+	msg = sb.Render(ctx, 4)
 	if !strings.Contains(msg.Content, "已 3 轮未更新") {
 		t.Errorf("iteration 4 should show staleness reminder: %q", msg.Content)
 	}
@@ -190,7 +188,7 @@ func TestStatusBar_TodoStalenessReminder(t *testing.T) {
 	todoStore.Replace([]store.Todo{
 		{ID: "1", Content: "任务A", Status: store.TodoInProgress},
 	})
-	msg = sb.Render(context.Background(), 5)
+	msg = sb.Render(ctx, 5)
 	if strings.Contains(msg.Content, "未更新") {
 		t.Errorf("after update, staleness should reset: %q", msg.Content)
 	}
@@ -203,10 +201,9 @@ func TestStatusBar_TodoStalenessSkipsWhenAllDone(t *testing.T) {
 		{ID: "1", Content: "任务A", Status: store.TodoCompleted},
 		{ID: "2", Content: "任务B", Status: store.TodoCancelled},
 	})
-	sb.SetTodoStore(todoStore)
 
 	// 即使多轮未更新，全完成/取消时不提示
-	msg := sb.Render(context.Background(), 5)
+	msg := sb.Render(store.WithTodoStore(context.Background(), todoStore), 5)
 	if strings.Contains(msg.Content, "未更新") {
 		t.Errorf("no staleness when all done/cancelled: %q", msg.Content)
 	}

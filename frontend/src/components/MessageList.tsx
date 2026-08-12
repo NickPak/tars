@@ -61,7 +61,9 @@ export default function MessageList() {
               {m.role === "user" ? (
                 <UserBubble
                   content={m.content}
-                  onDelete={() => void deleteMessage(m.id)}
+                  onDelete={
+                    isStreaming ? undefined : () => void deleteMessage(m.id)
+                  }
                 />
               ) : (
                 <div className="assistant-body">
@@ -103,7 +105,9 @@ export default function MessageList() {
                       content={m.content}
                       usage={m.usage}
                       elapsedMs={m.elapsedMs}
-                      onDelete={() => void deleteMessage(m.id)}
+                      onDelete={
+                        isStreaming ? undefined : () => void deleteMessage(m.id)
+                      }
                     />
                   )}
                 </div>
@@ -117,13 +121,13 @@ export default function MessageList() {
   );
 }
 
-/** 用户消息气泡：hover 显示复制/删除按钮 */
+/** 用户消息气泡：hover 显示复制/删除按钮；流式进行中隐藏删除（onDelete 缺省） */
 function UserBubble({
   content,
   onDelete,
 }: {
   content: string;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -141,13 +145,15 @@ function UserBubble({
         <button className="msg-action" title="复制" onClick={handleCopy}>
           {copied ? <Check size={15} /> : <Copy size={15} />}
         </button>
-        <button
-          className="msg-action msg-action-danger"
-          title="删除"
-          onClick={onDelete}
-        >
-          <Trash2 size={15} />
-        </button>
+        {onDelete && (
+          <button
+            className="msg-action msg-action-danger"
+            title="删除"
+            onClick={onDelete}
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -345,9 +351,15 @@ function MessageStatusBar({
       <button className="msg-action" title="踩">
         <ThumbsDown size={16} />
       </button>
-      <button className="msg-action msg-action-danger" title="删除" onClick={onDelete}>
-        <Trash2 size={16} />
-      </button>
+      {onDelete && (
+        <button
+          className="msg-action msg-action-danger"
+          title="删除"
+          onClick={onDelete}
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
       <span className="msg-status-metrics">
         {hitRate !== undefined && (
           <span className="msg-usage" title="本次缓存命中率（cachedTokens / promptTokens）">

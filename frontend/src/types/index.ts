@@ -198,8 +198,6 @@ export interface ProviderConfig {
   region: string;
   /** Claude 自动前缀缓存："5m" | "1h" | "" 关闭 */
   cacheTTL: string;
-  /** 历史 reasoning 回放策略："" 内置默认 / "replay" / "strip" / "keep" */
-  reasoningPolicy: string;
 }
 
 /** 模型条目配置（llm.ModelConfig） */

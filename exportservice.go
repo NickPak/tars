@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"tars/pkg/store"
 	"time"
 
 	"tars/internal/session"
@@ -18,15 +19,13 @@ import (
 // for a destination via the OS save dialog, and writes the file.
 // Returns the chosen path ("" if the user cancelled).
 func (s *AgentService) ExportSession(sessionID string) (string, error) {
-	// 渲染 Markdown（只读快照，避免持锁期间做字符串拼接）
-	var title string
-	var msgs []Message
-	if !session.GetManager().WithSession(sessionID, func(s *session.SessionState) {
-		title = s.Title
-		msgs = append([]Message{}, s.Messages...)
-	}) {
+	// 渲染 Markdown（拷贝切片头做只读快照）
+	sess, ok := session.GetManager().Find(sessionID)
+	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
+	title := sess.Title
+	msgs := append([]*store.Message{}, sess.Messages...)
 
 	md := renderSessionMarkdown(title, msgs)
 
@@ -55,7 +54,7 @@ func (s *AgentService) ExportSession(sessionID string) (string, error) {
 //   - user → ## 👤 用户
 //   - assistant → ## 🤖 TARS（工具调用以状态行 + 折叠块呈现）
 //   - tool 消息不单独渲染（其结果已通过 assistant 的 ToolCalls.Output 合并）
-func renderSessionMarkdown(title string, msgs []Message) string {
+func renderSessionMarkdown(title string, msgs []*store.Message) string {
 	var b strings.Builder
 	b.WriteString("# " + title + "\n\n")
 	if len(msgs) > 0 {

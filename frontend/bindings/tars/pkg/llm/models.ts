@@ -152,15 +152,6 @@ export class ProviderConfig {
      */
     "cacheTTL"?: string;
 
-    /**
-     * ReasoningPolicy 历史消息中 reasoning（思考链）的回放策略：
-     * ""/"replay" 回放 / "strip" 剥离 / "keep" 原样透传。
-     * 空则使用供应商类型的内置默认（见 defaultReasoningPolicies）——
-     * 这是协议要求而非偏好：DeepSeek 工具回合禁止回传 reasoning，
-     * Gemini function call 回合必须回放 thinking。
-     */
-    "reasoningPolicy"?: string;
-
     /** Creates a new ProviderConfig instance. */
     constructor($$source: Partial<ProviderConfig> = {}) {
         if (!("id" in $$source)) {

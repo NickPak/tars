@@ -23,14 +23,16 @@ export function CancelMessage(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(813006285, sessionID);
 }
 
-export function CreateSession(): $CancellablePromise<$models.Session | null> {
+export function CreateSession(): $CancellablePromise<session$0.Info | null> {
     return $Call.ByID(98051076).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
 /**
- * DeleteMessage deletes a message by ID and returns its index.
+ * DeleteMessage deletes a message by ID — along with all messages after it
+ * (truncate semantics, matching the frontend) — and returns its index.
+ * Rejected while a turn is running: the message list is frozen mid-turn.
  */
 export function DeleteMessage(sessionID: string, messageID: string): $CancellablePromise<number> {
     return $Call.ByID(1792683014, sessionID, messageID);
@@ -75,7 +77,7 @@ export function GetModelInfo(): $CancellablePromise<$models.ModelInfo | null> {
     });
 }
 
-export function GetSession(id: string): $CancellablePromise<$models.Session | null> {
+export function GetSession(id: string): $CancellablePromise<session$0.Info | null> {
     return $Call.ByID(2463902692, id).then(($result: any) => {
         return $$createType1($result);
     });
@@ -109,7 +111,7 @@ export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
     });
 }
 
-export function ListSessions(): $CancellablePromise<$models.Session[]> {
+export function ListSessions(): $CancellablePromise<(session$0.Info | null)[]> {
     return $Call.ByID(3651696153).then(($result: any) => {
         return $$createType11($result);
     });
@@ -207,7 +209,7 @@ export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePro
 }
 
 // Private type creation functions
-const $$createType0 = session$0.SessionState.createFrom;
+const $$createType0 = session$0.Info.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = config$0.AppConfig.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
@@ -218,6 +220,6 @@ const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $models.WorkspaceInfo.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = $Create.Array($$createType4);
-const $$createType11 = $Create.Array($$createType0);
+const $$createType11 = $Create.Array($$createType1);
 const $$createType12 = $models.FileEntry.createFrom;
 const $$createType13 = $Create.Array($$createType12);

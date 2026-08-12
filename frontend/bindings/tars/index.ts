@@ -11,16 +11,7 @@ export {
     ModelChangedEvent,
     ModelInfo,
     ModelPrice,
-    ReasoningEvent,
-    Session,
-    SessionRenamedEvent,
     SessionStats,
-    StreamChunk,
-    StreamDone,
-    StreamError,
-    ToolEvent,
-    ToolResultEvent,
-    UsageInfo,
     WorkspaceChangedEvent,
     WorkspaceInfo
 } from "./models.js";

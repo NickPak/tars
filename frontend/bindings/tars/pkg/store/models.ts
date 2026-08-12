@@ -9,11 +9,6 @@ import { Create as $Create } from "@wailsio/runtime";
 // @ts-ignore: Unused imports
 import * as schema$0 from "../../../github.com/cloudwego/eino/schema/models.js";
 
-/**
- * Message is one line in messages.jsonl. 本类型是会话消息的唯一权威定义：
- * 磁盘格式、内存形态、前端 API 共用，internal/session 以类型别名直接复用
- * （session.Message = store.Message）。
- */
 export class Message {
     "id": string;
     "role": schema$0.RoleType;
@@ -21,16 +16,7 @@ export class Message {
     "toolCalls"?: ToolCall[];
     "toolCallId"?: string;
     "createdAt": number;
-
-    /**
-     * Reasoning 仅 assistant 消息有值：模型思考过程（thinking/reasoning
-     * content），多轮迭代时逐轮累加。
-     */
     "reasoning"?: string;
-
-    /**
-     * Usage/ElapsedMs 仅 assistant 消息有值：本轮 token 消耗与总耗时。
-     */
     "usage"?: UsageInfo | null;
     "elapsedMs"?: number;
 
@@ -69,9 +55,6 @@ export class Message {
     }
 }
 
-/**
- * ToolCall is a single tool invocation within an assistant message.
- */
 export class ToolCall {
     "id": string;
     "name": string;
@@ -101,18 +84,11 @@ export class ToolCall {
     }
 }
 
-/**
- * UsageInfo 一次 assistant 回复的 token 统计。
- */
 export class UsageInfo {
     "promptTokens": number;
     "completionTokens": number;
     "totalTokens": number;
     "cachedTokens"?: number;
-
-    /**
-     * ModelEntry 产生该用量的模型条目 ID，多模型下按条目价格表核算费用
-     */
     "modelEntry"?: string;
 
     /** Creates a new UsageInfo instance. */

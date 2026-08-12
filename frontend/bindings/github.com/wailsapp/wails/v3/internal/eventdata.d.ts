@@ -8,18 +8,21 @@ import type { Events } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as main$0 from "../../../../../tars/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as event$0 from "../../../../../tars/internal/event/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "agent:chunk": main$0.StreamChunk;
-            "agent:done": main$0.StreamDone;
-            "agent:error": main$0.StreamError;
-            "agent:reasoning": main$0.ReasoningEvent;
-            "agent:tool": main$0.ToolEvent;
-            "agent:tool_result": main$0.ToolResultEvent;
+            "agent:chunk": event$0.StreamChunk;
+            "agent:done": event$0.StreamDone;
+            "agent:error": event$0.StreamError;
+            "agent:reasoning": event$0.ReasoningEvent;
+            "agent:tool": event$0.ToolEvent;
+            "agent:tool_result": event$0.ToolResultEvent;
             "model:changed": main$0.ModelChangedEvent;
-            "session:renamed": main$0.SessionRenamedEvent;
+            "session:renamed": event$0.SessionRenamedEvent;
             "workspace:changed": main$0.WorkspaceChangedEvent;
         }
     }

@@ -38,10 +38,9 @@ type StatusBar struct {
 	cwd  string
 	git  string
 
-	// ---- todo（从 TodoStore 读取，设计文档 2.10 数据流）----
-	// todoStore 由 Agent 注入（SetTodoStore），nil 时跳过 todo 区。
-	// 不再从 ctx 取——StatusBar 是 Agent 内部组件，直接持有引用。
-	todoStore       *store.TodoStore
+	// ---- todo（从 ctx 中的 TodoStore 读取，设计文档 2.10 数据流）----
+	// TodoStore 由宿主（turn 脚手架）组合并经 ctx 注入，与 todo_write
+	// 工具同一条链路；ctx 中没有时跳过 todo 区。
 	todos           []store.Todo
 	todoVersion     int64 // 上次看到的 TodoStore 版本号
 	todoChangedIter int   // 版本号变化时的迭代号，用于"未更新轮数"提醒
@@ -91,15 +90,9 @@ func NewStatusBar() *StatusBar {
 	return sb
 }
 
-// SetTodoStore 注入 per-session 的 TODO 状态机。
-// 由 Agent.SetTodoStore 调用；nil 时 todo 区不渲染。
-func (sb *StatusBar) SetTodoStore(ts *store.TodoStore) {
-	sb.todoStore = ts
-}
-
 // Render 渲染当前迭代的状态栏消息，追加到上下文尾部。
-// 动态字段（time/cwd/git）每次调用实时采集。
-// todo 数据直接从持有的 todoStore 读取，不经 ctx。
+// 动态字段（time/cwd/git）每次调用实时采集；todo 数据从 ctx 中的
+// TodoStore 读取。
 func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message {
 	sb.iteration = iteration
 	sb.time = nowFormatted()
@@ -108,8 +101,8 @@ func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message 
 		sb.git = gitStatus(ctx, wd)
 	}
 	// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
-	if sb.todoStore != nil {
-		todos, version := sb.todoStore.Snapshot()
+	if ts := store.TodoStoreFromCtx(ctx); ts != nil {
+		todos, version := ts.Snapshot()
 		if version != sb.todoVersion {
 			sb.todoVersion = version
 			sb.todoChangedIter = iteration

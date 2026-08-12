@@ -342,8 +342,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   deleteMessage: async (messageId) => {
-    const { activeId, messages } = get();
-    if (!activeId) return;
+    const { activeId, messages, isStreaming } = get();
+    // 流式进行中禁止删除：后端同样拒绝（轮运行期间消息列表冻结，
+    // 保证 agentHooks 的 assistantIndex 始终有效）
+    if (!activeId || isStreaming) return;
 
     // 找到目标消息索引，删除它及其后所有消息
     const idx = messages.findIndex((m) => m.id === messageId);

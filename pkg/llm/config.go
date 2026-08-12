@@ -56,45 +56,10 @@ type ProviderConfig struct {
 	// CacheTTL Claude 自动前缀缓存（claude 类型）："5m"/"1h"，
 	// 非空时在 system、工具定义与每轮最后一条 user 消息上自动打缓存断点。
 	CacheTTL string `yaml:"cacheTTL,omitempty" json:"cacheTTL,omitempty"`
-	// ReasoningPolicy 历史消息中 reasoning（思考链）的回放策略：
-	// ""/"replay" 回放 / "strip" 剥离 / "keep" 原样透传。
-	// 空则使用供应商类型的内置默认（见 defaultReasoningPolicies）——
-	// 这是协议要求而非偏好：DeepSeek 工具回合禁止回传 reasoning，
-	// Gemini function call 回合必须回放 thinking。
-	ReasoningPolicy string `yaml:"reasoningPolicy,omitempty" json:"reasoningPolicy,omitempty"`
 }
 
-// Reasoning 回放策略取值。
-const (
-	ReasoningReplay = "replay" // 回放历史 reasoning（Gemini 需要：维持 thinking 签名链）
-	ReasoningStrip  = "strip"  // 剥离历史 reasoning（DeepSeek 需要：工具回合禁止回传）
-	ReasoningKeep   = "keep"   // 原样透传（OpenAI/Claude 等容忍额外字段的供应商）
-)
-
-// defaultReasoningPolicies 各供应商类型的内置 reasoning 回放策略。
-// 注意：这是协议正确性约束，不是用户偏好——选错会直接报 400。
-var defaultReasoningPolicies = map[string]string{
-	ProviderGemini:   ReasoningReplay,
-	ProviderDeepSeek: ReasoningStrip,
-	ProviderQwen:     ReasoningStrip, // DashScope 工具回合同样要求剥离
-	ProviderArk:      ReasoningStrip,
-	ProviderOpenAI:   ReasoningKeep,
-	ProviderClaude:   ReasoningKeep, // Claude 原生 thinking blocks 另有签名机制，由组件处理
-	ProviderOllama:   ReasoningKeep,
-	ProviderQianfan:  ReasoningKeep,
-}
-
-// ReasoningReplayMode 返回该供应商的 reasoning 回放策略
-// （配置覆盖优先，缺省用类型内置默认）。
-func (p *ProviderConfig) ReasoningReplayMode() string {
-	if p.ReasoningPolicy != "" {
-		return p.ReasoningPolicy
-	}
-	if d, ok := defaultReasoningPolicies[p.Type]; ok {
-		return d
-	}
-	return ReasoningKeep
-}
+// 历史消息中的 reasoning（思考链）一律回传给模型——主流供应商均已支持，
+// 不做策略裁剪。
 
 // ModelConfig 是一个可用模型条目。
 // ID 不进 YAML——文件中 map key 即 ID，Validate 时归一化回填。

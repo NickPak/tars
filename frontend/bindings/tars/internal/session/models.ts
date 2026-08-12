@@ -10,17 +10,17 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as store$0 from "../../pkg/store/models.js";
 
 /**
- * SessionState 是会话的内存运行态（会话级元数据 + 消息列表）。
+ * Info 是会话的内存运行态：会话级元数据 + 消息列表 + 运行标记。
  */
-export class SessionState {
+export class Info {
     "id": string;
     "title": string;
     "createdAt": number;
     "updatedAt": number;
-    "messages": store$0.Message[];
+    "messages": (store$0.Message | null)[];
 
-    /** Creates a new SessionState instance. */
-    constructor($$source: Partial<SessionState> = {}) {
+    /** Creates a new Info instance. */
+    constructor($$source: Partial<Info> = {}) {
         if (!("id" in $$source)) {
             this["id"] = "";
         }
@@ -41,18 +41,19 @@ export class SessionState {
     }
 
     /**
-     * Creates a new SessionState instance from a string or object.
+     * Creates a new Info instance from a string or object.
      */
-    static createFrom($$source: any = {}): SessionState {
-        const $$createField4_0 = $$createType1;
+    static createFrom($$source: any = {}): Info {
+        const $$createField4_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("messages" in $$parsedSource) {
             $$parsedSource["messages"] = $$createField4_0($$parsedSource["messages"]);
         }
-        return new SessionState($$parsedSource as Partial<SessionState>);
+        return new Info($$parsedSource as Partial<Info>);
     }
 }
 
 // Private type creation functions
 const $$createType0 = store$0.Message.createFrom;
-const $$createType1 = $Create.Array($$createType0);
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

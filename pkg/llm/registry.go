@@ -20,31 +20,18 @@ import (
 	"google.golang.org/genai"
 )
 
-// --- 全局单例 ---
-
 var (
 	defaultRegistry atomic.Pointer[Registry]
 )
 
-// Registry 管理模型条目到 ChatModel 的工厂与缓存。
-//
-// 缓存语义：ChatModel 实例按模型条目 ID 惰性构建并缓存；
-// UpdateConfig 全量清空缓存并预构建激活模型（保存路径借此 fail-fast）。
-// SDK 客户端（genai.Client / openai HTTP client）的构建都是纯本地对象
-// 构造、不发起网络请求，因此缓存失配重建的代价可忽略。
 type Registry struct {
 	mu     sync.RWMutex
 	cfg    *Config
 	models map[string]model.ToolCallingChatModel
-	// healthy 按模型条目 ID 记录最近一次调用的成败（状态栏绿/红灯）。
-	// 无记录时视为健康（乐观默认）；SaveAppConfig 成功后重置——
-	// 配置修改可能已修复密钥/端点，旧的失败记录随之失效。
+
 	healthy map[string]bool
 }
 
-// NewRegistry 创建注册表。启动期容错：配置非法或激活模型构建失败
-// 只记录不报错（返回的 Registry 仍可用，首次对话时 Active() 才暴露错误），
-// 保证应用始终能启动，让用户可以通过设置界面修复配置。
 func NewRegistry(cfg *Config) *Registry {
 	if cfg == nil {
 		cfg = &Config{}
@@ -61,23 +48,18 @@ func NewRegistry(cfg *Config) *Registry {
 	return r
 }
 
-// InitRegistry 从配置创建全局 Registry 单例，进程启动时调用一次。
-// 之后由 UpdateConfig 原地热更新，不再重建。
 func InitRegistry(cfg *Config) {
 	defaultRegistry.Store(NewRegistry(cfg))
 }
 
-// GetRegistry 返回全局 Registry 实例；Init 之前调用返回 nil。
 func GetRegistry() *Registry { return defaultRegistry.Load() }
 
-// SetHealthy 记录指定模型条目最近一次调用的成败。
 func (r *Registry) SetHealthy(modelID string, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.healthy[modelID] = ok
 }
 
-// IsHealthy 返回指定模型条目的健康状态；无记录时返回 true（乐观默认）。
 func (r *Registry) IsHealthy(modelID string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -85,14 +67,12 @@ func (r *Registry) IsHealthy(modelID string) bool {
 	return !recorded || ok
 }
 
-// ResetHealth 清空所有健康记录（配置保存后调用，给修复后的配置一次全新尝试）。
 func (r *Registry) ResetHealth() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.healthy = map[string]bool{}
 }
 
-// UpdateConfig 热更新配置：校验 → 预构建激活模型（失败则不生效）→ 替换并清空缓存。
 func (r *Registry) UpdateConfig(cfg *Config) error {
 	if cfg == nil {
 		return errors.New("llm config is nil")
@@ -115,14 +95,12 @@ func (r *Registry) UpdateConfig(cfg *Config) error {
 	return nil
 }
 
-// Config 返回当前 LLM 配置。
 func (r *Registry) Config() *Config {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.cfg
 }
 
-// Active 返回当前激活模型的 ChatModel 与条目配置。
 func (r *Registry) Active() (model.ToolCallingChatModel, *ModelConfig, error) {
 	cfg := r.Config()
 	m := cfg.ActiveModel()
@@ -133,7 +111,6 @@ func (r *Registry) Active() (model.ToolCallingChatModel, *ModelConfig, error) {
 	return cm, m, err
 }
 
-// ChatModel 返回指定模型条目的 ChatModel（惰性构建 + 缓存）。
 func (r *Registry) ChatModel(modelID string) (model.ToolCallingChatModel, error) {
 	return r.chatModel(modelID)
 }
@@ -161,7 +138,6 @@ func (r *Registry) chatModel(modelID string) (model.ToolCallingChatModel, error)
 	return cm, nil
 }
 
-// buildChatModel 构建配置中激活模型的 ChatModel。
 func buildChatModel(ctx context.Context, cfg *Config) (model.ToolCallingChatModel, error) {
 	m := cfg.ActiveModel()
 	if m == nil {
@@ -170,8 +146,6 @@ func buildChatModel(ctx context.Context, cfg *Config) (model.ToolCallingChatMode
 	return buildOne(ctx, cfg, m)
 }
 
-// buildOne 按供应商类型构建单个 ChatModel（工厂入口）。
-// 每个 case 对应一个 eino-ext 原生组件，模型私有参数在此映射到组件原生字段。
 func buildOne(ctx context.Context, cfg *Config, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	p := cfg.FindProvider(m.Provider)
 	if p == nil {
