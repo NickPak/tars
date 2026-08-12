@@ -20,6 +20,11 @@ export class Message {
     "usage"?: UsageInfo | null;
     "elapsedMs"?: number;
 
+    /**
+     * Parts 按 ReAct 迭代记录 assistant 消息的产出顺序（仅 assistant 角色）。
+     */
+    "parts"?: MessagePart[];
+
     /** Creates a new Message instance. */
     constructor($$source: Partial<Message> = {}) {
         if (!("id" in $$source)) {
@@ -44,6 +49,7 @@ export class Message {
     static createFrom($$source: any = {}): Message {
         const $$createField3_0 = $$createType1;
         const $$createField7_0 = $$createType3;
+        const $$createField9_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("toolCalls" in $$parsedSource) {
             $$parsedSource["toolCalls"] = $$createField3_0($$parsedSource["toolCalls"]);
@@ -51,7 +57,38 @@ export class Message {
         if ("usage" in $$parsedSource) {
             $$parsedSource["usage"] = $$createField7_0($$parsedSource["usage"]);
         }
+        if ("parts" in $$parsedSource) {
+            $$parsedSource["parts"] = $$createField9_0($$parsedSource["parts"]);
+        }
         return new Message($$parsedSource as Partial<Message>);
+    }
+}
+
+/**
+ * MessagePart 是 assistant 消息在一个 ReAct 迭代内的产出：本轮文本 + 工具调用。
+ * 前端据此把各迭代的文本与工具卡片按时间顺序交错渲染；
+ * Content/ToolCalls 聚合字段（全迭代拼接）继续供 LLM 上下文、导出与统计使用。
+ */
+export class MessagePart {
+    "content"?: string;
+    "toolCalls"?: ToolCall[];
+
+    /** Creates a new MessagePart instance. */
+    constructor($$source: Partial<MessagePart> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MessagePart instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MessagePart {
+        const $$createField1_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("toolCalls" in $$parsedSource) {
+            $$parsedSource["toolCalls"] = $$createField1_0($$parsedSource["toolCalls"]);
+        }
+        return new MessagePart($$parsedSource as Partial<MessagePart>);
     }
 }
 
@@ -120,3 +157,5 @@ const $$createType0 = ToolCall.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = UsageInfo.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = MessagePart.createFrom;
+const $$createType5 = $Create.Array($$createType4);

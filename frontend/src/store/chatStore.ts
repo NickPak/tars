@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Session, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
+import type { ChatMessage, Session, ModelInfo, SessionStats, ToolCallInfo, WorkspaceInfo } from "../types";
 
 export interface SessionMeta {
   id: string;
@@ -62,6 +62,34 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** 历史加载归一化：tool 消息的输出按 toolCallId 合并进 assistant 的
+ *  parts（交错渲染）或 toolCalls（旧数据回退渲染）。
+ *  后端 store.ToolCall 不持久化输出，输出在 role:"tool" 的独立消息里。 */
+function mergeToolOutputs(messages: ChatMessage[]): ChatMessage[] {
+  const outputs = new Map<string, string>();
+  for (const m of messages) {
+    if (m.role === "tool" && m.toolCallId) outputs.set(m.toolCallId, m.content);
+  }
+  if (outputs.size === 0) return messages;
+  const merge = (tcs: ToolCallInfo[]) =>
+    tcs.map((tc) => ({ ...tc, output: outputs.get(tc.id) ?? tc.output }));
+  return messages.map((m) => {
+    if (m.role !== "assistant") return m;
+    if (m.parts?.length) {
+      return {
+        ...m,
+        parts: m.parts.map((p) =>
+          p.toolCalls ? { ...p, toolCalls: merge(p.toolCalls) } : p,
+        ),
+      };
+    }
+    if (m.toolCalls?.length) {
+      return { ...m, toolCalls: merge(m.toolCalls) };
+    }
+    return m;
+  });
+}
+
 /** 将错误标注到最后一条 assistant 消息上 */
 function markLastAssistantError(
   messages: ChatMessage[],
@@ -108,9 +136,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
           if (!last || last.role !== "assistant") return {};
+          // parts：文本续写到尾部 part；尾部已带工具调用说明进入了
+          // 下一轮迭代，开新 part
+          const parts = [...(last.parts ?? [])];
+          const tail = parts[parts.length - 1];
+          if (tail && !tail.toolCalls) {
+            parts[parts.length - 1] = { ...tail, content: (tail.content ?? "") + chunk };
+          } else {
+            parts.push({ content: chunk });
+          }
           messages[messages.length - 1] = {
             ...last,
             content: last.content + chunk,
+            parts,
           };
           return { messages };
         });
@@ -162,8 +200,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
           if (!last || last.role !== "assistant") return {};
-          const toolCalls = [...(last.toolCalls ?? []), { id: toolCallId, name: toolName, args }];
-          messages[messages.length - 1] = { ...last, toolCalls };
+          const tc = { id: toolCallId, name: toolName, args };
+          const toolCalls = [...(last.toolCalls ?? []), tc];
+          // parts：一批工具调用先于其结果到达（agent 循环保证），因此
+          // 尾部 part 的工具全部未出结果时属于同一批，归入该 part；
+          // 否则说明已进入下一轮迭代，开新 part
+          const parts = [...(last.parts ?? [])];
+          const tail = parts[parts.length - 1];
+          if (tail && tail.toolCalls && tail.toolCalls.every((t) => t.output === undefined)) {
+            parts[parts.length - 1] = { ...tail, toolCalls: [...tail.toolCalls, tc] };
+          } else if (tail && !tail.toolCalls) {
+            parts[parts.length - 1] = { ...tail, toolCalls: [tc] };
+          } else {
+            parts.push({ toolCalls: [tc] });
+          }
+          messages[messages.length - 1] = { ...last, toolCalls, parts };
           return { messages };
         });
       },
@@ -172,11 +223,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => {
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
-          if (!last || last.role !== "assistant" || !last.toolCalls) return {};
-          const toolCalls = last.toolCalls.map((tc) =>
+          if (!last || last.role !== "assistant") return {};
+          const toolCalls = last.toolCalls?.map((tc) =>
             tc.id === toolCallId ? { ...tc, output } : tc,
           );
-          messages[messages.length - 1] = { ...last, toolCalls };
+          const parts = last.parts?.map((p) =>
+            p.toolCalls?.some((tc) => tc.id === toolCallId)
+              ? {
+                  ...p,
+                  toolCalls: p.toolCalls.map((tc) =>
+                    tc.id === toolCallId ? { ...tc, output } : tc,
+                  ),
+                }
+              : p,
+          );
+          messages[messages.length - 1] = { ...last, toolCalls, parts };
           return { messages };
         });
       },
@@ -204,7 +265,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ activeId: id, messages: [], workspace: null, stats: null });
     try {
       const sess = await agentApi.getSession(id);
-      set({ messages: sess.messages ?? [] });
+      set({ messages: mergeToolOutputs(sess.messages ?? []) });
     } catch (e) {
       set({ backendError: errText(e) });
     }
@@ -321,6 +382,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               content: "",
               reasoning: "",
               toolCalls: [],
+              parts: undefined,
               error: undefined,
               errorKind: undefined,
               usage: undefined,

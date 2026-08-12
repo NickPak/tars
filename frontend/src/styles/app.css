@@ -696,6 +696,13 @@ body.resizing-col .resize-handle::after {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.reasoning-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
 .reasoning-toggle {
   display: flex;
   align-items: center;
@@ -768,7 +775,7 @@ body.resizing-col .resize-handle::after {
 
 .tool-card-header {
   display: flex;
-  align-items: center;
+  align-items: center; /* 折叠态：单行省略 */
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
@@ -812,12 +819,49 @@ body.resizing-col .resize-handle::after {
 
 .tool-card-args {
   flex: 1;
+  min-width: 0;
   color: var(--text-dim);
   font-family: "Cascadia Code", "JetBrains Mono", monospace;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 展开态头部：名称行 + 完整参数块（美化 JSON、自动换行、限高滚动） */
+.tool-card-head-block {
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-card-head-block:hover {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.06));
+}
+
+.tool-card-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-card-args-full {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-family: "Cascadia Code", "JetBrains Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px; /* 超长参数（如整份文件写入）限高滚动 */
+  overflow-y: auto;
+  user-select: text;
+  cursor: text;
+}
+
+.tool-card-copy {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .tool-card-chevron {
@@ -832,6 +876,17 @@ body.resizing-col .resize-handle::after {
 .tool-card-body {
   border-top: 1px solid var(--border);
   padding: 8px 12px;
+}
+
+.tool-card-body-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.tool-card-pending {
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 .tool-card-output {

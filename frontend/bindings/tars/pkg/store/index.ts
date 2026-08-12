@@ -3,6 +3,7 @@
 
 export {
     Message,
+    MessagePart,
     ToolCall,
     UsageInfo
 } from "./models.js";

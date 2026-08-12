@@ -110,6 +110,10 @@ func (t *turn) run() {
 	}
 	ctx = store.WithTodoStore(ctx, todoStore)
 
+	// 工具工作目录：会话 workspace（或用户自定义 workDir），
+	// 工具经 tools.WorkDirFromCtx 读取；缺省会回退到全局根目录。
+	ctx = tools.WithWorkDir(ctx, store.GetSessionStore().ResolveWorkDir(sess.ID))
+
 	cfg := config.Get()
 	ag := agent.New(cfg.Agent.MaxIterations, cfg.Agent.IterationTimeout, tools.DefaultManager(), modelWithTools)
 

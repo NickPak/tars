@@ -11,6 +11,8 @@ export interface ChatMessage {
   reasoning?: string;
   /** 工具调用信息 */
   toolCalls?: ToolCallInfo[];
+  /** 按 ReAct 迭代有序的产出（assistant 角色）：交错渲染文本与工具卡片 */
+  parts?: MessagePart[];
   /** 工具调用 ID（tool role 消息用） */
   toolCallId?: string;
   /** token 用量统计 */
@@ -29,6 +31,14 @@ export interface ToolCallInfo {
   name: string;
   args: string;
   output?: string;
+}
+
+/** assistant 消息在一个 ReAct 迭代内的产出（本轮文本 + 工具调用）。
+ *  按 parts 顺序交错渲染文本与工具卡片；content/toolCalls 聚合字段
+ *  仍是全迭代拼接（复制、统计、旧数据回退渲染用）。 */
+export interface MessagePart {
+  content?: string;
+  toolCalls?: ToolCallInfo[];
 }
 
 export interface Session {

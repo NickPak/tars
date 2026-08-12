@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   Check,
@@ -73,25 +73,52 @@ export default function MessageList() {
                       streaming={streamingThis && !m.content}
                     />
                   )}
-                  {m.toolCalls && m.toolCalls.length > 0 && (
-                    <div className="tool-calls">
-                      {m.toolCalls.map((tc) => (
-                        <ToolCallCard
-                          key={tc.id}
-                          name={tc.name}
-                          args={tc.args}
-                          output={tc.output}
-                        />
+                  {m.parts && m.parts.length > 0 ? (
+                    // 按 ReAct 迭代交错渲染：每段文本后跟该轮的工具卡片
+                    <>
+                      {m.parts.map((part, pi) => (
+                        <Fragment key={pi}>
+                          {part.content && <Markdown content={part.content} />}
+                          {part.toolCalls && part.toolCalls.length > 0 && (
+                            <div className="tool-calls">
+                              {part.toolCalls.map((tc) => (
+                                <ToolCallCard
+                                  key={tc.id}
+                                  name={tc.name}
+                                  args={tc.args}
+                                  output={tc.output}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </Fragment>
                       ))}
-                    </div>
-                  )}
-                  {m.content ? (
-                    <Markdown content={m.content} />
-                  ) : streamingThis && !m.reasoning ? (
-                    <span className="stream-cursor" />
-                  ) : null}
-                  {streamingThis && m.content && (
-                    <span className="stream-cursor" />
+                      {streamingThis && <span className="stream-cursor" />}
+                    </>
+                  ) : (
+                    // 旧数据（无 parts）回退：工具卡片集中显示在文本前
+                    <>
+                      {m.toolCalls && m.toolCalls.length > 0 && (
+                        <div className="tool-calls">
+                          {m.toolCalls.map((tc) => (
+                            <ToolCallCard
+                              key={tc.id}
+                              name={tc.name}
+                              args={tc.args}
+                              output={tc.output}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {m.content ? (
+                        <Markdown content={m.content} />
+                      ) : streamingThis && !m.reasoning ? (
+                        <span className="stream-cursor" />
+                      ) : null}
+                      {streamingThis && m.content && (
+                        <span className="stream-cursor" />
+                      )}
+                    </>
                   )}
                   {m.error && (
                     <ErrorBanner
@@ -173,20 +200,37 @@ function ReasoningBlock({
 }) {
   // manual: null = 跟随自动状态；true/false = 用户手动锁定
   const [manual, setManual] = useState<boolean | null>(null);
+  const [copied, setCopied] = useState(false);
   const expanded = manual ?? streaming;
+
+  const copyReasoning = () => {
+    void navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   return (
     <div className="reasoning-block">
-      <button
-        className={`reasoning-toggle${streaming ? " thinking" : ""}`}
-        onClick={() => setManual(!expanded)}
-      >
-        <ChevronRight
-          size={14}
-          className={`reasoning-chevron${expanded ? " expanded" : ""}`}
-        />
-        {streaming ? "Deep Thinking…" : "Deep Thinking"}
-      </button>
+      <div className="reasoning-head">
+        <button
+          className={`reasoning-toggle${streaming ? " thinking" : ""}`}
+          onClick={() => setManual(!expanded)}
+        >
+          <ChevronRight
+            size={14}
+            className={`reasoning-chevron${expanded ? " expanded" : ""}`}
+          />
+          {streaming ? "Deep Thinking…" : "Deep Thinking"}
+        </button>
+        <button
+          className="msg-action reasoning-copy"
+          title="复制思考过程"
+          onClick={copyReasoning}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </button>
+      </div>
       {expanded && (
         <div className="reasoning-content">
           <Markdown content={content} />
@@ -207,39 +251,123 @@ function ToolCallCard({
   output?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copiedOutput, setCopiedOutput] = useState(false);
   const status = output !== undefined ? "done" : "running";
+
+  // 参数美化：合法 JSON 缩进展示，长参数更易读；非法则原文展示
+  const prettyArgs = useMemo(() => {
+    if (!args) return "";
+    try {
+      return JSON.stringify(JSON.parse(args), null, 2);
+    } catch {
+      return args;
+    }
+  }, [args]);
+
+  const copyArgs = (e: React.MouseEvent) => {
+    e.stopPropagation(); // 不触发展开/收起
+    void navigator.clipboard.writeText(prettyArgs).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  // 复制完整结果（不受展示截断影响）
+  const copyOutput = () => {
+    if (output === undefined) return;
+    void navigator.clipboard.writeText(output).then(() => {
+      setCopiedOutput(true);
+      setTimeout(() => setCopiedOutput(false), 1500);
+    });
+  };
+
   return (
     <div className={`tool-card tool-card-${status}`}>
-      <button
-        className="tool-card-header"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <span className="tool-card-status">
-          {status === "done" ? (
-            <Check size={14} />
-          ) : (
-            <Circle size={14} className="tool-card-spinner" />
+      {expanded ? (
+        // 展开态：头部与完整参数分块显示（名称+美化 JSON+换行+复制），
+        // 点击任意一处（参数区除外）收起
+        <div
+          className="tool-card-head-block"
+          role="button"
+          tabIndex={0}
+          onClick={() => setExpanded(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setExpanded(false);
+            }
+          }}
+        >
+          <div className="tool-card-titlebar">
+            <span className="tool-card-status">
+              {status === "done" ? (
+                <Check size={14} />
+              ) : (
+                <Circle size={14} className="tool-card-spinner" />
+              )}
+            </span>
+            <span className="tool-card-name">{name}</span>
+            {args && (
+              <button
+                className="msg-action tool-card-copy"
+                title="复制参数"
+                onClick={copyArgs}
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            )}
+            <ChevronRight size={14} className="tool-card-chevron expanded" />
+          </div>
+          {args && (
+            // 点击/划选参数不触发收起
+            <div
+              className="tool-card-args-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {prettyArgs}
+            </div>
           )}
-        </span>
-        <span className="tool-card-name">{name}</span>
-        {args && (
-          <span className="tool-card-args">
-            {args.length > 80 ? args.slice(0, 80) + "…" : args}
+        </div>
+      ) : (
+        // 折叠态：单行省略，信息密度优先；点击展开
+        <button
+          className="tool-card-header"
+          onClick={() => setExpanded(true)}
+        >
+          <span className="tool-card-status">
+            {status === "done" ? (
+              <Check size={14} />
+            ) : (
+              <Circle size={14} className="tool-card-spinner" />
+            )}
           </span>
-        )}
-        <ChevronRight
-          size={14}
-          className={`tool-card-chevron${expanded ? " expanded" : ""}`}
-        />
-      </button>
+          <span className="tool-card-name">{name}</span>
+          {args && <span className="tool-card-args">{args}</span>}
+          <ChevronRight size={14} className="tool-card-chevron" />
+        </button>
+      )}
       {expanded && (
         <div className="tool-card-body">
-          {output !== undefined && (
-            <pre className="tool-card-output">
-              {output.length > 2000
-                ? output.slice(0, 2000) + "\n[truncated]"
-                : output}
-            </pre>
+          {output !== undefined ? (
+            <>
+              <div className="tool-card-body-head">
+                <button
+                  className="msg-action"
+                  title="复制结果"
+                  onClick={copyOutput}
+                >
+                  {copiedOutput ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+              <pre className="tool-card-output">
+                {output.length > 2000
+                  ? output.slice(0, 2000) + "\n[truncated]"
+                  : output}
+              </pre>
+            </>
+          ) : (
+            <div className="tool-card-pending">执行中…</div>
           )}
         </div>
       )}

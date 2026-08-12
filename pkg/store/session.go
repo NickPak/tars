@@ -49,13 +49,20 @@ func (s *SessionStore) WorkspaceDir(id string) string {
 	return filepath.Join(s.SessionDir(id), "workspace")
 }
 
+// ResolveWorkDir 返回会话的工作目录：用户自定义目录（存在才采纳），
+// 否则会话的 workspace 目录。默认 workspace 按需创建（懒建，覆盖
+// 存量会话）；自定义目录由用户侧保证存在，不代建。
 func (s *SessionStore) ResolveWorkDir(id string) string {
 	if meta, err := s.LoadMeta(id); err == nil && meta != nil && meta.CustomWorkDir != "" {
 		if info, err := os.Stat(meta.CustomWorkDir); err == nil && info.IsDir() {
 			return meta.CustomWorkDir
 		}
 	}
-	return s.WorkspaceDir(id)
+	dir := s.WorkspaceDir(id)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		slog.Warn("store: create workspace dir failed", "session", id, "error", err)
+	}
+	return dir
 }
 
 func (s *SessionStore) CreateSession(id, title string, createdAt int64) (*SessionMeta, error) {

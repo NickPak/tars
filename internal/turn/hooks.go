@@ -44,17 +44,20 @@ func (t *turn) IterationEnd(ctx context.Context, iter int, full []*schema.Messag
 	trace.EndLLMCall(t.llmSpan, nil, assistantMsg.Content, assistantMsg.ReasoningContent,
 		assistantMsg.ToolCalls, "stop", promptTokens, completionTokens, totalTokens)
 
-	// 同步 assistant 增量到内存锚点，然后追加快照到 jsonl——
-	// 快照日志按消息 ID 去重，崩溃安全：部分进度不丢。
+	// 同步 assistant 增量到内存锚点（聚合字段 + 按迭代的 Parts），
+	// 然后追加快照到 jsonl——快照日志按消息 ID 去重，崩溃安全：部分进度不丢。
 	sess := t.sess
 	if t.assistantIndex < len(sess.Messages) {
 		m := sess.Messages[t.assistantIndex]
 		m.Content += assistantMsg.Content
 		m.Reasoning += assistantMsg.ReasoningContent
+		part := store.MessagePart{Content: assistantMsg.Content}
 		for _, tc := range assistantMsg.ToolCalls {
-			m.ToolCalls = append(m.ToolCalls,
-				store.ToolCall{ID: tc.ID, Name: tc.Function.Name, Args: tc.Function.Arguments})
+			stc := store.ToolCall{ID: tc.ID, Name: tc.Function.Name, Args: tc.Function.Arguments}
+			m.ToolCalls = append(m.ToolCalls, stc)
+			part.ToolCalls = append(part.ToolCalls, stc)
 		}
+		m.Parts = append(m.Parts, part)
 		sess.UpdatedAt = time.Now().UnixMilli()
 		if err := store.GetSessionStore().AppendMessage(sess.ID, m); err != nil {
 			slog.Warn("Failed to snapshot assistant message", "id", sess.ID, "error", err)
