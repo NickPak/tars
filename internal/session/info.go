@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"tars/pkg/store"
@@ -33,6 +34,9 @@ type Info struct {
 	// AllowedRisks 记录用户选择"本会话常允许"的危险操作类别（内存态，
 	// 重启清空）。键形如 "run_command:rm-recursive-force"。
 	AllowedRisks map[string]bool `json:"-"`
+	// LoadedSkills 记录本会话已 load_skill 的技能（内存态，跨轮幂等，
+	// 重启清空）。状态栏据此展示"已加载技能"。
+	LoadedSkills map[string]bool `json:"-"`
 }
 
 // RiskAllowed 报告某类危险操作是否已被用户常允许。
@@ -46,6 +50,29 @@ func (i *Info) AllowRisk(key string) {
 		i.AllowedRisks = make(map[string]bool)
 	}
 	i.AllowedRisks[key] = true
+}
+
+// IsSkillLoaded 报告技能是否已在本会话加载。
+func (i *Info) IsSkillLoaded(name string) bool {
+	return i.LoadedSkills[name]
+}
+
+// MarkSkillLoaded 标记技能已在本会话加载（幂等）。
+func (i *Info) MarkSkillLoaded(name string) {
+	if i.LoadedSkills == nil {
+		i.LoadedSkills = make(map[string]bool)
+	}
+	i.LoadedSkills[name] = true
+}
+
+// LoadedSkillNames 返回已加载技能名（排序后），供状态栏展示。
+func (i *Info) LoadedSkillNames() []string {
+	names := make([]string, 0, len(i.LoadedSkills))
+	for n := range i.LoadedSkills {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	return names
 }
 
 func NewInfo(id string) *Info {

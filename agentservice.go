@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-
 	"tars/internal/config"
 	"tars/internal/event"
 	"tars/internal/session"
+	"tars/internal/skills"
 	"tars/internal/turn"
 	"tars/pkg/llm"
 	"tars/pkg/prompt"
@@ -71,6 +71,17 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 	// 初始化全局会话存储单例
 	if err := store.InitSessionStore(workDir); err != nil {
 		slog.Error("Failed to init session store", "error", err)
+		return err
+	}
+
+	// 初始化 Skills 存储单例，并生成索引
+	if err := skills.InitManager(workDir, appConfig.Skills); err != nil {
+		slog.Error("Failed to init skills store", "error", err)
+		return err
+	}
+	err := skills.GetManager().GenerateIndex()
+	if err != nil {
+		slog.Warn("Failed to generate skills index", "error", err)
 		return err
 	}
 

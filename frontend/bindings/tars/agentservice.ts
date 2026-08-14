@@ -11,6 +11,9 @@ import * as config$0 from "./internal/config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as session$0 from "./internal/session/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as skills$0 from "./internal/skills/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -112,6 +115,14 @@ export function GetWorkspaceInfo(sessionID: string): $CancellablePromise<$models
 }
 
 /**
+ * InstallSkill installs a skill from a local artifact (SKILL.md file,
+ * directory, or .zip/.tar.gz archive). Returns the installed skill name.
+ */
+export function InstallSkill(srcPath: string, category: string, overwrite: boolean): $CancellablePromise<string> {
+    return $Call.ByID(3285071100, srcPath, category, overwrite);
+}
+
+/**
  * ListModels returns all configured model entries（TopicBar 切换下拉用）。
  * 按条目 ID 排序返回（map 无序，下拉列表需要确定性顺序）。
  */
@@ -128,13 +139,22 @@ export function ListSessions(): $CancellablePromise<(session$0.Info | null)[]> {
 }
 
 /**
+ * ListSkills returns all installed skills (frontmatter + registry metadata).
+ */
+export function ListSkills(): $CancellablePromise<skills$0.Skill[]> {
+    return $Call.ByID(2331056158).then(($result: any) => {
+        return $$createType13($result);
+    });
+}
+
+/**
  * ListWorkspaceFiles returns a recursive file tree of the given session's
  * workspace directory. The workspace dir is per-session: {workDir}/sessions/{id}/workspace/.
  * If the directory doesn't exist yet (new session), an empty slice is returned.
  */
 export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(2376334908, sessionID).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType15($result);
     });
 }
 
@@ -153,6 +173,23 @@ export function OpenDirectoryDialog(): $CancellablePromise<string> {
  */
 export function OpenFile(sessionID: string, relPath: string): $CancellablePromise<void> {
     return $Call.ByID(2435973242, sessionID, relPath);
+}
+
+/**
+ * OpenSkillDirDialog shows the OS native picker for a skill artifact DIRECTORY.
+ * Returns the selected path (empty if cancelled).
+ */
+export function OpenSkillDirDialog(): $CancellablePromise<string> {
+    return $Call.ByID(1154416800);
+}
+
+/**
+ * OpenSkillFileDialog shows the OS native picker for a skill artifact FILE
+ * (SKILL.md, .zip, or .tar.gz). Returns the selected path (empty if cancelled).
+ * 独立于目录对话框：Windows 原生对话框启用"仅文件夹"模式后无法同时显示文件。
+ */
+export function OpenSkillFileDialog(): $CancellablePromise<string> {
+    return $Call.ByID(3156687267);
 }
 
 export function RenameSession(id: string, title: string): $CancellablePromise<void> {
@@ -218,6 +255,24 @@ export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePro
     return $Call.ByID(3610152448, sessionID, dir);
 }
 
+/**
+ * SkillCategories returns the distinct categories seen in the registry,
+ * for the install dialog's category dropdown.
+ */
+export function SkillCategories(): $CancellablePromise<string[]> {
+    return $Call.ByID(692754289).then(($result: any) => {
+        return $$createType16($result);
+    });
+}
+
+/**
+ * UninstallSkill removes an installed skill (directory + registry entry)
+ * and regenerates the index.
+ */
+export function UninstallSkill(name: string): $CancellablePromise<void> {
+    return $Call.ByID(3606209071, name);
+}
+
 // Private type creation functions
 const $$createType0 = session$0.Info.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
@@ -231,5 +286,8 @@ const $$createType8 = $models.WorkspaceInfo.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = $Create.Array($$createType4);
 const $$createType11 = $Create.Array($$createType1);
-const $$createType12 = $models.FileEntry.createFrom;
+const $$createType12 = skills$0.Skill.createFrom;
 const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = $models.FileEntry.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = $Create.Array($Create.Any);

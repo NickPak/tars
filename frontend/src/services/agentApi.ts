@@ -9,7 +9,7 @@ import { Events } from "@wailsio/runtime";
 import { AgentService } from "../../bindings/tars";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
-import type { AppConfig, ChatMessage, Session, FileEntry, ModelInfo, SessionStats, WorkspaceInfo } from "../types";
+import type { AppConfig, ChatMessage, Session, FileEntry, ModelInfo, SessionStats, Skill, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent, ApprovalEvent } from "../types";
@@ -65,6 +65,10 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
       otlpHttpEndpoint: cfg.trace?.otlpHttpEndpoint ?? "",
       otlpGrpcEndpoint: cfg.trace?.otlpGrpcEndpoint ?? "",
     },
+    skills: {
+      tierFullMax: cfg.skills?.tierFullMax ?? 50,
+      tierResidentMax: cfg.skills?.tierResidentMax ?? 500,
+    },
   };
 }
 
@@ -88,6 +92,7 @@ function toWireConfig(cfg: AppConfig): configModels.AppConfig {
     },
     agent: { ...cfg.agent },
     trace: { ...cfg.trace },
+    skills: { ...cfg.skills },
   };
 }
 
@@ -190,6 +195,35 @@ export const agentApi = {
   ): Promise<void> => {
     await AgentService.AnswerAskUser(requestId, value, reason);
   },
+
+  // --- 技能管理 ---
+
+  /** 已安装技能列表 */
+  listSkills: async (): Promise<Skill[]> =>
+    (await AgentService.ListSkills()) as Skill[],
+
+  /** 已出现的技能分类（安装对话框下拉用） */
+  skillCategories: async (): Promise<string[]> =>
+    await AgentService.SkillCategories(),
+
+  /** 从本地制品安装技能，返回安装后的技能名 */
+  installSkill: async (
+    srcPath: string,
+    category: string,
+    overwrite: boolean,
+  ): Promise<string> => await AgentService.InstallSkill(srcPath, category, overwrite),
+
+  /** 卸载技能 */
+  uninstallSkill: async (name: string): Promise<void> =>
+    await AgentService.UninstallSkill(name),
+
+  /** 弹出系统选择器选择技能制品文件（SKILL.md / zip / tar.gz），取消返回空串 */
+  openSkillFileDialog: async (): Promise<string> =>
+    await AgentService.OpenSkillFileDialog(),
+
+  /** 弹出系统选择器选择技能目录，取消返回空串 */
+  openSkillDirDialog: async (): Promise<string> =>
+    await AgentService.OpenSkillDirDialog(),
 
   // --- 设置（应用配置） ---
 

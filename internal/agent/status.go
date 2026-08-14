@@ -45,6 +45,10 @@ type StatusBar struct {
 	todoVersion     int64 // 上次看到的 TodoStore 版本号
 	todoChangedIter int   // 版本号变化时的迭代号，用于"未更新轮数"提醒
 
+	// ---- skills（从 ctx 中的 SkillRuntime 读取，设计文档 2.6）----
+	// 已加载技能名列表，每轮 Render 时从 ctx 刷新（会话级幂等状态）。
+	loadedSkills []string
+
 	// ---- counters（由循环本身维护）----
 	calls             map[string]int
 	callNames         []string // 复用的排序缓冲区，避免每轮 alloc
@@ -109,6 +113,10 @@ func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message 
 		}
 		sb.todos = todos
 	}
+	// 已加载技能：从 ctx 中的 SkillRuntime 读取（会话级幂等状态）
+	if rt := tools.SkillRuntimeFromCtx(ctx); rt != nil {
+		sb.loadedSkills = rt.Loaded()
+	}
 	return sb.render()
 }
 
@@ -169,6 +177,14 @@ func (sb *StatusBar) render() *schema.Message {
 			b.WriteByte('\n')
 		}
 		b.WriteString("  </todo>\n")
+	}
+
+	// ---- skills ----
+	// 已加载技能（load_skill 幂等集合）：让模型明确知道哪些手册已在轨迹中。
+	if len(sb.loadedSkills) > 0 {
+		b.WriteString("  <skills loaded=\"")
+		b.WriteString(strings.Join(sb.loadedSkills, ", "))
+		b.WriteString("\"/>\n")
 	}
 
 	// ---- counters ----

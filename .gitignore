@@ -1,6 +1,7 @@
 # Task build cache
 .task
 .idea
+.codegraph
 
 # Build outputs
 bin

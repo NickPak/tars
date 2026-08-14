@@ -61,6 +61,7 @@ export class AppConfig {
     "workDir"?: string;
     "trace"?: TraceConfig | null;
     "agent"?: AgentConfig | null;
+    "skills"?: SkillsConfig | null;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -75,6 +76,7 @@ export class AppConfig {
         const $$createField0_0 = $$createType1;
         const $$createField2_0 = $$createType3;
         const $$createField3_0 = $$createType5;
+        const $$createField4_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("llm" in $$parsedSource) {
             $$parsedSource["llm"] = $$createField0_0($$parsedSource["llm"]);
@@ -85,7 +87,36 @@ export class AppConfig {
         if ("agent" in $$parsedSource) {
             $$parsedSource["agent"] = $$createField3_0($$parsedSource["agent"]);
         }
+        if ("skills" in $$parsedSource) {
+            $$parsedSource["skills"] = $$createField4_0($$parsedSource["skills"]);
+        }
         return new AppConfig($$parsedSource as Partial<AppConfig>);
+    }
+}
+
+/**
+ * SkillsConfig controls the Skills index tiers (plan/agent-tool-design-plan.md 2.5).
+ * 第一档（≤ TierFullMax）：全量清单索引，常驻系统消息；
+ * 第二档（≤ TierResidentMax）：分类索引 index/*.md，按需载入类别；
+ * 第三档（> TierResidentMax）：discover_tools 嵌入检索。
+ * 第二/三档索引生成未实现前，阈值仅作配置面，索引仍走第一档全量格式。
+ */
+export class SkillsConfig {
+    "tierFullMax"?: number;
+    "tierResidentMax"?: number;
+
+    /** Creates a new SkillsConfig instance. */
+    constructor($$source: Partial<SkillsConfig> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SkillsConfig instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SkillsConfig {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SkillsConfig($$parsedSource as Partial<SkillsConfig>);
     }
 }
 
@@ -106,3 +137,5 @@ const $$createType2 = trace$0.TraceConfig.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = AgentConfig.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = SkillsConfig.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);

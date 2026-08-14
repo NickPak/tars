@@ -289,6 +289,23 @@ export interface AppConfig {
   workDir: string;
   agent: AgentConfig;
   trace: TraceConfig;
+  skills: SkillsConfig;
+}
+
+/** Skills 索引档位阈值（config.SkillsConfig） */
+export interface SkillsConfig {
+  tierFullMax: number;
+  tierResidentMax: number;
+}
+
+/** 已安装技能（skills.Skill） */
+export interface Skill {
+  name: string;
+  description: string;
+  category: string;
+  source: string;
+  hasScripts: boolean;
+  fileCount: number;
 }
 
 /** 与 Go 端 main.go 中注册的事件名保持一致 */

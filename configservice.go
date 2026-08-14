@@ -2,7 +2,10 @@ package main
 
 import (
 	"errors"
+	"log/slog"
+
 	"tars/internal/config"
+	"tars/internal/skills"
 	"tars/pkg/llm"
 	"tars/pkg/trace"
 )
@@ -44,6 +47,11 @@ func (s *AgentService) SaveAppConfig(v *config.AppConfig) error {
 	llm.GetRegistry().ResetHealth()
 	// 追踪配置（开关/端点）可能已变：重建全局 tracer
 	trace.Rebuild(v.Trace)
+	// 技能索引档位阈值可能已变：更新并重建索引（下一次对话立即生效）
+	skills.GetManager().UpdateConfig(v.Skills)
+	if err := skills.GetManager().GenerateIndex(); err != nil {
+		slog.Warn("Failed to regenerate skills index after config save", "error", err)
+	}
 	return nil
 }
 

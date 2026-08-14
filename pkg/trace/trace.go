@@ -56,7 +56,7 @@ func GetTracer() oteltrace.Tracer { return tracer }
 
 // Init 按给定配置创建全局 TracerProvider 单例。进程启动时调用一次。
 // 未启用追踪时 tp 为 nil，所有包级函数安全 no-op。
-func InitTrace(cfg *TraceConfig) {
+func InitTrace(cfg *Config) {
 	if cfg == nil || !cfg.Enabled ||
 		(cfg.OTLPHTTPEndpoint == "" && cfg.OTLPGrpcEndpoint == "") {
 		return
@@ -67,7 +67,7 @@ func InitTrace(cfg *TraceConfig) {
 // Rebuild 按给定配置重建全局 TracerProvider（设置界面保存 trace 配置后调用）。
 // 旧的 provider 被 Shutdown（冲刷 OTLP 批量队列），新的立即生效。
 // 重建失败时保留旧 provider，避免配置错误导致追踪中断。
-func Rebuild(cfg *TraceConfig) {
+func Rebuild(cfg *Config) {
 	enabled := cfg != nil && cfg.Enabled
 	httpEp, grpcEp := "", ""
 	if enabled {

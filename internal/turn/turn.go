@@ -15,6 +15,7 @@ import (
 	"tars/internal/config"
 	"tars/internal/event"
 	"tars/internal/session"
+	"tars/internal/skills"
 	"tars/pkg/llm"
 	"tars/pkg/prompt"
 	"tars/pkg/store"
@@ -117,14 +118,22 @@ func (t *turn) run() {
 	// 交互通道：ask_user 询问与危险调用审批经此阻塞等待用户答复。
 	ctx = tools.WithAsker(ctx, newAsker(sess))
 
+	// 技能运行时：load_skill 工具读 SKILL.md、幂等状态走会话。
+	ctx = tools.WithSkillRuntime(ctx, newSkillRuntime(sess))
+
 	cfg := config.Get()
 	ag := agent.New(cfg.Agent.MaxIterations, cfg.Agent.IterationTimeout, tools.DefaultManager(), modelWithTools)
 
-	// LLM 上下文：系统提示词 + 全部消息现派生。纯函数转换、每轮重建，
-	// 无缓存即无失效同步问题；消息数 × 指针拷贝的成本相对一轮 LLM 调用可忽略。
-	messages := make([]*schema.Message, 0, len(sess.Messages)+1)
+	// LLM 上下文：系统提示词 + 技能目录（动态）+ 全部消息现派生。
+	// 纯函数转换、每轮重建，无缓存即无失效同步问题；消息数 × 指针拷贝的
+	// 成本相对一轮 LLM 调用可忽略。技能目录作为独立 system 消息每轮动态
+	// 读取——装/卸技能对下一次 turn 立即生效，无需"重载"或"会话内冻结"。
+	messages := make([]*schema.Message, 0, len(sess.Messages)+2)
 	if sm := prompt.GetSystemMessage(); sm != nil {
 		messages = append(messages, sm)
+	}
+	if idx := skills.GetManager().RenderIndex(); idx != "" {
+		messages = append(messages, schema.SystemMessage(idx))
 	}
 	for _, m := range sess.Messages {
 		messages = append(messages, m.ToSchemaMessage())

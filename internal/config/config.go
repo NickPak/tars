@@ -9,39 +9,19 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"tars/internal/agent"
+	"tars/internal/skills"
 	"tars/pkg/llm"
 	"tars/pkg/trace"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	instance atomic.Pointer[AppConfig]
-
-	// AppConfigPath 是应用配置文件的路径（相对工作目录）。
-	// 声明为 var 以便测试覆盖。
+	instance      atomic.Pointer[AppConfig]
 	AppConfigPath = "config/config.yaml"
 )
 
-const (
-	// DefaultMaxIterations is used when agent.maxIterations is unset or
-	// non-positive. 100 covers long multi-file tasks while still bounding cost.
-	DefaultMaxIterations = 100
-
-	// DefaultCompressionThreshold is used when agent.compressionThreshold is
-	// unset or out of range.
-	DefaultCompressionThreshold = 0.8
-
-	// DefaultIterationTimeout is used when agent.iterationTimeout is unset or
-	// zero. 120s is generous enough for busy providers that queue requests,
-	// while still catching truly stuck connections.
-	DefaultIterationTimeout = 120 * time.Second
-)
-
-// DefaultDataDir returns the default data directory under the user's
-// home directory: ~/tars on all platforms.
-// 它是 WorkDir 配置字段为空时的默认值（Validate 时填充）。
 func DefaultDataDir() string {
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, "tars")
@@ -49,31 +29,12 @@ func DefaultDataDir() string {
 	return "."
 }
 
-// TraceConfig 由 pkg/trace 定义，config 包仅引用。
-type TraceConfig = trace.TraceConfig
-
-// AgentConfig controls the ReAct loop runtime behavior.
-type AgentConfig struct {
-	// MaxIterations caps the ReAct loop rounds (LLM → tools → LLM ...)
-	// before the agent is forced to stop. Prevents runaway token burn on
-	// pathological loops; complex multi-file tasks need a generous budget.
-	MaxIterations int `yaml:"maxIterations,omitempty" json:"maxIterations,omitempty"`
-	// CompressionThreshold is the context-usage ratio (0-1) at which history
-	// compression should kick in (compression itself is not implemented yet;
-	// the threshold is surfaced in the status bar for now).
-	CompressionThreshold float64 `yaml:"compressionThreshold,omitempty" json:"compressionThreshold,omitempty"`
-	// IterationTimeout is the per-iteration timeout for a single model call.
-	// Protects against provider congestion / silent stalls where the stream
-	// hangs without error. Does NOT truncate normal streaming — only fires
-	// when no response arrives at all. Zero = 120s default.
-	IterationTimeout time.Duration `yaml:"iterationTimeout,omitempty" json:"iterationTimeout,omitempty"`
-}
-
 type AppConfig struct {
-	LLM     *llm.Config  `yaml:"llm,omitempty" json:"llm,omitempty"`
-	WorkDir string       `yaml:"workDir,omitempty" json:"workDir,omitempty"`
-	Trace   *TraceConfig `yaml:"trace,omitempty" json:"trace,omitempty"`
-	Agent   *AgentConfig `yaml:"agent,omitempty" json:"agent,omitempty"`
+	LLM     *llm.Config    `yaml:"llm,omitempty" json:"llm,omitempty"`
+	WorkDir string         `yaml:"workDir,omitempty" json:"workDir,omitempty"`
+	Trace   *trace.Config  `yaml:"trace,omitempty" json:"trace,omitempty"`
+	Agent   *agent.Config  `yaml:"agent,omitempty" json:"agent,omitempty"`
+	Skills  *skills.Config `yaml:"skills,omitempty" json:"skills,omitempty"`
 }
 
 func Get() *AppConfig {
@@ -89,15 +50,11 @@ func LoadAppConfig() error {
 	if err != nil {
 		return err
 	}
-	// 展开 ${VAR} / $VAR 形式的环境变量引用，使密钥等敏感值
-	// 可以通过环境变量注入而不必写入配置文件
 	expanded := os.ExpandEnv(string(data))
 	appConfig := &AppConfig{}
 	if err = yaml.Unmarshal([]byte(expanded), appConfig); err != nil {
 		return err
 	}
-	// 校验并修正。LLM 结构性错误不阻塞启动（修正已生效），
-	// 首次对话时由注册表暴露，用户可通过设置界面修复。
 	if err := appConfig.Validate(); err != nil {
 		slog.Warn("LLM config invalid at startup, continuing", "error", err)
 	}
@@ -105,43 +62,28 @@ func LoadAppConfig() error {
 	return nil
 }
 
-// Validate 校验并修正整个配置：
-//   - nil 子结构补空对象，可修正的非法字段改为默认值（Load/Save 共用）；
-//   - LLM 结构性错误（不可自动修正）返回 error。
-//
-// 调用方拿到 AppConfig 后直接访问字段即可，无需运行时回退。
 func (c *AppConfig) Validate() error {
 	if c.Agent == nil {
-		c.Agent = &AgentConfig{}
+		c.Agent = &agent.Config{}
 	}
 	c.Agent.Validate()
 	if c.Trace == nil {
-		c.Trace = &TraceConfig{}
+		c.Trace = &trace.Config{}
 	}
 	c.WorkDir = strings.TrimSpace(c.WorkDir)
 	if c.WorkDir == "" {
 		c.WorkDir = DefaultDataDir()
 	}
+	if c.Skills == nil {
+		c.Skills = &skills.Config{}
+	}
+	c.Skills.Validate()
 	if c.LLM != nil {
 		if err := c.LLM.Validate(); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// Validate 修正非法字段为默认值。
-// 这些字段都有明确的内置默认，静默修正即可，无需报错。
-func (c *AgentConfig) Validate() {
-	if c.MaxIterations <= 0 {
-		c.MaxIterations = DefaultMaxIterations
-	}
-	if c.CompressionThreshold <= 0 || c.CompressionThreshold > 1 {
-		c.CompressionThreshold = DefaultCompressionThreshold
-	}
-	if c.IterationTimeout <= 0 {
-		c.IterationTimeout = DefaultIterationTimeout
-	}
 }
 
 // SaveAppConfigFile 把 cfg 合并写回 YAML 配置文件。
@@ -208,6 +150,11 @@ func SaveAppConfigFile(cfg *AppConfig) error {
 		setScalar(am, "maxIterations", "!!int", strconv.FormatInt(int64(cfg.Agent.MaxIterations), 10))
 		setScalar(am, "compressionThreshold", "!!float", strconv.FormatFloat(cfg.Agent.CompressionThreshold, 'f', -1, 64))
 		setScalar(am, "iterationTimeout", "!!str", cfg.Agent.IterationTimeout.String())
+	}
+	if cfg.Skills != nil {
+		sm := ensureMap(m, "skills")
+		setOrDelInt(sm, "tierFullMax", int64(cfg.Skills.TierFullMax))
+		setOrDelInt(sm, "tierResidentMax", int64(cfg.Skills.TierResidentMax))
 	}
 	if cfg.Trace != nil {
 		tm := ensureMap(m, "trace")

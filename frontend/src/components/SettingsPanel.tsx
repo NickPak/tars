@@ -21,6 +21,7 @@ import { useSettingsStore } from "../store/settingsStore";
 import type { SettingsTab } from "../store/settingsStore";
 import type { AppConfig, LLMConfig, ModelConfig, ProviderConfig } from "../types";
 import { ConfirmDialog } from "./Dialog";
+import SkillsPage from "./SkillsPage";
 
 interface NavItem {
   tab: SettingsTab;
@@ -35,14 +36,14 @@ const NAV_ITEMS: NavItem[] = [
   { tab: "model", label: "模型", icon: <Brain size={15} /> },
   { tab: "agent", label: "Agent", icon: <Bot size={15} /> },
   { tab: "trace", label: "追踪", icon: <Activity size={15} /> },
-  { tab: "skills", label: "技能", icon: <Sparkles size={15} />, planned: true },
+  { tab: "skills", label: "技能", icon: <Sparkles size={15} /> },
   { tab: "mcp", label: "MCP 与工具", icon: <Plug size={15} />, planned: true },
   { tab: "appearance", label: "外观", icon: <Palette size={15} />, planned: true },
   { tab: "about", label: "关于", icon: <Info size={15} /> },
 ];
 
 /** 有真实配置读写能力的页签（其余为占位） */
-const REAL_TABS: SettingsTab[] = ["general", "model", "agent", "trace"];
+const REAL_TABS: SettingsTab[] = ["general", "model", "agent", "trace", "skills"];
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -194,16 +195,7 @@ export default function SettingsPanel() {
                   <TracePage draft={draft} update={update} />
                 )}
                 {tab === "skills" && (
-                  <PlaceholderPage
-                    icon={<Sparkles size={28} />}
-                    title="技能（Skills）"
-                    desc="领域知识与专项操作流程的能力层。元数据常驻上下文，完整内容按需加载。"
-                    items={[
-                      "SKILL.md 文档规范（路由式描述 + 反例）",
-                      "load_skill 工具：按需加载，幂等不重复注入",
-                      "扁平存储 + 自动生成的索引",
-                    ]}
-                  />
+                  <SkillsPage draft={draft} update={update} />
                 )}
                 {tab === "mcp" && (
                   <PlaceholderPage

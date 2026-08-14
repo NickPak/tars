@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"tars/internal/agent"
 	"tars/pkg/llm"
+	"tars/pkg/trace"
 )
 
 const sampleYAML = `# 顶部注释
@@ -59,8 +61,8 @@ func TestSaveAppConfigFileMerge(t *testing.T) {
 				"deepseek/deepseek-chat": {Provider: "deepseek", ModelId: "deepseek-chat"},
 			},
 		},
-		Agent: &AgentConfig{MaxIterations: 50, CompressionThreshold: 0.8},
-		Trace: &TraceConfig{OTLPHTTPEndpoint: "localhost:4318"}, // gRPC 留空 → 删除
+		Agent: &agent.Config{MaxIterations: 50, CompressionThreshold: 0.8},
+		Trace: &trace.Config{OTLPHTTPEndpoint: "localhost:4318"}, // gRPC 留空 → 删除
 	}
 	if err := SaveAppConfigFile(cfg); err != nil {
 		t.Fatalf("SaveAppConfigFile: %v", err)

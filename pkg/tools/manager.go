@@ -90,6 +90,8 @@ func InitManager(workDir string) {
 	m.Register(GrepFiles(workDir))
 	m.Register(TodoWrite())
 	m.Register(AskUser())
+	m.Register(LoadSkill())
+	m.Register(DiscoverTools())
 	defaultManager = m
 }
 
