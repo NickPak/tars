@@ -16,7 +16,6 @@ package prompt
 import (
 	"embed"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/cloudwego/eino/schema"
@@ -70,30 +69,10 @@ func BuildSystemPrompt(env EnvironmentContext) string {
 	return base + RenderEnvContext(env)
 }
 
-// --- 全局单例 ---
-
-var (
-	systemPrompt  string
-	systemMessage *schema.Message
-)
-
-// InitSystemPrompt 在进程启动时构建一次全局系统提示词。
-// 必须在 tools.InitManager 之后调用（工具列表需要完整）。
-func InitSystemPrompt(toolNames []string) {
-	systemPrompt = BuildSystemPrompt(EnvironmentContext{
-		OS:       runtime.GOOS,
-		Platform: runtime.GOARCH,
-		Tools:    toolNames,
-	})
-
-	systemMessage = schema.SystemMessage(systemPrompt)
-}
-
-// GetSystemPrompt 返回进程级系统提示词；InitSystemPrompt 之前调用返回空串。
-func GetSystemPrompt() string { return systemPrompt }
-
-func GetSystemMessage() *schema.Message {
-	return systemMessage
+// BuildSystemMessage 构建系统提示词消息（含工具列表等静态环境上下文）。
+// 返回 *schema.Message 供 agent 直接拼接到消息列表；纯函数，无全局状态。
+func BuildSystemMessage(env EnvironmentContext) *schema.Message {
+	return schema.SystemMessage(BuildSystemPrompt(env))
 }
 
 // fallbackPrompt is used only if the embedded file cannot be read (should

@@ -8,11 +8,7 @@ import (
 	"tars/internal/config"
 	"tars/internal/event"
 	"tars/internal/session"
-	"tars/internal/skills"
-	"tars/internal/turn"
-	"tars/pkg/llm"
-	"tars/pkg/prompt"
-	"tars/pkg/store"
+	"tars/internal/wire"
 	"tars/pkg/tools"
 	"tars/pkg/trace"
 
@@ -22,20 +18,22 @@ import (
 // 事件载荷类型统一定义在 internal/event 包。
 
 // ============================================================================
-// AgentService —— 对前端暴露的 API 层。
-// 会话运行态由 internal/session.Manager 全局单例承载，本服务只做
-// 参数校验、委托与事件桥接。
+// AgentService —— 对前端暴露的 API 层，同时是应用运行态的持有者。
+// 运行时依赖由装配层（wire.Build）在 ServiceStartup 时创建，方法只做
+// 参数校验、委托与事件桥接，不直接 new 领域对象，也不依赖全局单例。
 // ============================================================================
 
-type AgentService struct{}
+type AgentService struct {
+	rt *wire.Runtime
+}
 
 // resolveWorkDir resolves the effective workspace directory for a session,
 // preferring the user's custom directory when one is set.
 func (s *AgentService) resolveWorkDir(sessionID string) string {
-	if meta, err := store.GetSessionStore().LoadMeta(sessionID); err == nil && meta != nil && meta.CustomWorkDir != "" {
+	if meta, err := s.rt.Store.LoadMeta(sessionID); err == nil && meta != nil && meta.CustomWorkDir != "" {
 		return meta.CustomWorkDir
 	}
-	return store.GetSessionStore().WorkspaceDir(sessionID)
+	return s.rt.Store.WorkspaceDir(sessionID)
 }
 
 func (s *AgentService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -44,10 +42,6 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 		return err
 	}
 	appConfig := config.Get()
-
-	// 注册表启动期容错：配置问题不阻塞启动，首次对话时才暴露，
-	// 用户可通过设置界面修复。
-	llm.InitRegistry(appConfig.LLM)
 
 	if !appConfig.Trace.Enabled {
 		slog.Info("Tracing disabled (trace.enabled is not set)")
@@ -68,35 +62,24 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 	}
 	slog.Info("Agent work directory", "path", workDir)
 
-	// 初始化全局会话存储单例
-	if err := store.InitSessionStore(workDir); err != nil {
-		slog.Error("Failed to init session store", "error", err)
-		return err
-	}
-
-	// 初始化 Skills 存储单例，并生成索引
-	if err := skills.InitManager(workDir, appConfig.Skills); err != nil {
-		slog.Error("Failed to init skills store", "error", err)
-		return err
-	}
-	err := skills.GetManager().GenerateIndex()
+	// 装配全部运行时依赖（会话存储/技能/工具/模型/会话管理器/系统提示词）
+	rt, err := wire.Build(wire.Options{
+		WorkDir: workDir,
+		LLM:     appConfig.LLM,
+		Skills:  appConfig.Skills,
+		Sink:    wailsSink{},
+	})
 	if err != nil {
-		slog.Warn("Failed to generate skills index", "error", err)
+		slog.Error("Failed to build runtime", "error", err)
 		return err
 	}
+	s.rt = rt
 
-	// 初始化全局工具管理器单例并注册内置工具
-	tools.InitManager(workDir)
-
-	// 初始化全局追踪器单例（OTLP 连接池 + 批量导出器）
+	// 追踪器（进程级基础设施，OTLP 连接池 + 批量导出器）
 	trace.InitTrace(appConfig.Trace)
 
-	// 构建全局系统提示词单例（base + 静态 env），必须在 InitManager 之后
-	prompt.InitSystemPrompt(tools.DefaultManager().ToolNames())
-
-	// 初始化会话管理器单例并从磁盘恢复全部会话
-	sessionMgr := session.InitManager()
-	if err := sessionMgr.Restore(); err != nil {
+	// 从磁盘恢复全部会话
+	if err := s.rt.Sessions.Restore(); err != nil {
 		return err
 	}
 
@@ -104,9 +87,8 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 }
 
 func (s *AgentService) ServiceShutdown() error {
-	sessionMgr := session.GetManager()
-	if sessionMgr != nil {
-		sessionMgr.CancelAll() // 先取消所有运行中的会话
+	if s.rt != nil && s.rt.Sessions != nil {
+		s.rt.Sessions.CancelAll() // 先取消所有运行中的会话
 	}
 	trace.Shutdown() // 关闭全局 OTLP 导出器
 	return nil
@@ -115,21 +97,21 @@ func (s *AgentService) ServiceShutdown() error {
 // --- Session management API ---
 
 func (s *AgentService) CreateSession() (*session.Info, error) {
-	return session.GetManager().Create()
+	return s.rt.Sessions.Create()
 }
 
 func (s *AgentService) ListSessions() ([]*session.Info, error) {
-	return session.GetManager().List(), nil
+	return s.rt.Sessions.List(), nil
 }
 
 func (s *AgentService) DeleteSession(id string) error {
-	return session.GetManager().Delete(id)
+	return s.rt.Sessions.Delete(id)
 }
 
 // --- Session queries ---
 
 func (s *AgentService) GetSession(id string) (*session.Info, error) {
-	sess, ok := session.GetManager().Find(id)
+	sess, ok := s.rt.Sessions.Find(id)
 	if !ok {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
@@ -140,36 +122,19 @@ func (s *AgentService) GetSession(id string) (*session.Info, error) {
 
 // SendMessage sends a user message and starts the agent loop.
 func (s *AgentService) SendMessage(sessionID, content string) error {
-	sess, ok := session.GetManager().Find(sessionID)
-	if !ok {
-		return fmt.Errorf("session not found: %s", sessionID)
-	}
-	// 轮运行中禁止再次发送：会覆盖运行中轮的 cancel，
-	// 且旧 goroutine 注销时会误删新轮的标记。
-	if sess.IsRunning() {
-		return fmt.Errorf("turn in progress, cancel it first")
-	}
-
-	sess.AppendUserTurn(content) // 消息准备：尾部留下本轮空 assistant 锚点
-	turn.Start(sess, content)
-	return nil
+	return s.rt.Runner.Submit(sessionID, content)
 }
 
 // CancelMessage cancels an in-flight SendMessage turn.
 func (s *AgentService) CancelMessage(sessionID string) error {
-	sessionMgr := session.GetManager()
-	if !sessionMgr.Has(sessionID) {
-		return fmt.Errorf("session not found: %s", sessionID)
-	}
-	sessionMgr.Cancel(sessionID)
-	return nil
+	return s.rt.Runner.Cancel(sessionID)
 }
 
 // DeleteMessage deletes a message by ID — along with all messages after it
 // (truncate semantics, matching the frontend) — and returns its index.
 // Rejected while a turn is running: the message list is frozen mid-turn.
 func (s *AgentService) DeleteMessage(sessionID, messageID string) (int, error) {
-	sess, ok := session.GetManager().Find(sessionID)
+	sess, ok := s.rt.Sessions.Find(sessionID)
 	if !ok {
 		return -1, fmt.Errorf("session not found: %s", sessionID)
 	}
@@ -182,19 +147,7 @@ func (s *AgentService) DeleteMessage(sessionID, messageID string) (int, error) {
 // RetryMessage retries the last turn (or the turn containing the given
 // assistant message). It regenerates the assistant response for that turn.
 func (s *AgentService) RetryMessage(sessionID string, messageID string) error {
-	sess, ok := session.GetManager().Find(sessionID)
-	if !ok {
-		return fmt.Errorf("session not found: %s", sessionID)
-	}
-	if sess.IsRunning() {
-		return fmt.Errorf("turn in progress, cancel it first")
-	}
-	userText, err := sess.PrepareRetry(messageID)
-	if err != nil {
-		return err
-	}
-	turn.Start(sess, userText)
-	return nil
+	return s.rt.Runner.Retry(sessionID, messageID)
 }
 
 // AnswerAskUser 提交一次询问/审批的用户答复。requestID 即工具调用 ID
@@ -202,7 +155,7 @@ func (s *AgentService) RetryMessage(sessionID string, messageID string) error {
 // value：confirm 为 "confirm"/"deny"；select 为选项 id；input 为文本；
 // 审批为 "allow"/"allow_always"/"deny"。reason 为可选拒绝理由。
 func (s *AgentService) AnswerAskUser(requestID, value, reason string) error {
-	if !turn.ResolveAsk(requestID, &tools.Answer{Value: value, Reason: reason, Source: "user"}) {
+	if !s.rt.Runner.ResolveAsk(requestID, &tools.Answer{Value: value, Reason: reason, Source: "user"}) {
 		return fmt.Errorf("question not found or already resolved: %s", requestID)
 	}
 	return nil
@@ -212,7 +165,7 @@ func (s *AgentService) AnswerAskUser(requestID, value, reason string) error {
 
 // EditMessage edits a user message in-place (no regeneration).
 func (s *AgentService) EditMessage(sessionID, messageID, content string) error {
-	sess, ok := session.GetManager().Find(sessionID)
+	sess, ok := s.rt.Sessions.Find(sessionID)
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
@@ -222,7 +175,7 @@ func (s *AgentService) EditMessage(sessionID, messageID, content string) error {
 // --- Session rename ---
 
 func (s *AgentService) RenameSession(id, title string) error {
-	sess, ok := session.GetManager().Find(id)
+	sess, ok := s.rt.Sessions.Find(id)
 	if !ok {
 		return fmt.Errorf("session not found: %s", id)
 	}

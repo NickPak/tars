@@ -1,4 +1,4 @@
-package turn
+package runner
 
 import (
 	"tars/internal/session"
@@ -13,8 +13,8 @@ type skillRuntime struct {
 	sess *session.Info
 }
 
-func newSkillRuntime(sess *session.Info) *skillRuntime {
-	return &skillRuntime{mgr: skills.GetManager(), sess: sess}
+func newSkillRuntime(mgr *skills.Manager, sess *session.Info) *skillRuntime {
+	return &skillRuntime{mgr: mgr, sess: sess}
 }
 
 func (r *skillRuntime) Load(name string) (string, error) {

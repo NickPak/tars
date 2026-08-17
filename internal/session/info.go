@@ -1,6 +1,7 @@
 // Package session 管理会话的内存运行态：会话索引、消息列表、运行标记，
-// 以及与磁盘持久化（pkg/store）的衔接。通过 GetManager 全局单例访问。
-// 会话即状态聚合；轮的执行在 internal/turn（session 不认识 turn）。
+// 以及与磁盘持久化（pkg/store）的衔接。会话即状态聚合；
+// 轮的执行在 internal/runner（session 不认识 runner）。
+// Manager/Info 为普通对象，由装配层创建并注入，不再使用全局单例。
 package session
 
 import (
@@ -37,6 +38,8 @@ type Info struct {
 	// LoadedSkills 记录本会话已 load_skill 的技能（内存态，跨轮幂等，
 	// 重启清空）。状态栏据此展示"已加载技能"。
 	LoadedSkills map[string]bool `json:"-"`
+	// store 会话持久化后端，由 Manager 创建会话时注入（非序列化）。
+	store *store.SessionStore `json:"-"`
 }
 
 // RiskAllowed 报告某类危险操作是否已被用户常允许。
@@ -75,7 +78,7 @@ func (i *Info) LoadedSkillNames() []string {
 	return names
 }
 
-func NewInfo(id string) *Info {
+func NewInfo(id string, st *store.SessionStore) *Info {
 	now := time.Now().UnixMilli()
 
 	return &Info{
@@ -84,12 +87,13 @@ func NewInfo(id string) *Info {
 		CreatedAt: now,
 		UpdatedAt: now,
 		Messages:  make([]*store.Message, 0, 16),
+		store:     st,
 	}
 }
 
 // AppendUserTurn 新一轮对话的消息准备：追加 user 消息与空 assistant 锚点
 // （流式输出的落点），首条消息顺便完成自动命名。
-// 返回后尾部即本轮锚点，交给 turn.Start 执行。
+// 返回后尾部即本轮锚点，交给 runner 启动执行。
 func (i *Info) AppendUserTurn(content string) {
 	now := time.Now().UnixMilli()
 	i.AppendMessage(now,
@@ -158,7 +162,7 @@ func (i *Info) PrepareRetry(messageID string) (string, error) {
 	})
 	i.UpdatedAt = now
 
-	if err := store.GetSessionStore().RewriteMessages(i.ID, i.Messages); err != nil {
+	if err := i.store.RewriteMessages(i.ID, i.Messages); err != nil {
 		return "", err
 	}
 	return userText, nil
@@ -173,7 +177,7 @@ func (i *Info) DeleteFrom(messageID string) (int, error) {
 		}
 		i.Messages = i.Messages[:idx]
 		i.UpdatedAt = time.Now().UnixMilli()
-		return idx, store.GetSessionStore().RewriteMessages(i.ID, i.Messages)
+		return idx, i.store.RewriteMessages(i.ID, i.Messages)
 	}
 	return -1, fmt.Errorf("message not found: %s", messageID)
 }
@@ -189,7 +193,7 @@ func (i *Info) EditUserMessage(messageID, content string) error {
 		}
 		m.Content = content
 		i.UpdatedAt = time.Now().UnixMilli()
-		return store.GetSessionStore().RewriteMessages(i.ID, i.Messages)
+		return i.store.RewriteMessages(i.ID, i.Messages)
 	}
 	return fmt.Errorf("message not found or not editable: %s", messageID)
 }
@@ -198,7 +202,7 @@ func (i *Info) EditUserMessage(messageID, content string) error {
 func (i *Info) SetTitle(title string) error {
 	i.Title = title
 	i.UpdatedAt = time.Now().UnixMilli()
-	return store.GetSessionStore().SaveMeta(i.ID, &store.SessionMeta{
+	return i.store.SaveMeta(i.ID, &store.SessionMeta{
 		Title:     i.Title,
 		CreatedAt: i.CreatedAt,
 		UpdatedAt: i.UpdatedAt,
@@ -210,7 +214,7 @@ func (i *Info) AppendMessage(updateAt int64, msg ...*store.Message) {
 	i.Messages = append(i.Messages, msg...)
 	i.UpdatedAt = updateAt
 
-	if err := store.GetSessionStore().AppendMessage(i.ID, msg...); err != nil {
+	if err := i.store.AppendMessage(i.ID, msg...); err != nil {
 		slog.Warn("Failed to store message", "id", i.ID, "error", err)
 	}
 }
@@ -231,7 +235,7 @@ func (i *Info) updateTitle(content string) {
 	}
 	i.Title = title
 
-	if err := store.GetSessionStore().SaveMeta(i.ID, &store.SessionMeta{
+	if err := i.store.SaveMeta(i.ID, &store.SessionMeta{
 		Title:     i.Title,
 		CreatedAt: i.CreatedAt,
 		UpdatedAt: i.UpdatedAt,

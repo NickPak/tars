@@ -9,8 +9,6 @@ import (
 	"tars/pkg/store"
 	"time"
 
-	"tars/internal/session"
-
 	"github.com/cloudwego/eino/schema"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -20,7 +18,7 @@ import (
 // Returns the chosen path ("" if the user cancelled).
 func (s *AgentService) ExportSession(sessionID string) (string, error) {
 	// 渲染 Markdown（拷贝切片头做只读快照）
-	sess, ok := session.GetManager().Find(sessionID)
+	sess, ok := s.rt.Sessions.Find(sessionID)
 	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}

@@ -5,9 +5,6 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"tars/internal/session"
-	"tars/pkg/store"
-
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -43,17 +40,17 @@ func (s *AgentService) OpenDirectoryDialog() (string, error) {
 // All subsequent agent file operations will operate within this directory.
 // Pass an empty string to reset to the default isolated workspace.
 func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
-	if !session.GetManager().Has(sessionID) {
+	if !s.rt.Sessions.Has(sessionID) {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
 	// Persist to meta.json
-	meta, err := store.GetSessionStore().LoadMeta(sessionID)
+	meta, err := s.rt.Store.LoadMeta(sessionID)
 	if err != nil || meta == nil {
 		return fmt.Errorf("load meta for %s: %w", sessionID, err)
 	}
 	meta.CustomWorkDir = dir
-	if err := store.GetSessionStore().SaveMeta(sessionID, meta); err != nil {
+	if err := s.rt.Store.SaveMeta(sessionID, meta); err != nil {
 		return fmt.Errorf("save meta: %w", err)
 	}
 
@@ -70,16 +67,16 @@ func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
 
 // GetWorkspaceInfo returns the current workspace info for a session.
 func (s *AgentService) GetWorkspaceInfo(sessionID string) (*WorkspaceInfo, error) {
-	if !session.GetManager().Has(sessionID) {
+	if !s.rt.Sessions.Has(sessionID) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	meta, err := store.GetSessionStore().LoadMeta(sessionID)
+	meta, err := s.rt.Store.LoadMeta(sessionID)
 	if err != nil || meta == nil {
 		return nil, fmt.Errorf("load meta: %w", err)
 	}
 
-	path := store.GetSessionStore().WorkspaceDir(sessionID)
+	path := s.rt.Store.WorkspaceDir(sessionID)
 	isCustom := false
 	if meta.CustomWorkDir != "" {
 		path = meta.CustomWorkDir

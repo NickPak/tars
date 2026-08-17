@@ -1,4 +1,4 @@
-package turn
+package runner
 
 import (
 	"context"
@@ -9,16 +9,14 @@ import (
 	"tars/internal/event"
 	"tars/internal/session"
 	"tars/pkg/tools"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // ============================================================================
 // Asker 实现与答复注册表
 //
 // ask_user（模型主动询问）与审批门（框架拦截危险调用）共用同一套
-// "阻塞等待用户答复"机制：handler 阻塞在此，前端提交后经 ResolveAsk 回写。
-// 答复键即工具调用 ID——agent:tool/agent:tool_result 事件已携带它，
+// "阻塞等待用户答复"机制：handler 阻塞在此，前端提交后经 Runner.ResolveAsk
+// 回写。答复键即工具调用 ID——agent:tool/agent:tool_result 事件已携带它，
 // 前端据此渲染卡片与终态，无需额外事件（审批除外：问题负载由框架生成，
 // 经 agent:approval 事件下发）。
 // ============================================================================
@@ -26,10 +24,12 @@ import (
 // asker 把一次轮的询问/审批桥接到前端。
 type asker struct {
 	sess *session.Info
+	asks *askRegistry
+	sink event.Sink
 }
 
-func newAsker(sess *session.Info) *asker {
-	return &asker{sess: sess}
+func newAsker(sess *session.Info, asks *askRegistry, sink event.Sink) *asker {
+	return &asker{sess: sess, asks: asks, sink: sink}
 }
 
 // Ask 处理 ask_user 的模型询问。问题负载经 agent:tool 事件的参数直达
@@ -39,7 +39,7 @@ func (a *asker) Ask(ctx context.Context, q *tools.Question) (*tools.Answer, erro
 	if id == "" {
 		return nil, errors.New("asker: missing tool call id in context")
 	}
-	return waitAnswer(ctx, id, q.TimeoutSeconds, q.Default)
+	return a.asks.wait(ctx, id, q.TimeoutSeconds, q.Default)
 }
 
 // Approve 处理危险调用审批：先查会话级常允许表，未命中则发
@@ -49,7 +49,7 @@ func (a *asker) Approve(ctx context.Context, r *tools.ApprovalRequest) (*tools.A
 		return &tools.Answer{Value: "allow", Source: "rule"}, nil
 	}
 
-	application.Get().Event.Emit("agent:approval", event.ApprovalEvent{
+	a.sink.Approval(event.ApprovalEvent{
 		SessionID:      a.sess.ID,
 		ToolCallID:     r.ToolCallID,
 		ToolName:       r.ToolName,
@@ -58,7 +58,7 @@ func (a *asker) Approve(ctx context.Context, r *tools.ApprovalRequest) (*tools.A
 		TimeoutSeconds: r.TimeoutSeconds,
 	})
 
-	ans, err := waitAnswer(ctx, r.ToolCallID, r.TimeoutSeconds, "deny")
+	ans, err := a.asks.wait(ctx, r.ToolCallID, r.TimeoutSeconds, "deny")
 	if err != nil {
 		return nil, err
 	}
@@ -71,42 +71,48 @@ func (a *asker) Approve(ctx context.Context, r *tools.ApprovalRequest) (*tools.A
 
 // --- 答复注册表 ---
 
-var asks = struct {
-	sync.Mutex
+// askRegistry 持有询问/审批答复通道注册表。它是 Runner 的字段，
+// 不再使用包级全局单例。
+type askRegistry struct {
+	mu      sync.Mutex
 	pending map[string]chan *tools.Answer // 等待中的答复通道
 	early   map[string]*tools.Answer      // 先到的答复（用户手快于登记）
-}{
-	pending: make(map[string]chan *tools.Answer),
-	early:   make(map[string]*tools.Answer),
 }
 
-// ResolveAsk 回写一次答复（服务层入口）。无等待方则暂存（先到先得）。
-func ResolveAsk(toolCallID string, ans *tools.Answer) bool {
-	asks.Lock()
-	defer asks.Unlock()
-	if ch, ok := asks.pending[toolCallID]; ok {
-		delete(asks.pending, toolCallID)
+func newAskRegistry() *askRegistry {
+	return &askRegistry{
+		pending: make(map[string]chan *tools.Answer),
+		early:   make(map[string]*tools.Answer),
+	}
+}
+
+// resolve 回写一次答复。无等待方则暂存（先到先得）。
+func (a *askRegistry) resolve(toolCallID string, ans *tools.Answer) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if ch, ok := a.pending[toolCallID]; ok {
+		delete(a.pending, toolCallID)
 		ch <- ans
 		return true
 	}
-	asks.early[toolCallID] = ans
+	a.early[toolCallID] = ans
 	return true
 }
 
-func waitAnswer(ctx context.Context, id string, timeoutSec int, defaultVal string) (*tools.Answer, error) {
-	asks.Lock()
-	if ans, ok := asks.early[id]; ok {
-		delete(asks.early, id)
-		asks.Unlock()
+func (a *askRegistry) wait(ctx context.Context, id string, timeoutSec int, defaultVal string) (*tools.Answer, error) {
+	a.mu.Lock()
+	if ans, ok := a.early[id]; ok {
+		delete(a.early, id)
+		a.mu.Unlock()
 		return ans, nil
 	}
 	ch := make(chan *tools.Answer, 1)
-	asks.pending[id] = ch
-	asks.Unlock()
+	a.pending[id] = ch
+	a.mu.Unlock()
 	defer func() {
-		asks.Lock()
-		delete(asks.pending, id)
-		asks.Unlock()
+		a.mu.Lock()
+		delete(a.pending, id)
+		a.mu.Unlock()
 	}()
 
 	if timeoutSec <= 0 {

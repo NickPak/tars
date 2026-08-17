@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/cloudwego/eino-ext/components/model/ark"
 	"github.com/cloudwego/eino-ext/components/model/claude"
@@ -18,10 +17,6 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	arkmodel "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"google.golang.org/genai"
-)
-
-var (
-	defaultRegistry atomic.Pointer[Registry]
 )
 
 type Registry struct {
@@ -47,12 +42,6 @@ func NewRegistry(cfg *Config) *Registry {
 	}
 	return r
 }
-
-func InitRegistry(cfg *Config) {
-	defaultRegistry.Store(NewRegistry(cfg))
-}
-
-func GetRegistry() *Registry { return defaultRegistry.Load() }
 
 func (r *Registry) SetHealthy(modelID string, ok bool) {
 	r.mu.Lock()

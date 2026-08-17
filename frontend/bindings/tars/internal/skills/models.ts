@@ -5,27 +5,37 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-/**
- * Skill 是一次扫描结果的 Skill 元信息。
- */
-export class Skill {
+export class Config {
+    "tierFullMax"?: number;
+    "tierResidentMax"?: number;
+
+    /** Creates a new Config instance. */
+    constructor($$source: Partial<Config> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Config instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Config {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Config($$parsedSource as Partial<Config>);
+    }
+}
+
+export class SkillMeta {
     "name": string;
     "description": string;
     "category": string;
     "source": string;
-
-    /**
-     * HasScripts 是否含 scripts/（可执行内容），供风险面摘要展示。
-     */
+    "upstreamVersion"?: string;
+    "installedAt"?: string;
     "hasScripts": boolean;
-
-    /**
-     * FileCount 制品文件数（风险面摘要展示用）。
-     */
     "fileCount": number;
 
-    /** Creates a new Skill instance. */
-    constructor($$source: Partial<Skill> = {}) {
+    /** Creates a new SkillMeta instance. */
+    constructor($$source: Partial<SkillMeta> = {}) {
         if (!("name" in $$source)) {
             this["name"] = "";
         }
@@ -49,10 +59,10 @@ export class Skill {
     }
 
     /**
-     * Creates a new Skill instance from a string or object.
+     * Creates a new SkillMeta instance from a string or object.
      */
-    static createFrom($$source: any = {}): Skill {
+    static createFrom($$source: any = {}): SkillMeta {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Skill($$parsedSource as Partial<Skill>);
+        return new SkillMeta($$parsedSource as Partial<SkillMeta>);
     }
 }

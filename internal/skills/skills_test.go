@@ -9,10 +9,11 @@ import (
 func mustInit(t *testing.T) *Manager {
 	t.Helper()
 	dir := t.TempDir()
-	if err := Init(dir); err != nil {
-		t.Fatalf("Init: %v", err)
+	s, err := NewManager(dir, &Config{})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
 	}
-	return GetManager()
+	return s
 }
 
 // addSkill 往 registry 登记一个完整技能（等价于安装后的内存状态）。
@@ -141,11 +142,12 @@ func TestInit_RestoresFromDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Init(workDir); err != nil {
-		t.Fatalf("Init: %v", err)
+	s, err := NewManager(workDir, &Config{})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
 	}
 
-	list := GetManager().List()
+	list := s.List()
 	if len(list) != 2 {
 		t.Fatalf("want 2 skills (registry entries), got %d: %+v", len(list), list)
 	}

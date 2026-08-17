@@ -1,4 +1,4 @@
-package turn
+package runner
 
 import (
 	"context"
@@ -6,25 +6,23 @@ import (
 	"time"
 
 	"tars/internal/event"
-	"tars/pkg/prompt"
 	"tars/pkg/store"
 	"tars/pkg/tools"
 	"tars/pkg/trace"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
-	"github.com/wailsapp/wails/v3/pkg/application"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-// agent.Hooks 实现：把轮内循环事件桥接到 Wails 前端事件、
+// agent.Hooks 实现：把轮内循环事件经 event.Sink 发往前端、
 // jsonl 持久化与 OpenTelemetry 追踪。
 
 func (t *turn) IterationStart(ctx context.Context, iter int, messages []*schema.Message) {
 	// 传入完整上下文（system + 历史 user/assistant/tool + 状态栏），
 	// Phoenix 据此渲染 LLM span 的 input messages 视图。
 	_, span := trace.StartLLMCall(t.turnCtx, t.sess.ID, t.modelID,
-		prompt.GetSystemPrompt(), iter-1, messages, t.toolSchemas)
+		t.deps.SysMsg.Content, iter-1, messages, t.toolSchemas)
 	t.llmSpan = span
 }
 
@@ -59,7 +57,7 @@ func (t *turn) IterationEnd(ctx context.Context, iter int, full []*schema.Messag
 		}
 		m.Parts = append(m.Parts, part)
 		sess.UpdatedAt = time.Now().UnixMilli()
-		if err := store.GetSessionStore().AppendMessage(sess.ID, m); err != nil {
+		if err := t.deps.Store.AppendMessage(sess.ID, m); err != nil {
 			slog.Warn("Failed to snapshot assistant message", "id", sess.ID, "error", err)
 		}
 	}
@@ -93,14 +91,14 @@ func (t *turn) StreamChunk(ctx context.Context, iter int, chunk *schema.Message)
 	}
 
 	if chunk.ReasoningContent != "" {
-		application.Get().Event.Emit("agent:reasoning", event.ReasoningEvent{
+		t.sink.Reasoning(event.ReasoningEvent{
 			SessionID: t.sess.ID,
 			MessageID: t.assistantID,
 			Content:   chunk.ReasoningContent,
 		})
 	}
 	if chunk.Content != "" {
-		application.Get().Event.Emit("agent:chunk", event.StreamChunk{
+		t.sink.Chunk(event.StreamChunk{
 			SessionID: t.sess.ID,
 			MessageID: t.assistantID,
 			Chunk:     chunk.Content,
@@ -113,7 +111,7 @@ func (t *turn) ToolsStart(ctx context.Context, calls []schema.ToolCall) {
 	for _, c := range calls {
 		_, span := trace.StartToolCall(t.turnCtx, t.sess.ID, c.ID, c.Function.Name, c.Function.Arguments)
 		t.toolSpans[c.ID] = span
-		application.Get().Event.Emit("agent:tool", event.ToolEvent{
+		t.sink.Tool(event.ToolEvent{
 			SessionID:  t.sess.ID,
 			MessageID:  t.assistantID,
 			ToolCallID: c.ID,
@@ -127,7 +125,7 @@ func (t *turn) ToolResult(ctx context.Context, r tools.ToolResult) {
 	if span, ok := t.toolSpans[r.ID]; ok {
 		trace.EndToolCall(span, r.Output)
 	}
-	application.Get().Event.Emit("agent:tool_result", event.ToolResultEvent{
+	t.sink.ToolResult(event.ToolResultEvent{
 		SessionID:  t.sess.ID,
 		MessageID:  t.assistantID,
 		ToolCallID: r.ID,

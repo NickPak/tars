@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"tars/internal/config"
-	"tars/internal/session"
-	"tars/pkg/llm"
 	"tars/pkg/store"
 
 	"github.com/cloudwego/eino/schema"
@@ -51,7 +49,7 @@ type ModelPrice struct {
 
 // GetSessionStats 返回指定会话的聚合统计。空会话返回带模型/价格信息的零值。
 func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) {
-	sessionMgr := session.GetManager()
+	sessionMgr := s.rt.Sessions
 	if !sessionMgr.Has(sessionID) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
@@ -63,7 +61,7 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 	if cfg != nil && cfg.LLM != nil {
 		if active := cfg.LLM.ActiveModel(); active != nil {
 			// 健康状态跟随当前激活的模型条目（per-model 记录在 Registry）
-			stats.ModelHealthy = llm.GetRegistry().IsHealthy(active.ID)
+			stats.ModelHealthy = s.rt.LLM.IsHealthy(active.ID)
 			stats.ModelID = active.ModelId
 			stats.ContextWindow = active.ContextWindow
 			activeIn, activeOut = active.InputPricePerMillion, active.OutputPricePerMillion

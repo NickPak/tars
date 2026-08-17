@@ -10,7 +10,7 @@ import (
 
 // ListSkills returns all installed skills (frontmatter + registry metadata).
 func (s *AgentService) ListSkills() ([]*skills.SkillMeta, error) {
-	st := skills.GetManager()
+	st := s.rt.Skills
 	if st == nil {
 		return nil, fmt.Errorf("skills store not initialized")
 	}
@@ -20,7 +20,7 @@ func (s *AgentService) ListSkills() ([]*skills.SkillMeta, error) {
 // SkillCategories returns the distinct categories seen in the registry,
 // for the install dialog's category dropdown.
 func (s *AgentService) SkillCategories() ([]string, error) {
-	st := skills.GetManager()
+	st := s.rt.Skills
 	if st == nil {
 		return nil, fmt.Errorf("skills store not initialized")
 	}
@@ -30,7 +30,7 @@ func (s *AgentService) SkillCategories() ([]string, error) {
 // InstallSkill installs a skill from a local artifact (SKILL.md file,
 // directory, or .zip/.tar.gz archive). Returns the installed skill name.
 func (s *AgentService) InstallSkill(srcPath, category string, overwrite bool) (string, error) {
-	st := skills.GetManager()
+	st := s.rt.Skills
 	if st == nil {
 		return "", fmt.Errorf("skills store not initialized")
 	}
@@ -43,7 +43,7 @@ func (s *AgentService) InstallSkill(srcPath, category string, overwrite bool) (s
 // UninstallSkill removes an installed skill (directory + registry entry)
 // and regenerates the index.
 func (s *AgentService) UninstallSkill(name string) error {
-	st := skills.GetManager()
+	st := s.rt.Skills
 	if st == nil {
 		return fmt.Errorf("skills store not initialized")
 	}

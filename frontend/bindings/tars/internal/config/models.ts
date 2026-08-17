@@ -7,61 +7,23 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as agent$0 from "../agent/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as skills$0 from "../skills/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as llm$0 from "../../pkg/llm/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as trace$0 from "../../pkg/trace/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../time/models.js";
-
-/**
- * AgentConfig controls the ReAct loop runtime behavior.
- */
-export class AgentConfig {
-    /**
-     * MaxIterations caps the ReAct loop rounds (LLM → tools → LLM ...)
-     * before the agent is forced to stop. Prevents runaway token burn on
-     * pathological loops; complex multi-file tasks need a generous budget.
-     */
-    "maxIterations"?: number;
-
-    /**
-     * CompressionThreshold is the context-usage ratio (0-1) at which history
-     * compression should kick in (compression itself is not implemented yet;
-     * the threshold is surfaced in the status bar for now).
-     */
-    "compressionThreshold"?: number;
-
-    /**
-     * IterationTimeout is the per-iteration timeout for a single model call.
-     * Protects against provider congestion / silent stalls where the stream
-     * hangs without error. Does NOT truncate normal streaming — only fires
-     * when no response arrives at all. Zero = 120s default.
-     */
-    "iterationTimeout"?: time$0.Duration;
-
-    /** Creates a new AgentConfig instance. */
-    constructor($$source: Partial<AgentConfig> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new AgentConfig instance from a string or object.
-     */
-    static createFrom($$source: any = {}): AgentConfig {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new AgentConfig($$parsedSource as Partial<AgentConfig>);
-    }
-}
 
 export class AppConfig {
     "llm"?: llm$0.Config | null;
     "workDir"?: string;
-    "trace"?: TraceConfig | null;
-    "agent"?: AgentConfig | null;
-    "skills"?: SkillsConfig | null;
+    "trace"?: trace$0.Config | null;
+    "agent"?: agent$0.Config | null;
+    "skills"?: skills$0.Config | null;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -94,48 +56,12 @@ export class AppConfig {
     }
 }
 
-/**
- * SkillsConfig controls the Skills index tiers (plan/agent-tool-design-plan.md 2.5).
- * 第一档（≤ TierFullMax）：全量清单索引，常驻系统消息；
- * 第二档（≤ TierResidentMax）：分类索引 index/*.md，按需载入类别；
- * 第三档（> TierResidentMax）：discover_tools 嵌入检索。
- * 第二/三档索引生成未实现前，阈值仅作配置面，索引仍走第一档全量格式。
- */
-export class SkillsConfig {
-    "tierFullMax"?: number;
-    "tierResidentMax"?: number;
-
-    /** Creates a new SkillsConfig instance. */
-    constructor($$source: Partial<SkillsConfig> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SkillsConfig instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SkillsConfig {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SkillsConfig($$parsedSource as Partial<SkillsConfig>);
-    }
-}
-
-/**
- * TraceConfig 由 pkg/trace 定义，config 包仅引用。
- */
-export const TraceConfig = trace$0.TraceConfig;
-
-/**
- * TraceConfig 由 pkg/trace 定义，config 包仅引用。
- */
-export type TraceConfig = trace$0.TraceConfig;
-
 // Private type creation functions
 const $$createType0 = llm$0.Config.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = trace$0.TraceConfig.createFrom;
+const $$createType2 = trace$0.Config.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = AgentConfig.createFrom;
+const $$createType4 = agent$0.Config.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = SkillsConfig.createFrom;
+const $$createType6 = skills$0.Config.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);

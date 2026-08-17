@@ -10,24 +10,19 @@ import (
 	"time"
 )
 
-var (
-	instance *SessionStore
-)
-
 type SessionStore struct {
 	workDir string // 应用工作目录根（如 ~/tars）
 }
 
-func InitSessionStore(workDir string) error {
+// NewSessionStore 创建会话存储实例；workDir 为应用工作目录根。
+// 会话存储为普通对象，由装配层（wire）创建并注入，不再使用全局单例。
+func NewSessionStore(workDir string) (*SessionStore, error) {
 	sessionsDir := filepath.Join(workDir, "sessions")
 	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
-		return fmt.Errorf("store: create sessions dir: %w", err)
+		return nil, fmt.Errorf("store: create sessions dir: %w", err)
 	}
-	instance = &SessionStore{workDir: workDir}
-	return nil
+	return &SessionStore{workDir: workDir}, nil
 }
-
-func GetSessionStore() *SessionStore { return instance }
 
 func (s *SessionStore) WorkDir() string {
 	return s.workDir

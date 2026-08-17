@@ -141,9 +141,9 @@ export function ListSessions(): $CancellablePromise<(session$0.Info | null)[]> {
 /**
  * ListSkills returns all installed skills (frontmatter + registry metadata).
  */
-export function ListSkills(): $CancellablePromise<skills$0.Skill[]> {
+export function ListSkills(): $CancellablePromise<(skills$0.SkillMeta | null)[]> {
     return $Call.ByID(2331056158).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType14($result);
     });
 }
 
@@ -154,7 +154,7 @@ export function ListSkills(): $CancellablePromise<skills$0.Skill[]> {
  */
 export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(2376334908, sessionID).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -261,7 +261,7 @@ export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePro
  */
 export function SkillCategories(): $CancellablePromise<string[]> {
     return $Call.ByID(692754289).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType17($result);
     });
 }
 
@@ -286,8 +286,9 @@ const $$createType8 = $models.WorkspaceInfo.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = $Create.Array($$createType4);
 const $$createType11 = $Create.Array($$createType1);
-const $$createType12 = skills$0.Skill.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = $models.FileEntry.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = $Create.Array($Create.Any);
+const $$createType12 = skills$0.SkillMeta.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = $models.FileEntry.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $Create.Array($Create.Any);

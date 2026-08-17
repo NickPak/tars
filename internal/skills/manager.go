@@ -14,8 +14,6 @@ const (
 	scriptsDir = "scripts"
 )
 
-var instance *Manager
-
 type Manager struct {
 	cfg       *Config
 	rootDir   string
@@ -23,13 +21,13 @@ type Manager struct {
 	registry  atomic.Pointer[Registry]
 }
 
-func GetManager() *Manager { return instance }
-
-func InitManager(workDir string, cfg *Config) error {
+// NewManager 创建技能管理器并加载磁盘注册表。
+// 技能管理器为普通对象，由装配层（wire）创建并注入。
+func NewManager(workDir string, cfg *Config) (*Manager, error) {
 	rootDir := filepath.Join(workDir, skillsDir)
 	err := os.MkdirAll(rootDir, 0755)
 	if err != nil {
-		return fmt.Errorf("skills: create root dir: %w", err)
+		return nil, fmt.Errorf("skills: create root dir: %w", err)
 	}
 
 	m := &Manager{
@@ -41,16 +39,24 @@ func InitManager(workDir string, cfg *Config) error {
 	reg := NewRegistry(rootDir)
 	err = reg.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	m.registry.Store(reg)
 
-	instance = m
-	return nil
+	return m, nil
 }
 
 func (s *Manager) UpdateConfig(v *Config) {
 	s.cfg = v
+}
+
+// SetTiers 设置索引档位阈值（测试辅助；运行时由配置决定）。
+func (s *Manager) SetTiers(fullMax, residentMax int) {
+	if s.cfg == nil {
+		s.cfg = &Config{}
+	}
+	s.cfg.TierFullMax = fullMax
+	s.cfg.TierResidentMax = residentMax
 }
 
 func (s *Manager) RootDir() string {

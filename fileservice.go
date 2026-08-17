@@ -8,8 +8,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"tars/internal/session"
-	"tars/pkg/store"
 )
 
 // FileEntry represents a single file or directory in the workspace file tree.
@@ -29,11 +27,11 @@ const maxTreeDepth = 5
 // workspace directory. The workspace dir is per-session: {workDir}/sessions/{id}/workspace/.
 // If the directory doesn't exist yet (new session), an empty slice is returned.
 func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error) {
-	if !session.GetManager().Has(sessionID) {
+	if !s.rt.Sessions.Has(sessionID) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
+	wsDir := s.rt.Store.ResolveWorkDir(sessionID)
 
 	if _, err := os.Stat(wsDir); os.IsNotExist(err) {
 		return []FileEntry{}, nil
@@ -49,11 +47,11 @@ func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error)
 // OpenFile opens a file with the OS default application (not hardcoded to any
 // specific editor). The path should be relative to the session's workspace.
 func (s *AgentService) OpenFile(sessionID string, relPath string) error {
-	if !session.GetManager().Has(sessionID) {
+	if !s.rt.Sessions.Has(sessionID) {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
+	wsDir := s.rt.Store.ResolveWorkDir(sessionID)
 	fullPath := filepath.Join(wsDir, relPath)
 
 	if _, err := os.Stat(fullPath); err != nil {
@@ -67,11 +65,11 @@ func (s *AgentService) OpenFile(sessionID string, relPath string) error {
 // directory. On Windows this is Explorer, on macOS Finder, on Linux the
 // default file manager via xdg-open.
 func (s *AgentService) RevealInExplorer(sessionID string) error {
-	if !session.GetManager().Has(sessionID) {
+	if !s.rt.Sessions.Has(sessionID) {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
+	wsDir := s.rt.Store.ResolveWorkDir(sessionID)
 	if _, err := os.Stat(wsDir); err != nil {
 		return fmt.Errorf("workspace not found: %s", wsDir)
 	}
@@ -83,11 +81,11 @@ func (s *AgentService) RevealInExplorer(sessionID string) error {
 // (selects the file in Explorer/Finder). The path should be relative to the
 // session's workspace.
 func (s *AgentService) RevealFileInExplorer(sessionID string, relPath string) error {
-	if !session.GetManager().Has(sessionID) {
+	if !s.rt.Sessions.Has(sessionID) {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	wsDir := store.GetSessionStore().ResolveWorkDir(sessionID)
+	wsDir := s.rt.Store.ResolveWorkDir(sessionID)
 	fullPath := filepath.Join(wsDir, relPath)
 
 	if _, err := os.Stat(fullPath); err != nil {

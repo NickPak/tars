@@ -5,10 +5,14 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as time$0 from "../../../time/models.js";
+
 export class Config {
-    "enabled"?: boolean;
-    "otlpHttpEndpoint"?: string;
-    "otlpGrpcEndpoint"?: string;
+    "maxIterations"?: number;
+    "compressionThreshold"?: number;
+    "iterationTimeout"?: time$0.Duration;
 
     /** Creates a new Config instance. */
     constructor($$source: Partial<Config> = {}) {
