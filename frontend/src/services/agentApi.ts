@@ -7,9 +7,10 @@
 
 import { Events } from "@wailsio/runtime";
 import { AgentService } from "../../bindings/tars";
+import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
-import type { AppConfig, ChatMessage, Session, FileEntry, ModelInfo, SessionStats, Skill, WorkspaceInfo } from "../types";
+import type { AppConfig, Session, FileEntry, ModelInfo, SessionStats, Skill, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent, ApprovalEvent } from "../types";
@@ -118,19 +119,18 @@ export const agentApi = {
   renameSession: (id: string, title: string): Promise<void> =>
     AgentService.RenameSession(id, title),
 
-  submitMessage: async (sessionId: string, text: string): Promise<ChatMessage | null> => {
-    await AgentService.SubmitMessage(sessionId, text);
-    return null; // assistant 回复通过流式事件推送，不由返回值携带
-  },
+  /** 提交用户消息并启动一轮对话；返回后端分配的 user/assistant 消息 ID
+   *  （回填本地占位消息；assistant 回复内容仍经流式事件推送） */
+  submitMessage: async (sessionId: string, text: string): Promise<SubmitResult> =>
+    (await AgentService.SubmitMessage(sessionId, text)) as SubmitResult,
 
   cancelMessage: (sessionId: string): Promise<void> =>
     AgentService.CancelMessage(sessionId),
 
-  /** 重试生成最后一条 assistant 回复（超时/出错后由用户触发） */
-  retryMessage: async (sessionId: string, messageId: string = ""): Promise<ChatMessage | null> => {
-    await AgentService.RetryMessage(sessionId, messageId);
-    return null;
-  },
+  /** 重试生成最后一条 assistant 回复（超时/出错后由用户触发）；
+   *  返回新一轮 assistant 消息 ID（回填本地占位，同 submitMessage） */
+  retryMessage: (sessionId: string, messageId: string = ""): Promise<string> =>
+    AgentService.RetryMessage(sessionId, messageId),
 
   deleteMessage: async (sessionId: string, messageId: string): Promise<void> => {
     await AgentService.DeleteMessage(sessionId, messageId);

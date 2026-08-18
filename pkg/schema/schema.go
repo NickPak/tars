@@ -31,10 +31,10 @@ type ToolSchema struct {
 
 // UsageInfo 是一次助手回复的 token 用量。
 type UsageInfo struct {
-	PromptTokens     int    `json:"promptTokens"`
-	CompletionTokens int    `json:"completionTokens"`
-	TotalTokens      int    `json:"totalTokens"`
-	CachedTokens     int    `json:"cachedTokens,omitempty"`
+	PromptTokens     int `json:"promptTokens"`
+	CompletionTokens int `json:"completionTokens"`
+	TotalTokens      int `json:"totalTokens"`
+	CachedTokens     int `json:"cachedTokens,omitempty"`
 	// EntryID 是产生该用量的本地配置条目 ID（llm.ModelConfig.EntryID，
 	// 如 "gemini/gemini-3.1-flash-lite"），用于按条目价格表核算费用；
 	// 不是发给 API 的真实模型名（ModelConfig.ModelId）——同一真实模型
@@ -42,11 +42,13 @@ type UsageInfo struct {
 	EntryID string `json:"entryId,omitempty"`
 }
 
-// MessagePart 是 assistant 消息在一个 ReAct 迭代内的产出：本轮文本 + 工具调用。
-// 前端据此把各迭代的文本与工具卡片按时间顺序交错渲染；
-// Content/ToolCalls 聚合字段（全迭代拼接）继续供 LLM 上下文、导出与统计使用。
+// MessagePart 是 assistant 消息在一个 ReAct 迭代内的产出：本轮思考 + 文本 + 工具调用。
+// 前端据此把各迭代的思考/文本/工具卡片按时间顺序交错渲染；
+// Content/Reasoning/ToolCalls 聚合字段（全迭代拼接）继续供 LLM 上下文、
+// 导出、统计与旧数据回退渲染使用。
 type MessagePart struct {
 	Content   string     `json:"content,omitempty"`
+	Reasoning string     `json:"reasoning,omitempty"`
 	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
 }
 

@@ -197,19 +197,20 @@ func (a *App) CancelAll() {
 // --- 轮生命周期入口（服务层使用） ---
 
 // Submit 提交一条用户消息并启动一轮对话（委托给会话的 Controller）。
-func (a *App) Submit(sessionID, content string) error {
+// 返回后端分配的 user/assistant 消息 ID。
+func (a *App) Submit(sessionID, content string) (string, string, error) {
 	c, ok := a.FindController(sessionID)
 	if !ok {
-		return fmt.Errorf("session not found: %s", sessionID)
+		return "", "", fmt.Errorf("session not found: %s", sessionID)
 	}
 	return c.Submit(content)
 }
 
-// Retry 重试一轮对话（委托给会话的 Controller）。
-func (a *App) Retry(sessionID, messageID string) error {
+// Retry 重试一轮对话（委托给会话的 Controller）。返回新一轮 assistant 消息 ID。
+func (a *App) Retry(sessionID, messageID string) (string, error) {
 	c, ok := a.FindController(sessionID)
 	if !ok {
-		return fmt.Errorf("session not found: %s", sessionID)
+		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
 	return c.Retry(messageID)
 }

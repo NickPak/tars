@@ -33,11 +33,12 @@ export interface ToolCallInfo {
   output?: string;
 }
 
-/** assistant 消息在一个 ReAct 迭代内的产出（本轮文本 + 工具调用）。
- *  按 parts 顺序交错渲染文本与工具卡片；content/toolCalls 聚合字段
- *  仍是全迭代拼接（复制、统计、旧数据回退渲染用）。 */
+/** assistant 消息在一个 ReAct 迭代内的产出（本轮思考 + 文本 + 工具调用）。
+ *  按 parts 顺序交错渲染思考/文本/工具卡片；content/reasoning/toolCalls
+ *  聚合字段仍是全迭代拼接（复制、统计、旧数据回退渲染用）。 */
 export interface MessagePart {
   content?: string;
+  reasoning?: string;
   toolCalls?: ToolCallInfo[];
 }
 

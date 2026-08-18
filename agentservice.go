@@ -110,9 +110,20 @@ func (s *AgentService) GetSession(id string) (*session.Info, error) {
 
 // --- Message operations ---
 
+// SubmitResult 是 SubmitMessage 的返回：后端为本轮分配的两条消息 ID。
+// 前端据此回填本地占位消息，DeleteMessage 等按 ID 操作无需等待会话重载。
+type SubmitResult struct {
+	UserMessageID      string `json:"userMessageId"`
+	AssistantMessageID string `json:"assistantMessageId"`
+}
+
 // SubmitMessage submits a user message and starts the agent loop.
-func (s *AgentService) SubmitMessage(sessionID, content string) error {
-	return s.app.Submit(sessionID, content)
+func (s *AgentService) SubmitMessage(sessionID, content string) (*SubmitResult, error) {
+	userMsgID, assistantID, err := s.app.Submit(sessionID, content)
+	if err != nil {
+		return nil, err
+	}
+	return &SubmitResult{UserMessageID: userMsgID, AssistantMessageID: assistantID}, nil
 }
 
 // CancelMessage cancels an in-flight SubmitMessage turn.
@@ -137,7 +148,8 @@ func (s *AgentService) DeleteMessage(sessionID, messageID string) (int, error) {
 
 // RetryMessage retries the last turn (or the turn containing the given
 // assistant message). It regenerates the assistant response for that turn.
-func (s *AgentService) RetryMessage(sessionID string, messageID string) error {
+// 返回新一轮 assistant 消息 ID（前端回填本地占位，同 SubmitMessage）。
+func (s *AgentService) RetryMessage(sessionID string, messageID string) (string, error) {
 	return s.app.Retry(sessionID, messageID)
 }
 

@@ -302,6 +302,35 @@ export class SessionStats {
 }
 
 /**
+ * SubmitResult 是 SubmitMessage 的返回：后端为本轮分配的两条消息 ID。
+ * 前端据此回填本地占位消息，DeleteMessage 等按 ID 操作无需等待会话重载。
+ */
+export class SubmitResult {
+    "userMessageId": string;
+    "assistantMessageId": string;
+
+    /** Creates a new SubmitResult instance. */
+    constructor($$source: Partial<SubmitResult> = {}) {
+        if (!("userMessageId" in $$source)) {
+            this["userMessageId"] = "";
+        }
+        if (!("assistantMessageId" in $$source)) {
+            this["assistantMessageId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SubmitResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SubmitResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SubmitResult($$parsedSource as Partial<SubmitResult>);
+    }
+}
+
+/**
  * WorkspaceChangedEvent is the payload of the "workspace:changed" event.
  */
 export class WorkspaceChangedEvent {

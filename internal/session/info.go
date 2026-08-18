@@ -110,18 +110,21 @@ func SortByCreatedAt(list []*Info) {
 }
 
 // AppendUser 新一轮对话的消息准备：追加 user 消息，首条消息顺便完成自动命名。
+// 返回新建 user 消息的 ID（服务层透传给前端回填本地占位）。
 // assistant 消息不再预置——由轮运行中首轮产出时经 UpsertAssistant 创建。
-func (i *Info) AppendUser(content string) {
+func (i *Info) AppendUser(content string) string {
 	now := time.Now().UnixMilli()
+	id := uuid.NewString()
 	i.AppendMessage(now,
 		&schema.Message{
-			ID:        uuid.NewString(),
+			ID:        id,
 			Role:      schema.RoleUser,
 			Content:   content,
 			CreatedAt: now,
 		},
 	)
 	i.updateTitle(content)
+	return id
 }
 
 // UpsertAssistant 把一轮迭代的 assistant 产出聚合进指定 ID 的消息：
@@ -144,7 +147,7 @@ func (i *Info) UpsertAssistant(id string, delta *schema.Message) {
 
 	m.Content += delta.Content
 	m.Reasoning += delta.Reasoning
-	part := schema.MessagePart{Content: delta.Content}
+	part := schema.MessagePart{Content: delta.Content, Reasoning: delta.Reasoning}
 	if len(delta.ToolCalls) > 0 {
 		m.ToolCalls = append(m.ToolCalls, delta.ToolCalls...)
 		part.ToolCalls = append(part.ToolCalls, delta.ToolCalls...)

@@ -199,8 +199,9 @@ export function RenameSession(id: string, title: string): $CancellablePromise<vo
 /**
  * RetryMessage retries the last turn (or the turn containing the given
  * assistant message). It regenerates the assistant response for that turn.
+ * 返回新一轮 assistant 消息 ID（前端回填本地占位，同 SubmitMessage）。
  */
-export function RetryMessage(sessionID: string, messageID: string): $CancellablePromise<void> {
+export function RetryMessage(sessionID: string, messageID: string): $CancellablePromise<string> {
     return $Call.ByID(3966755125, sessionID, messageID);
 }
 
@@ -261,8 +262,10 @@ export function SkillCategories(): $CancellablePromise<string[]> {
 /**
  * SubmitMessage submits a user message and starts the agent loop.
  */
-export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<void> {
-    return $Call.ByID(382211931, sessionID, content);
+export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<$models.SubmitResult | null> {
+    return $Call.ByID(382211931, sessionID, content).then(($result: any) => {
+        return $$createType19($result);
+    });
 }
 
 /**
@@ -292,3 +295,5 @@ const $$createType14 = $Create.Array($$createType13);
 const $$createType15 = $models.FileEntry.createFrom;
 const $$createType16 = $Create.Array($$createType15);
 const $$createType17 = $Create.Array($Create.Any);
+const $$createType18 = $models.SubmitResult.createFrom;
+const $$createType19 = $Create.Nullable($$createType18);

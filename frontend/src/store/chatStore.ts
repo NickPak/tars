@@ -191,10 +191,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
           const messages = [...s.messages];
           const last = messages[messages.length - 1];
           if (!last || last.role !== "assistant") return {};
-          // reasoning 可能多轮（每次工具调用前模型都会思考），追加到已有 reasoning 后
+          // parts：分 part 规则与 onChunk 一致——尾部 part 尚无工具调用说明
+          // 仍在同一迭代内（reasoning 先于本轮工具事件到达），续写其 reasoning；
+          // 尾部已带工具调用说明进入了下一轮迭代，开新 part。
+          // reasoning 可能多轮（每次工具调用前模型都会思考），
+          // 聚合字段同步拼接（复制/旧数据回退用）。
+          const parts = [...(last.parts ?? [])];
+          const tail = parts[parts.length - 1];
+          if (tail && !tail.toolCalls) {
+            parts[parts.length - 1] = {
+              ...tail,
+              reasoning: (tail.reasoning ?? "") + content,
+            };
+          } else {
+            parts.push({ reasoning: content });
+          }
           messages[messages.length - 1] = {
             ...last,
             reasoning: (last.reasoning ?? "") + content,
+            parts,
           };
           return { messages };
         });
@@ -366,7 +381,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      await agentApi.submitMessage(sessId, content);
+      const res = await agentApi.submitMessage(sessId, content);
+      // 后端分配的消息 ID 回填本地占位（此前的流式事件按位置写入，无竞态）；
+      // 之后 DeleteMessage 等按 ID 操作无需等待会话重载即可生效。
+      set((s) => ({
+        messages: s.messages.map((m) =>
+          m.id === userMsg.id
+            ? { ...m, id: res.userMessageId }
+            : m.id === assistantMsg.id
+              ? { ...m, id: res.assistantMessageId }
+              : m,
+        ),
+      }));
     } catch (e) {
       set((s) => ({
         messages: markLastAssistantError(s.messages, errText(e)),
@@ -416,7 +442,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      await agentApi.retryMessage(activeId);
+      const newAssistantID = await agentApi.retryMessage(activeId);
+      // 新一轮的 assistant 消息 ID 回填（后端 PrepareRetry 已截断旧消息，
+      // 重试产出落在新 ID 的消息上；流式事件仍按位置写入，无竞态）
+      set((s) => ({
+        messages: s.messages.map((m) =>
+          m.id === last.id ? { ...m, id: newAssistantID } : m,
+        ),
+      }));
     } catch (e) {
       set((s) => ({
         isStreaming: false,

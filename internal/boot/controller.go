@@ -123,26 +123,30 @@ func (c *Controller) GetSession() *session.Info { return c.sess }
 
 // Submit 提交一条用户消息并启动一轮对话：消息准备（追加 user 消息，
 // assistant 首轮产出时创建）与运行标记同步完成，循环异步执行。
-func (c *Controller) Submit(content string) error {
+// 返回后端分配的 user/assistant 消息 ID（服务层透传给前端回填本地占位）。
+func (c *Controller) Submit(content string) (string, string, error) {
 	if c.IsRunning() {
-		return fmt.Errorf("turn in progress, cancel it first")
+		return "", "", fmt.Errorf("turn in progress, cancel it first")
 	}
-	c.sess.AppendUser(content)
-	c.start(content)
-	return nil
+	userMsgID := c.sess.AppendUser(content)
+	assistantID := uuid.NewString()
+	c.start(content, assistantID)
+	return userMsgID, assistantID, nil
 }
 
 // Retry 重试一轮对话：消息准备（截断到目标轮的 user 消息）+ 启动执行。
-func (c *Controller) Retry(messageID string) error {
+// 返回新一轮 assistant 消息 ID。
+func (c *Controller) Retry(messageID string) (string, error) {
 	if c.IsRunning() {
-		return fmt.Errorf("turn in progress, cancel it first")
+		return "", fmt.Errorf("turn in progress, cancel it first")
 	}
 	userText, err := c.sess.PrepareRetry(messageID)
 	if err != nil {
-		return err
+		return "", err
 	}
-	c.start(userText)
-	return nil
+	assistantID := uuid.NewString()
+	c.start(userText, assistantID)
+	return assistantID, nil
 }
 
 // IsRunning 报告本会话是否有运行中的轮。
@@ -163,21 +167,20 @@ func (c *Controller) Cancel() {
 }
 
 // start 设置运行标记后异步启动一轮对话。调用方需保证当前无运行中的轮。
-func (c *Controller) start(userText string) {
+func (c *Controller) start(userText, assistantID string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// 运行标记同步设置：start 返回后轮即在运行，CancelMessage 立即有效。
 	c.mu.Lock()
 	c.cancel = cancel
 	c.mu.Unlock()
-	go c.run(ctx, userText)
+	go c.run(ctx, userText, assistantID)
 }
 
 // run 执行一轮对话：本轮组件（Provider/traceSink/FanOut/agent）装配 →
 // agent.Run → 轮级收尾（Done/Error 事件、usage 写回、turn span）。
 // ctx 已携带本轮的取消通道（start 注入）。
-func (c *Controller) run(ctx context.Context, userText string) {
+func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 	sess := c.sess
-	assistantID := uuid.NewString()
 
 	// 清除"轮运行中"标记：panic 也要解除，否则该会话的删除/重试/发送被永久拒绝。
 	defer func() {

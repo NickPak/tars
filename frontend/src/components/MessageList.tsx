@@ -68,17 +68,29 @@ export default function MessageList() {
                 />
               ) : (
                 <div className="assistant-body">
-                  {m.reasoning && (
+                  {/* 旧数据回退：parts 中无分轮 reasoning（改动前持久化的消息）
+                      时，整块渲染聚合 reasoning；新数据按 part 交错渲染 */}
+                  {m.reasoning && !m.parts?.some((p) => p.reasoning) && (
                     <ReasoningBlock
                       content={m.reasoning}
                       streaming={streamingThis && !m.content}
                     />
                   )}
                   {m.parts && m.parts.length > 0 ? (
-                    // 按 ReAct 迭代交错渲染：每段文本后跟该轮的工具卡片
+                    // 按 ReAct 迭代交错渲染：每轮 reasoning → 文本 → 工具卡片
                     <>
-                      {m.parts.map((part, pi) => (
+                      {m.parts.map((part, pi, arr) => (
                         <Fragment key={pi}>
+                          {part.reasoning && (
+                            <ReasoningBlock
+                              content={part.reasoning}
+                              streaming={
+                                streamingThis &&
+                                pi === arr.length - 1 &&
+                                !part.content
+                              }
+                            />
+                          )}
                           {part.content && <Markdown content={part.content} />}
                           {part.toolCalls && part.toolCalls.length > 0 && (
                             <div className="tool-calls">
