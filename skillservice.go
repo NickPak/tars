@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"tars/internal/skills"
+	"tars/pkg/skills"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -48,6 +48,27 @@ func (s *AgentService) UninstallSkill(name string) error {
 		return fmt.Errorf("skills store not initialized")
 	}
 	return st.Uninstall(name)
+}
+
+// SetSkillCategory updates an installed skill's category (registry + index
+// regeneration; takes effect in the next conversation turn).
+func (s *AgentService) SetSkillCategory(name, category string) error {
+	st := s.app.Skills()
+	if st == nil {
+		return fmt.Errorf("skills store not initialized")
+	}
+	return st.SetCategory(name, category)
+}
+
+// SetSkillEnabled enables/disables an installed skill (registry + index
+// regeneration; a disabled skill is invisible to the agent: excluded from
+// the index, discovery search and load_skill).
+func (s *AgentService) SetSkillEnabled(name string, enabled bool) error {
+	st := s.app.Skills()
+	if st == nil {
+		return fmt.Errorf("skills store not initialized")
+	}
+	return st.SetEnabled(name, enabled)
 }
 
 // OpenSkillFileDialog shows the OS native picker for a skill artifact FILE

@@ -217,6 +217,14 @@ export const agentApi = {
   uninstallSkill: async (name: string): Promise<void> =>
     await AgentService.UninstallSkill(name),
 
+  /** 修改已安装技能的分类（写注册表并重跑索引，下一轮对话生效） */
+  setSkillCategory: async (name: string, category: string): Promise<void> =>
+    await AgentService.SetSkillCategory(name, category),
+
+  /** 启用/禁用技能（禁用后对 Agent 不可见：索引/检索/加载排除） */
+  setSkillEnabled: async (name: string, enabled: boolean): Promise<void> =>
+    await AgentService.SetSkillEnabled(name, enabled),
+
   /** 弹出系统选择器选择技能制品文件（SKILL.md / zip / tar.gz），取消返回空串 */
   openSkillFileDialog: async (): Promise<string> =>
     await AgentService.OpenSkillFileDialog(),

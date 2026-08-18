@@ -2,7 +2,7 @@ package boot
 
 import (
 	"tars/internal/session"
-	"tars/internal/skills"
+	"tars/pkg/skills"
 	"tars/pkg/tools"
 )
 

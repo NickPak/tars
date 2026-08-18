@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Manager) GenerateIndex() error {
-	list := s.List()
+	list := s.Enabled() // 禁用技能不进索引（三档阈值计数同口径）
 
 	// 每次重建前清掉旧的类别索引页（避免切档残留）
 	if err := os.RemoveAll(filepath.Join(s.rootDir, "index")); err != nil {

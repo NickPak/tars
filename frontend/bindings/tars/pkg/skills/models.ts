@@ -34,6 +34,13 @@ export class SkillMeta {
     "hasScripts": boolean;
     "fileCount": number;
 
+    /**
+     * Enabled 为 false 时技能对 Agent 完全不可见（索引/检索/加载均排除），
+     * 文件与注册表条目保留，可随时恢复——与卸载的区别仅在于可逆。
+     * 无 omitempty：开/关状态都显式落盘（兼容见 UnmarshalYAML）。
+     */
+    "enabled": boolean;
+
     /** Creates a new SkillMeta instance. */
     constructor($$source: Partial<SkillMeta> = {}) {
         if (!("name" in $$source)) {
@@ -53,6 +60,9 @@ export class SkillMeta {
         }
         if (!("fileCount" in $$source)) {
             this["fileCount"] = 0;
+        }
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
         }
 
         Object.assign(this, $$source);

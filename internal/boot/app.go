@@ -10,7 +10,7 @@ import (
 
 	"tars/internal/event"
 	"tars/internal/session"
-	"tars/internal/skills"
+	"tars/pkg/skills"
 	"tars/pkg/llm"
 	"tars/pkg/prompt"
 	"tars/pkg/schema"

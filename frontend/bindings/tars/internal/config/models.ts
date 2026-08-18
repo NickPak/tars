@@ -10,10 +10,10 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as agent$0 from "../agent/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as skills$0 from "../skills/models.js";
+import * as llm$0 from "../../pkg/llm/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as llm$0 from "../../pkg/llm/models.js";
+import * as skills$0 from "../../pkg/skills/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as trace$0 from "../../pkg/trace/models.js";

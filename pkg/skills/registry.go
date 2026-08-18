@@ -36,6 +36,18 @@ type SkillMeta struct {
 	InstalledAt     string `json:"installedAt,omitempty" yaml:"installed_at"`
 	HasScripts      bool   `json:"hasScripts" yaml:"-"`
 	FileCount       int    `json:"fileCount" yaml:"-"`
+	// Enabled 为 false 时技能对 Agent 完全不可见（索引/检索/加载均排除），
+	// 文件与注册表条目保留，可随时恢复——与卸载的区别仅在于可逆。
+	// 无 omitempty：开/关状态都显式落盘（兼容见 UnmarshalYAML）。
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+// UnmarshalYAML 反序列化时缺省 enabled=true：旧版 registry.yaml 无 enabled 键，
+// 直接升级不能把所有已装技能静默禁用。
+func (m *SkillMeta) UnmarshalYAML(value *yaml.Node) error {
+	type plain SkillMeta
+	m.Enabled = true
+	return value.Decode((*plain)(m))
 }
 
 type Registry struct {

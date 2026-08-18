@@ -2264,6 +2264,35 @@ body.resizing-col .resize-handle::after {
   border-color: rgba(217, 119, 6, 0.4);
 }
 
+/* 禁用的技能条目降透明度（开关本身保持不透明度，可点回启用） */
+.skill-item.disabled {
+  opacity: 0.55;
+}
+
+.skill-item.disabled .switch {
+  opacity: 1;
+}
+
+.skill-item-head .switch {
+  flex: none;
+}
+
+/* 条目行内的分类下拉：与 .skill-item-tag 同款药丸外观 */
+.skill-item-category {
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 10px;
+  background: var(--code-bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  outline: none;
+  cursor: pointer;
+}
+
+.skill-item-category:focus {
+  border-color: var(--accent);
+}
+
 .skill-item-desc {
   margin: 4px 0 0;
   font-size: 12px;

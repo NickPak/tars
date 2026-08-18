@@ -54,6 +54,7 @@ func (s *Manager) Install(srcPath, category string, overwrite bool) (string, err
 		InstalledAt: time.Now().Format("2006-01-02"),
 		HasScripts:  dirExists(filepath.Join(dst, scriptsDir)),
 		FileCount:   countFiles(dst),
+		Enabled:     true,
 	}
 	if err := s.AddSkill(name, info); err != nil {
 		return "", err

@@ -13,7 +13,7 @@ import * as config$0 from "./internal/config/models.js";
 import * as session$0 from "./internal/session/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as skills$0 from "./internal/skills/models.js";
+import * as skills$0 from "./pkg/skills/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -238,6 +238,23 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
  */
 export function SetActiveModel(id: string): $CancellablePromise<void> {
     return $Call.ByID(1916297203, id);
+}
+
+/**
+ * SetSkillCategory updates an installed skill's category (registry + index
+ * regeneration; takes effect in the next conversation turn).
+ */
+export function SetSkillCategory(name: string, category: string): $CancellablePromise<void> {
+    return $Call.ByID(2616464261, name, category);
+}
+
+/**
+ * SetSkillEnabled enables/disables an installed skill (registry + index
+ * regeneration; a disabled skill is invisible to the agent: excluded from
+ * the index, discovery search and load_skill).
+ */
+export function SetSkillEnabled(name: string, enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1358667874, name, enabled);
 }
 
 /**

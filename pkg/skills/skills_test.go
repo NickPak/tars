@@ -3,13 +3,16 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func mustInit(t *testing.T) *Manager {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := NewManager(dir, &Config{})
+	cfg := &Config{}
+	cfg.Validate() // 与生产路径一致：零值修正为默认阈值
+	s, err := NewManager(dir, cfg)
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
@@ -25,8 +28,111 @@ func addSkill(t *testing.T, s *Manager, name, desc, category string) {
 		Category:    category,
 		Source:      "local",
 		InstalledAt: "2026-08-13",
+		Enabled:     true,
 	}); err != nil {
 		t.Fatalf("AddSkill: %v", err)
+	}
+}
+
+func TestSetCategory(t *testing.T) {
+	s := mustInit(t)
+	addSkill(t, s, "pptx", "Create presentations", "documents")
+
+	// 改分类：归一化（大小写/空白）+ 内存与磁盘同步
+	if err := s.SetCategory("pptx", "  Data "); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.GetRegistry().Skills["pptx"].Category; got != "data" {
+		t.Fatalf("memory category = %q, want data", got)
+	}
+	fresh := NewRegistry(s.RootDir())
+	if err := fresh.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if got := fresh.Skills["pptx"].Category; got != "data" {
+		t.Fatalf("disk category = %q, want data", got)
+	}
+
+	// 空值归一为 misc
+	if err := s.SetCategory("pptx", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.GetRegistry().Skills["pptx"].Category; got != "misc" {
+		t.Fatalf("empty category = %q, want misc", got)
+	}
+
+	// 不存在的技能报错
+	if err := s.SetCategory("nope", "data"); err == nil {
+		t.Fatal("expected error for unknown skill")
+	}
+}
+
+func TestSetEnabled(t *testing.T) {
+	s := mustInit(t)
+	addSkill(t, s, "pptx", "Create presentations", "documents")
+	addSkill(t, s, "docx", "Edit Word documents", "documents")
+	if err := s.GenerateIndex(); err != nil {
+		t.Fatal(err)
+	}
+
+	// 禁用：内存与磁盘同步，索引/检索/加载均排除
+	if err := s.SetEnabled("pptx", false); err != nil {
+		t.Fatal(err)
+	}
+	if s.GetRegistry().Skills["pptx"].Enabled {
+		t.Fatal("memory: pptx should be disabled")
+	}
+	fresh := NewRegistry(s.RootDir())
+	if err := fresh.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Skills["pptx"].Enabled {
+		t.Fatal("disk: pptx should be disabled")
+	}
+	if len(s.Enabled()) != 1 {
+		t.Fatalf("Enabled() = %d, want 1", len(s.Enabled()))
+	}
+	if strings.Contains(s.RenderIndex(), "pptx") {
+		t.Fatal("index should not contain disabled skill")
+	}
+	if _, err := s.LoadSkill("pptx"); err == nil {
+		t.Fatal("LoadSkill should reject disabled skill")
+	}
+	if got, _ := s.Search("presentations", 5); len(got) != 0 {
+		t.Fatalf("Search should skip disabled skill, got %d", len(got))
+	}
+	// List 仍返回全部（GUI 展示用）
+	if len(s.List()) != 2 {
+		t.Fatalf("List() = %d, want 2", len(s.List()))
+	}
+
+	// 重新启用后恢复可见
+	if err := s.SetEnabled("pptx", true); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Enabled()) != 2 || !strings.Contains(s.RenderIndex(), "pptx") {
+		t.Fatal("re-enable should restore visibility")
+	}
+
+	// 不存在的技能报错
+	if err := s.SetEnabled("nope", false); err == nil {
+		t.Fatal("expected error for unknown skill")
+	}
+}
+
+// 旧版 registry.yaml 无 enabled 键：加载后缺省为启用（升级不能静默禁用已装技能）
+func TestLegacyRegistryDefaultsEnabled(t *testing.T) {
+	dir := t.TempDir()
+	yamlText := "skills:\n  legacy:\n    category: documents\n    source: local\n    installed_at: 2026-08-13\n"
+	if err := os.WriteFile(filepath.Join(dir, "registry.yaml"), []byte(yamlText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := NewRegistry(dir)
+	if err := reg.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if !reg.Skills["legacy"].Enabled {
+		t.Fatal("legacy entry without enabled key should default to enabled")
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 	"tars/internal/config"
 	"tars/internal/event"
 	"tars/internal/session"
-	"tars/internal/skills"
+	"tars/pkg/skills"
 	"tars/pkg/llm"
 	"tars/pkg/schema"
 	"tars/pkg/todo"

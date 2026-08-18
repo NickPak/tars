@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"tars/internal/agent"
-	"tars/internal/skills"
+	"tars/pkg/skills"
 	"tars/pkg/llm"
 	"tars/pkg/trace"
 

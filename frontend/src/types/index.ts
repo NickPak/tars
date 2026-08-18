@@ -307,6 +307,8 @@ export interface Skill {
   source: string;
   hasScripts: boolean;
   fileCount: number;
+  /** 为 false 时对 Agent 不可见（索引/检索/加载排除），文件与条目保留 */
+  enabled: boolean;
 }
 
 /** 与 Go 端 main.go 中注册的事件名保持一致 */

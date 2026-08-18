@@ -131,6 +131,32 @@ export default function SkillsPage({
     }
   };
 
+  const changeCategory = async (name: string, category: string) => {
+    setError(null);
+    setNotice(null);
+    try {
+      await agentApi.setSkillCategory(name, category);
+      setNotice(`已更新 "${name}" 的分类，下一轮对话生效`);
+      await refresh();
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
+
+  const toggleEnabled = async (name: string, enabled: boolean) => {
+    setError(null);
+    setNotice(null);
+    try {
+      await agentApi.setSkillEnabled(name, enabled);
+      setNotice(
+        enabled ? `已启用 "${name}"` : `已禁用 "${name}"（对 Agent 不可见）`,
+      );
+      await refresh();
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
+
   const setTier = (key: "tierFullMax" | "tierResidentMax", v: number) => {
     update((d) => ({
       ...d,
@@ -281,13 +307,41 @@ export default function SkillsPage({
         )}
         {!loading &&
           skills?.map((sk) => (
-            <div key={sk.name} className="skill-item">
+            <div
+              key={sk.name}
+              className={`skill-item${sk.enabled ? "" : " disabled"}`}
+            >
               <div className="skill-item-main">
                 <div className="skill-item-head">
                   <code className="skill-item-name">{sk.name}</code>
-                  {sk.category && (
-                    <span className="skill-item-tag">{sk.category}</span>
-                  )}
+                  <button
+                    className={`switch${sk.enabled ? " on" : ""}`}
+                    role="switch"
+                    aria-checked={sk.enabled}
+                    title={
+                      sk.enabled
+                        ? "禁用（对 Agent 不可见：索引/检索/加载排除）"
+                        : "启用（对 Agent 可见，下一轮对话生效）"
+                    }
+                    onClick={() => void toggleEnabled(sk.name, !sk.enabled)}
+                  >
+                    <span className="switch-thumb" />
+                  </button>
+                  <select
+                    className="skill-item-category"
+                    value={sk.category || "misc"}
+                    onChange={(e) => void changeCategory(sk.name, e.target.value)}
+                    title="修改分类（重跑索引，下一轮对话生效）"
+                  >
+                    <option value="misc">未分类（misc）</option>
+                    {categories
+                      .filter((c) => c !== "misc")
+                      .map((c) => (
+                        <option key={c} value={c}>
+                          {categoryLabel(c)}
+                        </option>
+                      ))}
+                  </select>
                   {sk.hasScripts && (
                     <span className="skill-item-tag skill-item-tag-script" title="含可执行脚本">
                       <Shield size={11} />

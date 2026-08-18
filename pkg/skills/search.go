@@ -13,7 +13,7 @@ type searchDoc struct {
 }
 
 func (s *Manager) Search(query string, limit int) ([]*SkillMeta, error) {
-	list := s.List()
+	list := s.Enabled() // 禁用技能不参与检索
 	if limit <= 0 {
 		limit = 5
 	}
