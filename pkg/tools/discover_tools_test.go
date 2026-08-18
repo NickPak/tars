@@ -9,7 +9,7 @@ import (
 
 func TestDiscoverTools_ReturnsCandidates(t *testing.T) {
 	rt := newMockSkillRuntime()
-	ctx := WithSkillRuntime(context.Background(), rt)
+	ctx := WithEnv(context.Background(), &Env{Skills: rt})
 	args, _ := json.Marshal(map[string]string{"query": "make a presentation"})
 
 	out, err := DiscoverTools().Handler(ctx, args)
@@ -28,7 +28,7 @@ func TestDiscoverTools_NoMatch(t *testing.T) {
 	rt := &mockSkillRuntime{loaded: map[string]bool{}}
 	// 让 Search 返回空：临时替换——用带 searchResults 的 mock
 	rtNoMatch := &mockSkillRuntimeSearch{results: nil}
-	ctx := WithSkillRuntime(context.Background(), rtNoMatch)
+	ctx := WithEnv(context.Background(), &Env{Skills: rtNoMatch})
 	args, _ := json.Marshal(map[string]string{"query": "xyzzy"})
 
 	out, err := DiscoverTools().Handler(ctx, args)
@@ -43,7 +43,7 @@ func TestDiscoverTools_NoMatch(t *testing.T) {
 
 func TestDiscoverTools_RequiresQuery(t *testing.T) {
 	rt := newMockSkillRuntime()
-	ctx := WithSkillRuntime(context.Background(), rt)
+	ctx := WithEnv(context.Background(), &Env{Skills: rt})
 	if _, err := DiscoverTools().Handler(ctx, json.RawMessage(`{}`)); err == nil {
 		t.Error("expected error for missing query")
 	}

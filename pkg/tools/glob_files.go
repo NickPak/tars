@@ -20,7 +20,7 @@ type globFilesArgs struct {
 
 // GlobFiles finds files by name pattern, supporting `**` for any-depth
 // matching. It matches path names only — content search belongs to grep_files.
-func GlobFiles(workDir string) *Definition {
+func GlobFiles() *Definition {
 	return &Definition{
 		Name: "glob_files",
 		Description: "Find files by NAME pattern, e.g. `**/*.py` or `src/**/*.ts`; a pattern without a path " +
@@ -47,7 +47,7 @@ func GlobFiles(workDir string) *Definition {
 			if root == "" {
 				root = "."
 			}
-			abs, err := resolveInWorkspace(root, resolveWorkDir(ctx, workDir))
+			abs, err := resolveInWorkspace(root, resolveWorkDir(ctx))
 			if err != nil {
 				return "", err
 			}

@@ -7,29 +7,38 @@ import (
 	"strings"
 	"testing"
 
-	"tars/pkg/store"
+	"tars/internal/event"
+	"tars/pkg/schema"
+	"tars/pkg/todo"
 	"tars/pkg/tools"
-
-	"github.com/cloudwego/eino/schema"
 )
 
 func TestRun_StatusBarInjectedAndNotPersisted(t *testing.T) {
-	m := &stubModel{responses: []*schema.Message{
-		{Role: schema.Assistant, Content: "hello"},
+	m := &stubProvider{responses: []*schema.Message{
+		{Role: schema.RoleAssistant, Content: "hello"},
 	}}
-	a := New(5, 0, newTestManager(nil), m)
+	sess := &fakeSession{}
+	sink := &recordingSink{}
+	a := newTestAgent(newTestRegistry(nil), sess, sink, 5)
 
-	h := &recordingHooks{}
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "hi"}}, h)
+	_, err := runTurn(a, context.Background(), "hi", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(h.iterDeltas) != 1 {
-		t.Fatalf("iterDeltas = %d rounds, want 1", len(h.iterDeltas))
+	// 状态栏注入到 LLM 输入尾部（IterationStart 事件可见）
+	var input []*schema.Message
+	for _, e := range sink.events {
+		if e.Kind == event.KindIterationStart {
+			input = e.Iteration.Messages
+		}
 	}
-	for _, msg := range h.iterDeltas[0] {
+	if len(input) == 0 || !strings.Contains(input[len(input)-1].Content, "<agent_status") {
+		t.Error("status bar should be injected as the last input message")
+	}
+	// 状态栏不落会话（不持久化）
+	for _, msg := range sess.msgs {
 		if strings.Contains(msg.Content, "<agent_status") {
-			t.Errorf("status bar leaked into IterationEnd delta: %q", msg.Content)
+			t.Errorf("status bar leaked into session: %q", msg.Content)
 		}
 	}
 }
@@ -99,20 +108,20 @@ func TestStatusBar_SeqIncrementsWithIteration(t *testing.T) {
 }
 
 func TestRun_ToolErrorOutputNoPanic(t *testing.T) {
-	m := &stubModel{responses: []*schema.Message{
-		{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
-			{ID: "c1", Function: schema.FunctionCall{Name: "broken", Arguments: "{}"}},
+	m := &stubProvider{responses: []*schema.Message{
+		{Role: schema.RoleAssistant, ToolCalls: []schema.ToolCall{
+			{ID: "c1", Name: "broken", Args: "{}"},
 		}},
-		{Role: schema.Assistant, Content: "recovered"},
+		{Role: schema.RoleAssistant, Content: "recovered"},
 	}}
-	mgr := newTestManager(map[string]tools.Handler{
+	reg := newTestRegistry(map[string]tools.Handler{
 		"broken": func(_ context.Context, _ json.RawMessage) (string, error) {
 			return "permission denied", fmt.Errorf("permission denied")
 		},
 	})
-	a := New(5, 0, mgr, m)
+	a := newTestAgent(reg, &fakeSession{}, &recordingSink{}, 5)
 
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, &recordingHooks{})
+	_, err := runTurn(a, context.Background(), "go", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -122,13 +131,13 @@ func TestRun_ToolErrorOutputNoPanic(t *testing.T) {
 
 func TestStatusBar_TodoZoneRendersFromStore(t *testing.T) {
 	sb := NewStatusBar()
-	todoStore := store.NewTodoStore("") // 无文件路径，纯内存
-	todoStore.Replace([]store.Todo{
-		{ID: "1", Content: "搭建 MCP 服务器", Status: store.TodoInProgress},
-		{ID: "2", Content: "编写测试", Status: store.TodoPending},
+	todoStore := todo.NewTodoStore("") // 无文件路径，纯内存
+	todoStore.Replace([]todo.Todo{
+		{ID: "1", Content: "搭建 MCP 服务器", Status: todo.TodoInProgress},
+		{ID: "2", Content: "编写测试", Status: todo.TodoPending},
 	})
 
-	msg := sb.Render(store.WithTodoStore(context.Background(), todoStore), 1)
+	msg := sb.Render(tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore}), 1)
 
 	if !strings.Contains(msg.Content, "<todo>") {
 		t.Errorf("expected <todo> zone: %q", msg.Content)
@@ -146,9 +155,9 @@ func TestStatusBar_TodoZoneRendersFromStore(t *testing.T) {
 
 func TestStatusBar_TodoZoneOmittedWhenEmpty(t *testing.T) {
 	sb := NewStatusBar()
-	todoStore := store.NewTodoStore("")
+	todoStore := todo.NewTodoStore("")
 
-	msg := sb.Render(store.WithTodoStore(context.Background(), todoStore), 1)
+	msg := sb.Render(tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore}), 1)
 
 	if strings.Contains(msg.Content, "<todo>") {
 		t.Errorf("empty todo should not render <todo> zone: %q", msg.Content)
@@ -166,11 +175,11 @@ func TestStatusBar_TodoZoneOmittedWhenNoStore(t *testing.T) {
 
 func TestStatusBar_TodoStalenessReminder(t *testing.T) {
 	sb := NewStatusBar()
-	todoStore := store.NewTodoStore("")
-	todoStore.Replace([]store.Todo{
-		{ID: "1", Content: "任务A", Status: store.TodoPending},
+	todoStore := todo.NewTodoStore("")
+	todoStore.Replace([]todo.Todo{
+		{ID: "1", Content: "任务A", Status: todo.TodoPending},
 	})
-	ctx := store.WithTodoStore(context.Background(), todoStore)
+	ctx := tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore})
 
 	// 第 1 轮：刚创建，不提示
 	msg := sb.Render(ctx, 1)
@@ -185,8 +194,8 @@ func TestStatusBar_TodoStalenessReminder(t *testing.T) {
 	}
 
 	// 更新 todo（版本变化），重置计数
-	todoStore.Replace([]store.Todo{
-		{ID: "1", Content: "任务A", Status: store.TodoInProgress},
+	todoStore.Replace([]todo.Todo{
+		{ID: "1", Content: "任务A", Status: todo.TodoInProgress},
 	})
 	msg = sb.Render(ctx, 5)
 	if strings.Contains(msg.Content, "未更新") {
@@ -196,14 +205,14 @@ func TestStatusBar_TodoStalenessReminder(t *testing.T) {
 
 func TestStatusBar_TodoStalenessSkipsWhenAllDone(t *testing.T) {
 	sb := NewStatusBar()
-	todoStore := store.NewTodoStore("")
-	todoStore.Replace([]store.Todo{
-		{ID: "1", Content: "任务A", Status: store.TodoCompleted},
-		{ID: "2", Content: "任务B", Status: store.TodoCancelled},
+	todoStore := todo.NewTodoStore("")
+	todoStore.Replace([]todo.Todo{
+		{ID: "1", Content: "任务A", Status: todo.TodoCompleted},
+		{ID: "2", Content: "任务B", Status: todo.TodoCancelled},
 	})
 
 	// 即使多轮未更新，全完成/取消时不提示
-	msg := sb.Render(store.WithTodoStore(context.Background(), todoStore), 5)
+	msg := sb.Render(tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore}), 5)
 	if strings.Contains(msg.Content, "未更新") {
 		t.Errorf("no staleness when all done/cancelled: %q", msg.Content)
 	}

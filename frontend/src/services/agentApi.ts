@@ -40,10 +40,10 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
           cacheTTL: v.cacheTTL ?? "",
         };
       }),
-      models: Object.entries(llm?.models ?? {}).map(([id, m]) => {
+      models: Object.entries(llm?.models ?? {}).map(([entryId, m]) => {
         const v = m ?? ({} as llmModels.ModelConfig);
         return {
-          id,
+          entryId,
           provider: v.provider ?? "",
           modelId: v.modelId ?? "",
           contextWindow: v.contextWindow ?? 0,
@@ -80,7 +80,7 @@ function toWireConfig(cfg: AppConfig): configModels.AppConfig {
   if (new Set(cfg.llm.providers.map((p) => p.id)).size !== cfg.llm.providers.length) {
     throw new Error("供应商 ID 重复");
   }
-  if (new Set(cfg.llm.models.map((m) => m.id)).size !== cfg.llm.models.length) {
+  if (new Set(cfg.llm.models.map((m) => m.entryId)).size !== cfg.llm.models.length) {
     throw new Error("模型条目 ID 重复");
   }
   return {
@@ -88,7 +88,7 @@ function toWireConfig(cfg: AppConfig): configModels.AppConfig {
     llm: {
       active: cfg.llm.active,
       providers: Object.fromEntries(cfg.llm.providers.map((p) => [p.id, p])),
-      models: Object.fromEntries(cfg.llm.models.map((m) => [m.id, m])),
+      models: Object.fromEntries(cfg.llm.models.map((m) => [m.entryId, m])),
     },
     agent: { ...cfg.agent },
     trace: { ...cfg.trace },
@@ -118,8 +118,8 @@ export const agentApi = {
   renameSession: (id: string, title: string): Promise<void> =>
     AgentService.RenameSession(id, title),
 
-  sendMessage: async (sessionId: string, text: string): Promise<ChatMessage | null> => {
-    await AgentService.SendMessage(sessionId, text);
+  submitMessage: async (sessionId: string, text: string): Promise<ChatMessage | null> => {
+    await AgentService.SubmitMessage(sessionId, text);
     return null; // assistant 回复通过流式事件推送，不由返回值携带
   },
 
@@ -255,7 +255,7 @@ export interface AgentEventHandlers {
 
 /**
  * 订阅 Agent 流式事件，返回解绑函数。
- * 后端约定：SendMessage 后陆续发出 "agent:chunk"，
+ * 后端约定：SubmitMessage 后陆续发出 "agent:chunk"，
  * 最后发出恰好一个 "agent:done" 或 "agent:error"。
  * 会话标题变更时发出 "session:renamed"。
  * 模型思考过程通过 "agent:reasoning" 推送。

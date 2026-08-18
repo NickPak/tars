@@ -16,7 +16,7 @@ type writeFileArgs struct {
 
 // WriteFile creates a new file or fully overwrites an existing one, creating
 // parent directories as needed. Partial edits are delegated to edit_file.
-func WriteFile(workDir string) *Definition {
+func WriteFile() *Definition {
 	return &Definition{
 		Name: "write_file",
 		Description: "Create a new file or COMPLETELY OVERWRITE an existing one; parent directories are " +
@@ -35,7 +35,7 @@ func WriteFile(workDir string) *Definition {
 			if err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
-			abs, err := resolveInWorkspace(args.Path, resolveWorkDir(ctx, workDir))
+			abs, err := resolveInWorkspace(args.Path, resolveWorkDir(ctx))
 			if err != nil {
 				return "", err
 			}

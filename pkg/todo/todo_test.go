@@ -1,7 +1,6 @@
-package store
+package todo
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,17 +77,6 @@ func TestTodoStore_SnapshotIsCopy(t *testing.T) {
 	again, _ := s.Snapshot()
 	if again[0].Status != TodoPending {
 		t.Errorf("snapshot should be a copy, original mutated")
-	}
-}
-
-func TestTodoStore_ContextRoundTrip(t *testing.T) {
-	s := NewTodoStore("")
-	ctx := WithTodoStore(context.Background(), s)
-	if got := TodoStoreFromCtx(ctx); got != s {
-		t.Errorf("TodoStoreFromCtx returned different pointer")
-	}
-	if got := TodoStoreFromCtx(context.Background()); got != nil {
-		t.Errorf("expected nil when no store in ctx")
 	}
 }
 

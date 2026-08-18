@@ -23,16 +23,18 @@ var iconPNG []byte
 func init() {
 	// Register custom events with their payload types. The binding generator
 	// picks these up and provides a strongly typed JS/TS API for them.
-	application.RegisterEvent[event.StreamChunk]("agent:chunk")
-	application.RegisterEvent[event.StreamDone]("agent:done")
-	application.RegisterEvent[event.StreamError]("agent:error")
-	application.RegisterEvent[event.ToolEvent]("agent:tool")
-	application.RegisterEvent[event.ToolResultEvent]("agent:tool_result")
-	application.RegisterEvent[event.ReasoningEvent]("agent:reasoning")
-	application.RegisterEvent[event.ApprovalEvent]("agent:approval")
-	application.RegisterEvent[event.SessionRenamedEvent]("session:renamed")
-	application.RegisterEvent[WorkspaceChangedEvent]("workspace:changed")
-	application.RegisterEvent[ModelChangedEvent]("model:changed")
+	// 载荷一律注册为指针类型：与各发射点（WailsSink/服务层）实际发射的
+	// 类型一致，运行时校验精确匹配，边界零拷贝。
+	application.RegisterEvent[*event.StreamChunk]("agent:chunk")
+	application.RegisterEvent[*event.StreamDone]("agent:done")
+	application.RegisterEvent[*event.StreamError]("agent:error")
+	application.RegisterEvent[*event.ToolEvent]("agent:tool")
+	application.RegisterEvent[*event.ToolResultEvent]("agent:tool_result")
+	application.RegisterEvent[*event.ReasoningEvent]("agent:reasoning")
+	application.RegisterEvent[*event.ApprovalEvent]("agent:approval")
+	application.RegisterEvent[*event.SessionRenamedEvent]("session:renamed")
+	application.RegisterEvent[*WorkspaceChangedEvent]("workspace:changed")
+	application.RegisterEvent[*ModelChangedEvent]("model:changed")
 }
 
 func main() {

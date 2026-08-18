@@ -1,7 +1,8 @@
-package store
+// Package todo defines the per-session TODO state machine persisted
+// in the session directory (todo.json).
+package todo
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -115,24 +116,4 @@ func (s *TodoStore) Snapshot() ([]Todo, int64) {
 	out := make([]Todo, len(s.todos))
 	copy(out, s.todos)
 	return out, s.version
-}
-
-// --- Context 传递（与 tools.WithWorkDir 同模式）---
-// 放在 store 包而非 tools 包，因为 TodoStore 本身就在 store 包。
-// tools.todo_write 和 agent.StatusBar 都通过此函数从 ctx 取 store。
-
-type todoStoreKey struct{}
-
-// WithTodoStore 将 TodoStore 注入 context，工具 Handler 和 StatusBar
-// 通过 TodoStoreFromCtx 读取。
-func WithTodoStore(ctx context.Context, store *TodoStore) context.Context {
-	return context.WithValue(ctx, todoStoreKey{}, store)
-}
-
-// TodoStoreFromCtx 从 context 中提取 TodoStore，不存在时返回 nil。
-func TodoStoreFromCtx(ctx context.Context) *TodoStore {
-	if s, ok := ctx.Value(todoStoreKey{}).(*TodoStore); ok {
-		return s
-	}
-	return nil
 }

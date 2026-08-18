@@ -17,7 +17,7 @@ type readFileArgs struct {
 // ReadFile reads a text file with line-number prefixes and explicit range
 // notices, per the design plan: large files must be read in segments via
 // offset/limit, and truncation is always announced ("showing lines X-Y of N").
-func ReadFile(workDir string) *Definition {
+func ReadFile() *Definition {
 	return &Definition{
 		Name: "read_file",
 		Description: "Read the content of a text file. Every line is returned with a line-number prefix " +
@@ -39,7 +39,7 @@ func ReadFile(workDir string) *Definition {
 			if err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
-			abs, err := resolveInWorkspace(args.Path, resolveWorkDir(ctx, workDir))
+			abs, err := resolveInWorkspace(args.Path, resolveWorkDir(ctx))
 			if err != nil {
 				return "", err
 			}

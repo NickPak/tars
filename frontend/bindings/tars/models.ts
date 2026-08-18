@@ -87,9 +87,9 @@ export class ModelChangedEvent {
  */
 export class ModelInfo {
     /**
-     * 配置条目 ID（models[].id）
+     * 配置条目 ID（models[].entryId）
      */
-    "id": string;
+    "entryId": string;
 
     /**
      * 供应商 ID
@@ -118,8 +118,8 @@ export class ModelInfo {
 
     /** Creates a new ModelInfo instance. */
     constructor($$source: Partial<ModelInfo> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
+        if (!("entryId" in $$source)) {
+            this["entryId"] = "";
         }
         if (!("provider" in $$source)) {
             this["provider"] = "";
@@ -241,7 +241,7 @@ export class SessionStats {
 
     /**
      * ModelPrices 全部模型条目的价格表（key = 条目 ID）：
-     * 前端按每条消息的 usage.modelEntry 核算单条费用；
+     * 前端按每条消息的 usage.entryId 核算单条费用；
      * 条目被删除时回退激活模型价格（费用是估算值而非账单）。
      */
     "modelPrices"?: { [_ in string]?: ModelPrice };

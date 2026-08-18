@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	"tars/pkg/schema"
 )
 
 func runCommandCall(command string) schema.ToolCall {
 	args, _ := json.Marshal(map[string]string{"command": command})
 	return schema.ToolCall{
-		ID:       "test",
-		Function: schema.FunctionCall{Name: "run_command", Arguments: string(args)},
+		ID:   "test",
+		Name: "run_command",
+		Args: string(args),
 	}
 }
 
@@ -74,8 +75,9 @@ func TestClassifyRisk_KnownFalsePositive(t *testing.T) {
 
 func TestClassifyRisk_NonGatedTools(t *testing.T) {
 	call := schema.ToolCall{
-		ID:       "x",
-		Function: schema.FunctionCall{Name: "read_file", Arguments: `{"path":"a.txt"}`},
+		ID:   "x",
+		Name: "read_file",
+		Args: `{"path":"a.txt"}`,
 	}
 	if classifyRisk(call) != nil {
 		t.Error("read_file should never require approval")

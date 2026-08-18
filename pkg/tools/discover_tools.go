@@ -49,10 +49,11 @@ func DiscoverTools() *Definition {
 				return "", errors.New("query is required")
 			}
 
-			rt := SkillRuntimeFromCtx(ctx)
-			if rt == nil {
+			env := EnvFromCtx(ctx)
+			if env == nil || env.Skills == nil {
 				return "", errors.New("discover_tools requires a skill runtime; none available")
 			}
+			rt := env.Skills
 
 			hits, err := rt.Search(query, 5)
 			if err != nil {

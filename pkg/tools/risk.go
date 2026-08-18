@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"regexp"
 
-	"github.com/cloudwego/eino/schema"
+	"tars/pkg/schema"
 )
 
 // ============================================================================
@@ -51,10 +51,10 @@ func classifyRisk(call schema.ToolCall) *ApprovalRequest {
 	var rules []riskRule
 	var target, summary string
 
-	switch call.Function.Name {
+	switch call.Name {
 	case "run_command":
 		var args runCommandArgs
-		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || args.Command == "" {
+		if json.Unmarshal([]byte(call.Args), &args) != nil || args.Command == "" {
 			return nil // 参数非法：交给工具自身报错，不按危险拦
 		}
 		rules, target, summary = runCommandRiskRules, args.Command, args.Command
@@ -62,7 +62,7 @@ func classifyRisk(call schema.ToolCall) *ApprovalRequest {
 		var args struct {
 			Code string `json:"code"`
 		}
-		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || args.Code == "" {
+		if json.Unmarshal([]byte(call.Args), &args) != nil || args.Code == "" {
 			return nil
 		}
 		rules, target = codeInterpreterRiskRules, args.Code
@@ -79,10 +79,10 @@ func classifyRisk(call schema.ToolCall) *ApprovalRequest {
 		if r.pattern.MatchString(target) {
 			return &ApprovalRequest{
 				ToolCallID:     call.ID,
-				ToolName:       call.Function.Name,
+				ToolName:       call.Name,
 				Summary:        summary,
 				Reason:         r.reason,
-				RiskKey:        call.Function.Name + ":" + r.id,
+				RiskKey:        call.Name + ":" + r.id,
 				TimeoutSeconds: askDefaultTimeout,
 			}
 		}

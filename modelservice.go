@@ -12,7 +12,7 @@ import (
 
 // ModelInfo describes one configured model entry.
 type ModelInfo struct {
-	ID            string `json:"id"`            // 配置条目 ID（models[].id）
+	EntryID       string `json:"entryId"`       // 配置条目 ID（models[].entryId）
 	Provider      string `json:"provider"`      // 供应商 ID
 	ProviderType  string `json:"providerType"`  // 供应商类型（gemini/openai）
 	ModelID       string `json:"modelId"`       // 发送给 API 的真实模型名
@@ -27,7 +27,7 @@ type ModelChangedEvent struct {
 
 func modelInfoOf(m *llm.ModelConfig, cfg *llm.Config) ModelInfo {
 	info := ModelInfo{
-		ID:            m.ID,
+		EntryID:       m.EntryID,
 		Provider:      m.Provider,
 		ModelID:       m.ModelId,
 		ContextWindow: m.ContextWindow,
@@ -35,7 +35,7 @@ func modelInfoOf(m *llm.ModelConfig, cfg *llm.Config) ModelInfo {
 	if p := cfg.FindProvider(m.Provider); p != nil {
 		info.ProviderType = p.Type
 	}
-	if active := cfg.ActiveModel(); active != nil && active.ID == m.ID {
+	if active := cfg.ActiveModel(); active != nil && active.EntryID == m.EntryID {
 		info.Active = true
 	}
 	return info
@@ -44,7 +44,7 @@ func modelInfoOf(m *llm.ModelConfig, cfg *llm.Config) ModelInfo {
 // GetModelInfo returns the currently active model (TopicBar/状态栏展示用）。
 // 未配置任何模型时返回空对象（前端退化为不显示）。
 func (s *AgentService) GetModelInfo() (*ModelInfo, error) {
-	cfg := s.rt.LLM.Config()
+	cfg := s.app.LLM().Config()
 	m := cfg.ActiveModel()
 	if m == nil {
 		return &ModelInfo{}, nil
@@ -56,7 +56,7 @@ func (s *AgentService) GetModelInfo() (*ModelInfo, error) {
 // ListModels returns all configured model entries（TopicBar 切换下拉用）。
 // 按条目 ID 排序返回（map 无序，下拉列表需要确定性顺序）。
 func (s *AgentService) ListModels() ([]ModelInfo, error) {
-	cfg := s.rt.LLM.Config()
+	cfg := s.app.LLM().Config()
 	ids := make([]string, 0, len(cfg.Models))
 	for id := range cfg.Models {
 		ids = append(ids, id)
@@ -72,18 +72,18 @@ func (s *AgentService) ListModels() ([]ModelInfo, error) {
 // SetActiveModel switches the active model: 预构建目标模型（失败则不切换），
 // 热更新注册表并落盘（active 键），最后广播 model:changed 事件。
 func (s *AgentService) SetActiveModel(id string) error {
-	cfg := s.rt.LLM.Config()
+	cfg := s.app.LLM().Config()
 	if cfg.FindModel(id) == nil {
 		return fmt.Errorf("模型条目 %q 不存在", id)
 	}
-	if active := cfg.ActiveModel(); active != nil && active.ID == id {
+	if active := cfg.ActiveModel(); active != nil && active.EntryID == id {
 		return nil // 已是当前模型
 	}
 
 	newLLM := *cfg
 	newLLM.Active = id
 	// UpdateConfig 会预构建激活模型，配置错误在此暴露，不影响现状
-	if err := s.rt.LLM.UpdateConfig(&newLLM); err != nil {
+	if err := s.app.LLM().UpdateConfig(&newLLM); err != nil {
 		return err
 	}
 
@@ -98,7 +98,7 @@ func (s *AgentService) SetActiveModel(id string) error {
 		slog.Warn("Failed to persist active model", "id", id, "error", err)
 	}
 
-	application.Get().Event.Emit("model:changed", ModelChangedEvent{
+	application.Get().Event.Emit("model:changed", &ModelChangedEvent{
 		Model: modelInfoOf(newLLM.FindModel(id), &newLLM),
 	})
 	return nil

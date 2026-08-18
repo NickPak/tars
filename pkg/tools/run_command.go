@@ -125,11 +125,7 @@ func (s *termSession) applyState(dump string) {
 // RunCommand executes a shell command in a persistent terminal session
 // (working directory and environment preserved across calls), capturing
 // stdout/stderr with an explicit timeout.
-func RunCommand(workDir string) *Definition {
-	// Sessions are keyed by workspace directory: each session gets its
-	// own persistent terminal state.
-	var sessions sync.Map
-
+func RunCommand() *Definition {
 	return &Definition{
 		Name: "run_command",
 		Description: "Execute a shell command in a PERSISTENT terminal session — the working directory and " +
@@ -160,8 +156,13 @@ func RunCommand(workDir string) *Definition {
 			}
 			timeout = min(timeout, runCommandMaxTimeout)
 
-			wd := resolveWorkDir(ctx, workDir)
-			v, _ := sessions.LoadOrStore(wd, &termSession{cwd: wd, env: os.Environ()})
+			env := EnvFromCtx(ctx)
+			if env == nil {
+				return "", fmt.Errorf("run_command: no execution env")
+			}
+			wd := resolveWorkDir(ctx)
+			// 持久终端状态按工作目录键控，存于会话级 Env（跨轮共享）。
+			v, _ := env.TermSessions.LoadOrStore(wd, &termSession{cwd: wd, env: os.Environ()})
 			sess := v.(*termSession)
 			sess.mu.Lock()
 			defer sess.mu.Unlock()

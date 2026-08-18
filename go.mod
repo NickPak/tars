@@ -3,6 +3,7 @@ module tars
 go 1.26.5
 
 require (
+	github.com/baidubce/bce-sdk-go v0.9.164
 	github.com/cloudwego/eino v0.9.13
 	github.com/cloudwego/eino-ext/components/model/ark v0.1.69
 	github.com/cloudwego/eino-ext/components/model/claude v0.1.25
@@ -49,7 +50,6 @@ require (
 	github.com/aws/smithy-go v1.22.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/baidubce/bce-qianfan-sdk/go/qianfan v0.0.14 // indirect
-	github.com/baidubce/bce-sdk-go v0.9.164 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect

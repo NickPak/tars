@@ -1,35 +1,25 @@
+// Package tools 的工具注册采用两层模型：
+//
+//   - 包级 builtins 目录：进程级、全局、只读（init 完成后不再修改），
+//     登记"有哪些内置工具可用"；条目是工厂（workDir 在 init 时不可得，
+//     实例化推迟到 Registry 创建时）。
+//   - 每会话 Registry（见 registry.go）：创建时把内置工具实例化并拷贝
+//     进自己的 map——会话级视图，可独立增删工具而不影响其他会话。
+//
+// 本文件同时承载内置工具的共享工具函数（路径解析/输出截断/编码转换）。
 package tools
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 )
-
-// workDirKey is the context key for the per-session workspace directory.
-// Tools read it via WorkDirFromCtx; if absent they fall back to the workDir
-// passed to their constructor (the global work dir).
-type workDirKey struct{}
-
-// WithWorkDir returns a context carrying the given workspace directory.
-// Pass it through the agent loop so every tool invocation resolves paths
-// relative to the active session's workspace.
-func WithWorkDir(ctx context.Context, dir string) context.Context {
-	return context.WithValue(ctx, workDirKey{}, dir)
-}
-
-// WorkDirFromCtx extracts the workspace directory from ctx.
-// Returns "" if not set (caller should fall back to a default).
-func WorkDirFromCtx(ctx context.Context) string {
-	if dir, ok := ctx.Value(workDirKey{}).(string); ok {
-		return dir
-	}
-	return ""
-}
 
 // Built-in tools. Each constructor returns a *Definition ready for Register.
 //
@@ -43,13 +33,13 @@ func WorkDirFromCtx(ctx context.Context) string {
 // maxOutputBytes caps a single tool output to avoid blowing up the context.
 const maxOutputBytes = 64 * 1024
 
-// resolveWorkDir picks the per-session workspace from ctx, falling back
-// to the global workDir passed to the tool constructor.
-func resolveWorkDir(ctx context.Context, fallback string) string {
-	if wd := WorkDirFromCtx(ctx); wd != "" {
-		return wd
+// resolveWorkDir 从 ctx 中的会话级执行环境（Env）取工作目录；
+// 无 Env（如测试直调 Handler）返回空串——调用方须容忍（拼装路径前校验）。
+func resolveWorkDir(ctx context.Context) string {
+	if env := EnvFromCtx(ctx); env != nil {
+		return env.WorkDir
 	}
-	return fallback
+	return ""
 }
 
 // resolveInWorkspace resolves path to an absolute path within the workspace,
@@ -119,4 +109,47 @@ func looksBinary(data []byte) bool {
 		}
 	}
 	return false
+}
+
+// builtins 是包级工具目录：进程级、全局、只读（init 完成后不再修改）。
+// 内置工具通过 init() 调用 RegisterBuiltin 自动注册到目录。
+// 所有 Definition 都是纯声明（schema + handler），运行时状态一律经
+// Env 读取——实例可安全共享给全部会话的 Registry。
+var builtins = map[string]*Definition{}
+
+// RegisterBuiltin 注册一个内置工具；空名、nil 定义或重复名都是
+// 组装期编程错误，直接 panic。
+func RegisterBuiltin(name string, def *Definition) {
+	if name == "" || def == nil {
+		panic("tools: RegisterBuiltin with empty name or nil definition")
+	}
+	if _, exists := builtins[name]; exists {
+		panic("tools: RegisterBuiltin duplicate " + name)
+	}
+	builtins[name] = def
+}
+
+// BuiltinNames 返回内置工具的名称列表（字典序），供系统提示词展示。
+func BuiltinNames() []string {
+	names := make([]string, 0, len(builtins))
+	for name := range builtins {
+		names = append(names, name)
+	}
+	slices.SortFunc(names, cmp.Compare)
+	return names
+}
+
+// 内置工具集合在此集中登记。
+func init() {
+	RegisterBuiltin("code_interpreter", CodeInterpreter())
+	RegisterBuiltin("run_command", RunCommand())
+	RegisterBuiltin("read_file", ReadFile())
+	RegisterBuiltin("write_file", WriteFile())
+	RegisterBuiltin("edit_file", EditFile())
+	RegisterBuiltin("glob_files", GlobFiles())
+	RegisterBuiltin("grep_files", GrepFiles())
+	RegisterBuiltin("todo_write", TodoWrite())
+	RegisterBuiltin("ask_user", AskUser())
+	RegisterBuiltin("load_skill", LoadSkill())
+	RegisterBuiltin("discover_tools", DiscoverTools())
 }

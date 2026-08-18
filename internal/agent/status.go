@@ -7,10 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"tars/pkg/store"
+	"tars/pkg/schema"
+	"tars/pkg/todo"
 	"tars/pkg/tools"
-
-	"github.com/cloudwego/eino/schema"
 )
 
 // StatusBar 是 Agent 循环的状态栏：在每轮迭代前渲染一条 <agent_status>
@@ -41,7 +40,7 @@ type StatusBar struct {
 	// ---- todo（从 ctx 中的 TodoStore 读取，设计文档 2.10 数据流）----
 	// TodoStore 由宿主（turn 脚手架）组合并经 ctx 注入，与 todo_write
 	// 工具同一条链路；ctx 中没有时跳过 todo 区。
-	todos           []store.Todo
+	todos           []todo.Todo
 	todoVersion     int64 // 上次看到的 TodoStore 版本号
 	todoChangedIter int   // 版本号变化时的迭代号，用于"未更新轮数"提醒
 
@@ -95,27 +94,29 @@ func NewStatusBar() *StatusBar {
 }
 
 // Render 渲染当前迭代的状态栏消息，追加到上下文尾部。
-// 动态字段（time/cwd/git）每次调用实时采集；todo 数据从 ctx 中的
-// TodoStore 读取。
+// 动态字段（time/cwd/git）每次调用实时采集；todo/skills 数据从 ctx
+// 中的会话级执行环境（tools.Env）读取。
 func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message {
 	sb.iteration = iteration
 	sb.time = nowFormatted()
-	if wd := tools.WorkDirFromCtx(ctx); wd != "" {
-		sb.cwd = wd
-		sb.git = gitStatus(ctx, wd)
-	}
-	// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
-	if ts := store.TodoStoreFromCtx(ctx); ts != nil {
-		todos, version := ts.Snapshot()
-		if version != sb.todoVersion {
-			sb.todoVersion = version
-			sb.todoChangedIter = iteration
+	if env := tools.EnvFromCtx(ctx); env != nil {
+		if env.WorkDir != "" {
+			sb.cwd = env.WorkDir
+			sb.git = gitStatus(ctx, env.WorkDir)
 		}
-		sb.todos = todos
-	}
-	// 已加载技能：从 ctx 中的 SkillRuntime 读取（会话级幂等状态）
-	if rt := tools.SkillRuntimeFromCtx(ctx); rt != nil {
-		sb.loadedSkills = rt.Loaded()
+		// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
+		if env.Todo != nil {
+			todos, version := env.Todo.Snapshot()
+			if version != sb.todoVersion {
+				sb.todoVersion = version
+				sb.todoChangedIter = iteration
+			}
+			sb.todos = todos
+		}
+		// 已加载技能：会话级幂等状态
+		if env.Skills != nil {
+			sb.loadedSkills = env.Skills.Loaded()
+		}
 	}
 	return sb.render()
 }
@@ -229,7 +230,7 @@ func (sb *StatusBar) render() *schema.Message {
 	if len(sb.todos) > 0 {
 		pending := 0
 		for _, t := range sb.todos {
-			if t.Status == store.TodoPending || t.Status == store.TodoInProgress {
+			if t.Status == todo.TodoPending || t.Status == todo.TodoInProgress {
 				pending++
 			}
 		}
@@ -245,7 +246,7 @@ func (sb *StatusBar) render() *schema.Message {
 
 	b.WriteString("  </counters>\n</agent_status>")
 
-	return &schema.Message{Role: schema.User, Content: b.String()}
+	return &schema.Message{Role: schema.RoleUser, Content: b.String()}
 }
 
 // gitStatus 返回 "main (3 files modified)" 形式的一行 git 摘要；

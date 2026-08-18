@@ -28,7 +28,7 @@ type editFileArgs struct {
 //
 // Matching is fail-safe: anchors must match character-for-character and be
 // unique, otherwise the file is left untouched and an error is returned.
-func EditFile(workDir string) *Definition {
+func EditFile() *Definition {
 	return &Definition{
 		Name: "edit_file",
 		Description: "Edit a file using content coordinates (line numbers are NOT accepted — they drift after " +
@@ -59,7 +59,7 @@ func EditFile(workDir string) *Definition {
 			if err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
-			abs, err := resolveInWorkspace(args.Path, resolveWorkDir(ctx, workDir))
+			abs, err := resolveInWorkspace(args.Path, resolveWorkDir(ctx))
 			if err != nil {
 				return "", err
 			}

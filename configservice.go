@@ -33,7 +33,7 @@ func (s *AgentService) SaveAppConfig(v *config.AppConfig) error {
 
 	// 先热更新注册表：UpdateConfig 会预构建激活模型，配置无效则
 	// 整体不落盘、不生效，保持现状。
-	if err := s.rt.LLM.UpdateConfig(v.LLM); err != nil {
+	if err := s.app.LLM().UpdateConfig(v.LLM); err != nil {
 		return errors.New("LLM 配置无效：" + err.Error())
 	}
 
@@ -43,12 +43,12 @@ func (s *AgentService) SaveAppConfig(v *config.AppConfig) error {
 
 	config.Set(v)
 	// 配置可能修复了密钥/端点：清空健康记录，给新配置一次全新尝试
-	s.rt.LLM.ResetHealth()
+	s.app.LLM().ResetHealth()
 	// 追踪配置（开关/端点）可能已变：重建全局 tracer
 	trace.Rebuild(v.Trace)
 	// 技能索引档位阈值可能已变：更新并重建索引（下一次对话立即生效）
-	s.rt.Skills.UpdateConfig(v.Skills)
-	if err := s.rt.Skills.GenerateIndex(); err != nil {
+	s.app.Skills().UpdateConfig(v.Skills)
+	if err := s.app.Skills().GenerateIndex(); err != nil {
 		slog.Warn("Failed to regenerate skills index after config save", "error", err)
 	}
 	return nil

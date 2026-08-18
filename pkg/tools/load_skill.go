@@ -28,19 +28,6 @@ type SkillSummary struct {
 	Category    string `json:"category"`
 }
 
-type skillRuntimeCtxKey struct{}
-
-// WithSkillRuntime 把技能运行时放入 ctx（宿主调用）。
-func WithSkillRuntime(ctx context.Context, r SkillRuntime) context.Context {
-	return context.WithValue(ctx, skillRuntimeCtxKey{}, r)
-}
-
-// SkillRuntimeFromCtx 取出技能运行时；非交互场景返回 nil。
-func SkillRuntimeFromCtx(ctx context.Context) SkillRuntime {
-	r, _ := ctx.Value(skillRuntimeCtxKey{}).(SkillRuntime)
-	return r
-}
-
 // LoadSkill 返回 load_skill 工具。
 func LoadSkill() *Definition {
 	return &Definition{
@@ -72,10 +59,11 @@ func LoadSkill() *Definition {
 				return "", errors.New("skill name is required")
 			}
 
-			rt := SkillRuntimeFromCtx(ctx)
-			if rt == nil {
+			env := EnvFromCtx(ctx)
+			if env == nil || env.Skills == nil {
 				return "", errors.New("load_skill requires a skill runtime; none available")
 			}
+			rt := env.Skills
 
 			if rt.IsLoaded(name) {
 				return fmt.Sprintf("skill %q is already loaded; its instructions are still in effect", name), nil

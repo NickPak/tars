@@ -15,7 +15,7 @@ import { Create as $Create } from "@wailsio/runtime";
  */
 export class Config {
     /**
-     * 当前使用的 ModelConfig.ID
+     * 当前使用的 ModelConfig.EntryID
      */
     "active"?: string;
     "providers"?: { [_ in string]?: ProviderConfig | null };
@@ -46,13 +46,15 @@ export class Config {
 
 /**
  * ModelConfig 是一个可用模型条目。
- * ID 不进 YAML——文件中 map key 即 ID，Validate 时归一化回填。
+ * EntryID 不进 YAML——文件中 map key 即条目 ID，Validate 时归一化回填。
  */
 export class ModelConfig {
     /**
-     * 唯一键（= models map 的 key），如 "gemini/gemini-3.1-flash-lite"
+     * EntryID 配置条目的唯一键（= models map 的 key），"provider/modelId"
+     * 形式，如 "gemini/gemini-3.1-flash-lite"。与 ModelId（发给 API 的
+     * 真实模型名）区分：同一真实模型可配多个条目。
      */
-    "id": string;
+    "entryId": string;
 
     /**
      * 引用 ProviderConfig.ID
@@ -91,8 +93,8 @@ export class ModelConfig {
 
     /** Creates a new ModelConfig instance. */
     constructor($$source: Partial<ModelConfig> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
+        if (!("entryId" in $$source)) {
+            this["entryId"] = "";
         }
         if (!("provider" in $$source)) {
             this["provider"] = "";

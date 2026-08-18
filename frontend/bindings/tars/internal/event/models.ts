@@ -7,7 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as store$0 from "../../pkg/store/models.js";
+import * as schema$0 from "../../pkg/schema/models.js";
 
 /**
  * ApprovalEvent "agent:approval"：执行层拦截危险工具调用后发起的安全审批请求。
@@ -161,7 +161,7 @@ export class StreamChunk {
 export class StreamDone {
     "sessionId": string;
     "messageId": string;
-    "usage"?: store$0.UsageInfo | null;
+    "usage"?: schema$0.UsageInfo | null;
     "elapsedMs": number;
 
     /** Creates a new StreamDone instance. */
@@ -302,5 +302,5 @@ export class ToolResultEvent {
 }
 
 // Private type creation functions
-const $$createType0 = store$0.UsageInfo.createFrom;
+const $$createType0 = schema$0.UsageInfo.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);

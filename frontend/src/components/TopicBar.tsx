@@ -144,7 +144,7 @@ export default function TopicBar() {
         {model?.modelId && (
           <button
             className="topicbar-model-btn"
-            title={`模型：${model.id}\n上下文窗口：${model.contextWindow.toLocaleString()} tokens\n点击切换模型`}
+            title={`模型：${model.entryId}\n上下文窗口：${model.contextWindow.toLocaleString()} tokens\n点击切换模型`}
             onClick={() => setModelMenuOpen((v) => !v)}
           >
             <span>{model.modelId}</span>
@@ -160,11 +160,11 @@ export default function TopicBar() {
             <div className="topicbar-menu topicbar-model-menu">
               {models.map((m) => (
                 <button
-                  key={m.id}
+                  key={m.entryId}
                   className="topicbar-menu-item"
                   onClick={() => {
                     setModelMenuOpen(false);
-                    if (!m.active) void setActiveModel(m.id);
+                    if (!m.active) void setActiveModel(m.entryId);
                   }}
                 >
                   <span
@@ -172,7 +172,7 @@ export default function TopicBar() {
                   >
                     {m.active ? "✓" : ""}
                   </span>
-                  <span className="topicbar-menu-label">{m.id}</span>
+                  <span className="topicbar-menu-label">{m.entryId}</span>
                 </button>
               ))}
               {models.length === 0 && (

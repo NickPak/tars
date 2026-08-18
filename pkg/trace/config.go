@@ -5,3 +5,7 @@ type Config struct {
 	OTLPHTTPEndpoint string `yaml:"otlpHttpEndpoint,omitempty" json:"otlpHttpEndpoint,omitempty"`
 	OTLPGrpcEndpoint string `yaml:"otlpGrpcEndpoint,omitempty" json:"otlpGrpcEndpoint,omitempty"`
 }
+
+func (c *Config) Validate() error {
+	return nil
+}

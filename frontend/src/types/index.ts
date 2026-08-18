@@ -118,13 +118,13 @@ export interface UsageInfo {
   /** 提示词中命中服务端缓存的 token 数（缓存命中率 = cachedTokens / promptTokens） */
   cachedTokens?: number;
   /** 产生该用量的模型条目 ID（多模型下按条目价格表核算费用） */
-  modelEntry?: string;
+  entryId?: string;
 }
 
 /** 模型条目信息（模型选择器/状态栏展示用） */
 export interface ModelInfo {
-  /** 配置条目 ID（models[].id） */
-  id: string;
+  /** 配置条目 ID（models[].entryId） */
+  entryId: string;
   /** 供应商 ID */
   provider: string;
   /** 供应商类型（gemini/openai） */
@@ -163,7 +163,7 @@ export interface SessionStats {
   /** 价格表（元/百万 token），前端算每条消息的本次费用 */
   inputPricePerMillion: number;
   outputPricePerMillion: number;
-  /** 全部模型条目的价格表（key = 条目 ID），按 usage.modelEntry 核算单条费用 */
+  /** 全部模型条目的价格表（key = 条目 ID），按 usage.entryId 核算单条费用 */
   modelPrices?: Record<string, { input: number; output: number }>;
 }
 
@@ -244,7 +244,7 @@ export interface ProviderConfig {
 /** 模型条目配置（llm.ModelConfig） */
 export interface ModelConfig {
   /** 条目唯一 ID，"provider/modelId" 形式 */
-  id: string;
+  entryId: string;
   /** 引用的供应商 ID */
   provider: string;
   /** 发送给 API 的真实模型名（ark 类型为推理接入点 endpoint ID） */

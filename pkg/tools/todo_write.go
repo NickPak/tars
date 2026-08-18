@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"tars/pkg/store"
+	"tars/pkg/todo"
 )
 
 type todoItem struct {
@@ -65,13 +65,14 @@ func TodoWrite() *Definition {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
 
-			todoStore := store.TodoStoreFromCtx(ctx)
-			if todoStore == nil {
-				return "", fmt.Errorf("todo_write: no TodoStore in context")
+			env := EnvFromCtx(ctx)
+			if env == nil || env.Todo == nil {
+				return "", fmt.Errorf("todo_write: no TodoStore in execution env")
 			}
+			todoStore := env.Todo
 
 			// 校验并转换
-			todos := make([]store.Todo, len(args.Todos))
+			todos := make([]todo.Todo, len(args.Todos))
 			for i, item := range args.Todos {
 				if item.ID == "" {
 					return "", fmt.Errorf("todos[%d]: id is required", i)
@@ -79,10 +80,10 @@ func TodoWrite() *Definition {
 				if item.Content == "" {
 					return "", fmt.Errorf("todos[%d]: content is required", i)
 				}
-				if !store.ValidTodoStatus(item.Status) {
+				if !todo.ValidTodoStatus(item.Status) {
 					return "", fmt.Errorf("todos[%d]: invalid status %q (must be pending/in_progress/completed/cancelled)", i, item.Status)
 				}
-				todos[i] = store.Todo{
+				todos[i] = todo.Todo{
 					ID:      item.ID,
 					Content: strings.TrimSpace(item.Content),
 					Status:  item.Status,
@@ -100,22 +101,22 @@ func TodoWrite() *Definition {
 }
 
 // summarize 生成一行摘要确认，避免与状态栏的 todo 区重复。
-func summarize(todos []store.Todo) string {
+func summarize(todos []todo.Todo) string {
 	counts := map[string]int{}
 	for _, t := range todos {
 		counts[t.Status]++
 	}
 	var parts []string
-	if n := counts[store.TodoInProgress]; n > 0 {
+	if n := counts[todo.TodoInProgress]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d in_progress", n))
 	}
-	if n := counts[store.TodoPending]; n > 0 {
+	if n := counts[todo.TodoPending]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d pending", n))
 	}
-	if n := counts[store.TodoCompleted]; n > 0 {
+	if n := counts[todo.TodoCompleted]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d completed", n))
 	}
-	if n := counts[store.TodoCancelled]; n > 0 {
+	if n := counts[todo.TodoCancelled]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d cancelled", n))
 	}
 	return fmt.Sprintf("TODO list updated: %d items (%s)", len(todos), strings.Join(parts, ", "))

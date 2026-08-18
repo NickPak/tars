@@ -15,16 +15,16 @@ import type * as event$0 from "../../../../../tars/internal/event/models.js";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "agent:approval": event$0.ApprovalEvent;
-            "agent:chunk": event$0.StreamChunk;
-            "agent:done": event$0.StreamDone;
-            "agent:error": event$0.StreamError;
-            "agent:reasoning": event$0.ReasoningEvent;
-            "agent:tool": event$0.ToolEvent;
-            "agent:tool_result": event$0.ToolResultEvent;
-            "model:changed": main$0.ModelChangedEvent;
-            "session:renamed": event$0.SessionRenamedEvent;
-            "workspace:changed": main$0.WorkspaceChangedEvent;
+            "agent:approval": event$0.ApprovalEvent | null;
+            "agent:chunk": event$0.StreamChunk | null;
+            "agent:done": event$0.StreamDone | null;
+            "agent:error": event$0.StreamError | null;
+            "agent:reasoning": event$0.ReasoningEvent | null;
+            "agent:tool": event$0.ToolEvent | null;
+            "agent:tool_result": event$0.ToolResultEvent | null;
+            "model:changed": main$0.ModelChangedEvent | null;
+            "session:renamed": event$0.SessionRenamedEvent | null;
+            "workspace:changed": main$0.WorkspaceChangedEvent | null;
         }
     }
 }

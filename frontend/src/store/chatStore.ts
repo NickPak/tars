@@ -366,7 +366,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      await agentApi.sendMessage(sessId, content);
+      await agentApi.submitMessage(sessId, content);
     } catch (e) {
       set((s) => ({
         messages: markLastAssistantError(s.messages, errText(e)),

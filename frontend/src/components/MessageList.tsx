@@ -460,10 +460,10 @@ function MessageStatusBar({
       : undefined;
 
   // 本次费用 = prompt × 输入价 + completion × 输出价。
-  // 多模型下按产生该用量的模型条目价格核算（usage.modelEntry），
+  // 多模型下按产生该用量的模型条目价格核算（usage.entryId），
   // 条目已删除或无条目信息时回退当前激活模型价格；价格未配置则不显示。
   const price =
-    (usage?.modelEntry && stats?.modelPrices?.[usage.modelEntry]) ||
+    (usage?.entryId && stats?.modelPrices?.[usage.entryId]) ||
     (stats
       ? { input: stats.inputPricePerMillion, output: stats.outputPricePerMillion }
       : undefined);

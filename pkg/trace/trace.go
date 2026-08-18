@@ -5,7 +5,7 @@
 // (Jaeger, Tempo, ...) and/or OTLP/gRPC (Arize Phoenix, ...). Both can be
 // enabled at the same time. There is no local file sink.
 //
-// Span tree for one SendMessage turn (ReAct loop):
+// Span tree for one SubmitMessage turn (ReAct loop):
 //
 //	agent.turn                     (root, one per user message)
 //	├── gen_ai.chat <model>        (LLM request, iteration 0)
@@ -21,7 +21,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	"tars/pkg/schema"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -54,11 +55,21 @@ var (
 // OTel SDK 保证 Tracer 并发安全，所有会话共享。
 func GetTracer() oteltrace.Tracer { return tracer }
 
-// Init 按给定配置创建全局 TracerProvider 单例。进程启动时调用一次。
-// 未启用追踪时 tp 为 nil，所有包级函数安全 no-op。
+// Init 按给定配置创建全局 TracerProvider 单例，并报告当前配置状态。
+// 进程启动时调用一次；未启用追踪时 tp 为 nil，所有包级函数安全 no-op。
+// （配置保存的热更新走 Rebuild，启动日志不会重复打印。）
 func InitTrace(cfg *Config) {
-	if cfg == nil || !cfg.Enabled ||
-		(cfg.OTLPHTTPEndpoint == "" && cfg.OTLPGrpcEndpoint == "") {
+	if cfg == nil || !cfg.Enabled {
+		slog.Info("Tracing disabled (trace.enabled is not set)")
+		return
+	}
+	if cfg.OTLPHTTPEndpoint != "" {
+		slog.Info("OTLP/HTTP trace export enabled", "endpoint", cfg.OTLPHTTPEndpoint)
+	}
+	if cfg.OTLPGrpcEndpoint != "" {
+		slog.Info("OTLP/gRPC trace export enabled", "endpoint", cfg.OTLPGrpcEndpoint)
+	}
+	if cfg.OTLPHTTPEndpoint == "" && cfg.OTLPGrpcEndpoint == "" {
 		return
 	}
 	tp, tracer = buildTracer(true, cfg.OTLPHTTPEndpoint, cfg.OTLPGrpcEndpoint)
@@ -160,7 +171,7 @@ func noopSpan(ctx context.Context) oteltrace.Span {
 	return oteltrace.SpanFromContext(ctx)
 }
 
-// StartTurn begins the root span for one SendMessage turn.
+// StartTurn begins the root span for one SubmitMessage turn.
 // sessionID/msgID/userText 由调用方传入（无状态）。
 func StartTurn(ctx context.Context, sessionID, msgID, userText string) (context.Context, oteltrace.Span) {
 	if tracer == nil {
@@ -241,7 +252,7 @@ func flattenInputMessages(messages []*schema.Message) []attribute.KeyValue {
 	for i, m := range messages {
 		prefix := fmt.Sprintf("llm.input_messages.%d.message.", i)
 		attrs = append(attrs, attribute.String(prefix+"role", string(m.Role)))
-		attrs = append(attrs, flattenMessageContent(prefix, m.Content, m.ReasoningContent)...)
+		attrs = append(attrs, flattenMessageContent(prefix, m.Content, m.Reasoning)...)
 		if m.ToolCallID != "" {
 			attrs = append(attrs, attribute.String(prefix+"tool_call_id", m.ToolCallID))
 		}
@@ -249,8 +260,8 @@ func flattenInputMessages(messages []*schema.Message) []attribute.KeyValue {
 			tcp := fmt.Sprintf("%stool_calls.%d.tool_call.", prefix, j)
 			attrs = append(attrs,
 				attribute.String(tcp+"id", tc.ID),
-				attribute.String(tcp+"function.name", tc.Function.Name),
-				attribute.String(tcp+"function.arguments", tc.Function.Arguments),
+				attribute.String(tcp+"function.name", tc.Name),
+				attribute.String(tcp+"function.arguments", tc.Args),
 			)
 		}
 	}
@@ -313,8 +324,8 @@ func EndLLMCall(span oteltrace.Span, err error, content, reasoning string, toolC
 		tcp := fmt.Sprintf("llm.output_messages.0.message.tool_calls.%d.tool_call.", j)
 		attrs = append(attrs,
 			attribute.String(tcp+"id", tc.ID),
-			attribute.String(tcp+"function.name", tc.Function.Name),
-			attribute.String(tcp+"function.arguments", tc.Function.Arguments),
+			attribute.String(tcp+"function.name", tc.Name),
+			attribute.String(tcp+"function.arguments", tc.Args),
 		)
 	}
 	if reasoning != "" {

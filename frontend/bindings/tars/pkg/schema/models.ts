@@ -5,13 +5,12 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as schema$0 from "../../../github.com/cloudwego/eino/schema/models.js";
-
+/**
+ * Message 是会话中的一条消息（内存态与持久化共用同一结构）。
+ */
 export class Message {
     "id": string;
-    "role": schema$0.RoleType;
+    "role": Role;
     "content": string;
     "toolCalls"?: ToolCall[];
     "toolCallId"?: string;
@@ -31,7 +30,7 @@ export class Message {
             this["id"] = "";
         }
         if (!("role" in $$source)) {
-            this["role"] = schema$0.RoleType.$zero;
+            this["role"] = Role.$zero;
         }
         if (!("content" in $$source)) {
             this["content"] = "";
@@ -92,6 +91,24 @@ export class MessagePart {
     }
 }
 
+/**
+ * Role 表示消息的角色。
+ */
+export enum Role {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    RoleSystem = "system",
+    RoleUser = "user",
+    RoleAssistant = "assistant",
+    RoleTool = "tool",
+};
+
+/**
+ * ToolCall 是 assistant 消息里的一个工具调用（存储视图：函数名与参数原文拍平）。
+ */
 export class ToolCall {
     "id": string;
     "name": string;
@@ -121,12 +138,22 @@ export class ToolCall {
     }
 }
 
+/**
+ * UsageInfo 是一次助手回复的 token 用量。
+ */
 export class UsageInfo {
     "promptTokens": number;
     "completionTokens": number;
     "totalTokens": number;
     "cachedTokens"?: number;
-    "modelEntry"?: string;
+
+    /**
+     * EntryID 是产生该用量的本地配置条目 ID（llm.ModelConfig.EntryID，
+     * 如 "gemini/gemini-3.1-flash-lite"），用于按条目价格表核算费用；
+     * 不是发给 API 的真实模型名（ModelConfig.ModelId）——同一真实模型
+     * 可配多个条目、价格不同，故费用按条目核算。
+     */
+    "entryId"?: string;
 
     /** Creates a new UsageInfo instance. */
     constructor($$source: Partial<UsageInfo> = {}) {

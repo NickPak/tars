@@ -3,9 +3,7 @@ package main
 import (
 	"fmt"
 	"tars/internal/config"
-	"tars/pkg/store"
-
-	"github.com/cloudwego/eino/schema"
+	"tars/pkg/schema"
 )
 
 // SessionStats 是会话级聚合统计，供底部状态栏展示。
@@ -36,7 +34,7 @@ type SessionStats struct {
 	InputPricePerMillion  float64 `json:"inputPricePerMillion"`
 	OutputPricePerMillion float64 `json:"outputPricePerMillion"`
 	// ModelPrices 全部模型条目的价格表（key = 条目 ID）：
-	// 前端按每条消息的 usage.modelEntry 核算单条费用；
+	// 前端按每条消息的 usage.entryId 核算单条费用；
 	// 条目被删除时回退激活模型价格（费用是估算值而非账单）。
 	ModelPrices map[string]ModelPrice `json:"modelPrices,omitempty"`
 }
@@ -49,8 +47,7 @@ type ModelPrice struct {
 
 // GetSessionStats 返回指定会话的聚合统计。空会话返回带模型/价格信息的零值。
 func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) {
-	sessionMgr := s.rt.Sessions
-	if !sessionMgr.Has(sessionID) {
+	if !s.app.HasSession(sessionID) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
@@ -61,7 +58,7 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 	if cfg != nil && cfg.LLM != nil {
 		if active := cfg.LLM.ActiveModel(); active != nil {
 			// 健康状态跟随当前激活的模型条目（per-model 记录在 Registry）
-			stats.ModelHealthy = s.rt.LLM.IsHealthy(active.ID)
+			stats.ModelHealthy = s.app.LLM().IsHealthy(active.EntryID)
 			stats.ModelID = active.ModelId
 			stats.ContextWindow = active.ContextWindow
 			activeIn, activeOut = active.InputPricePerMillion, active.OutputPricePerMillion
@@ -72,7 +69,7 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 		stats.OutputPricePerMillion = activeOut
 		stats.ModelPrices = make(map[string]ModelPrice, len(cfg.LLM.Models))
 		for _, m := range cfg.LLM.Models {
-			stats.ModelPrices[m.ID] = ModelPrice{
+			stats.ModelPrices[m.EntryID] = ModelPrice{
 				Input:  m.InputPricePerMillion,
 				Output: m.OutputPricePerMillion,
 			}
@@ -80,9 +77,9 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 	}
 
 	// 拷贝消息切片头做只读快照（统计只读 Usage/CreatedAt 等标量字段）
-	var msgs []*store.Message
-	if sess, ok := sessionMgr.Find(sessionID); ok {
-		msgs = append([]*store.Message{}, sess.Messages...)
+	var msgs []*schema.Message
+	if sess, ok := s.app.FindSession(sessionID); ok {
+		msgs = append([]*schema.Message{}, sess.Messages...)
 	}
 	if msgs == nil {
 		return stats, nil
@@ -92,9 +89,9 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 	var lastPromptTokens int
 	for _, m := range msgs {
 		switch m.Role {
-		case schema.User:
+		case schema.RoleUser:
 			stats.Rounds++
-		case schema.Assistant:
+		case schema.RoleAssistant:
 			if m.Usage == nil {
 				continue
 			}
@@ -107,8 +104,8 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 			}
 			// 按产生该用量的模型条目价格核算；条目已删除时回退激活模型价格
 			inPrice, outPrice := activeIn, activeOut
-			if u.ModelEntry != "" {
-				if p, ok := stats.ModelPrices[u.ModelEntry]; ok {
+			if u.EntryID != "" {
+				if p, ok := stats.ModelPrices[u.EntryID]; ok {
 					inPrice, outPrice = p.Input, p.Output
 				}
 			}

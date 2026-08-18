@@ -527,12 +527,12 @@ function ModelPage({
       const models = llm.models.map((m) =>
         m.provider !== oldId
           ? m
-          : { ...m, provider: newId, id: genModelId(newId, m.modelId) },
+          : { ...m, provider: newId, entryId: genModelId(newId, m.modelId) },
       );
       out.models = models;
       // 激活条目引用同步
-      const activeIdx = llm.models.findIndex((m) => m.id === llm.active);
-      if (activeIdx >= 0) out.active = models[activeIdx].id;
+      const activeIdx = llm.models.findIndex((m) => m.entryId === llm.active);
+      if (activeIdx >= 0) out.active = models[activeIdx].entryId;
     }
     updateLLM(out);
   };
@@ -562,12 +562,12 @@ function ModelPage({
     const models = llm.models.map((m, i) => {
       if (i !== idx) return m;
       const next = { ...m, ...patch };
-      return { ...next, id: genModelId(next.provider, next.modelId) };
+      return { ...next, entryId: genModelId(next.provider, next.modelId) };
     });
     const out: Partial<LLMConfig> = { models };
     // 条目 ID 自动重算后若变化，激活引用同步跟随
-    const oldId = llm.models[idx]?.id;
-    const newId = models[idx]?.id;
+    const oldId = llm.models[idx]?.entryId;
+    const newId = models[idx]?.entryId;
     if (oldId && newId !== oldId && llm.active === oldId) {
       out.active = newId;
     }
@@ -576,7 +576,7 @@ function ModelPage({
   const addModel = () => {
     const provider = llm.providers[0]?.id ?? "";
     const m: ModelConfig = {
-      id: "",
+      entryId: "",
       provider,
       modelId: "",
       contextWindow: 0,
@@ -607,8 +607,8 @@ function ModelPage({
             onChange={(e) => updateLLM({ active: e.target.value })}
           >
             {llm.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id || "（未命名条目）"}
+              <option key={m.entryId} value={m.entryId}>
+                {m.entryId || "（未命名条目）"}
               </option>
             ))}
             {llm.models.length === 0 && <option value="">（无可用模型）</option>}
@@ -625,17 +625,17 @@ function ModelPage({
             <div className="settings-item" key={key}>
               <div className="settings-item-head" onClick={() => toggle(key)}>
                 <span
-                  className={`settings-item-star${llm.active === m.id && m.id ? " on" : ""}`}
-                  title={llm.active === m.id && m.id ? "当前使用" : "设为当前使用"}
+                  className={`settings-item-star${llm.active === m.entryId && m.entryId ? " on" : ""}`}
+                  title={llm.active === m.entryId && m.entryId ? "当前使用" : "设为当前使用"}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (m.id) updateLLM({ active: m.id });
+                    if (m.entryId) updateLLM({ active: m.entryId });
                   }}
                 >
-                  {llm.active === m.id && m.id ? "★" : "☆"}
+                  {llm.active === m.entryId && m.entryId ? "★" : "☆"}
                 </span>
                 <span className="settings-item-name">
-                  {m.id || "（新条目）"}
+                  {m.entryId || "（新条目）"}
                 </span>
                 <span className="settings-item-sub">
                   {m.provider} · {m.modelId}
@@ -689,7 +689,7 @@ function ModelPage({
                     hint="唯一标识，由 供应商/模型ID 自动生成。"
                   >
                     <span className="settings-readonly">
-                      {m.id || "（输入模型 ID 后自动生成）"}
+                      {m.entryId || "（输入模型 ID 后自动生成）"}
                     </span>
                   </Field>
                   <Field

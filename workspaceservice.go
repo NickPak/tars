@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -31,31 +32,42 @@ func (s *AgentService) OpenDirectoryDialog() (string, error) {
 
 	result, err := dialog.PromptForSingleSelection()
 	if err != nil {
+		if isDialogCancelled(err) {
+			return "", nil
+		}
 		return "", fmt.Errorf("open directory dialog: %w", err)
 	}
 	return result, nil
+}
+
+// isDialogCancelled 报告原生文件对话框的"用户取消"。Wails 的取消哨兵定义在
+// internal 包（cfd.ErrorCancelled），无法 import 做 errors.Is，按消息匹配
+// （Contains 兼容个别平台对取消错误的包装）。取消是正常用户操作：各对话框
+// 方法按约定返回空串与 nil 错误。
+func isDialogCancelled(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "cancelled by user")
 }
 
 // SetWorkspaceDir sets a custom workspace directory for the given session.
 // All subsequent agent file operations will operate within this directory.
 // Pass an empty string to reset to the default isolated workspace.
 func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
-	if !s.rt.Sessions.Has(sessionID) {
+	if !s.app.HasSession(sessionID) {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
 	// Persist to meta.json
-	meta, err := s.rt.Store.LoadMeta(sessionID)
+	meta, err := s.app.SessionStore().LoadMeta(sessionID)
 	if err != nil || meta == nil {
 		return fmt.Errorf("load meta for %s: %w", sessionID, err)
 	}
 	meta.CustomWorkDir = dir
-	if err := s.rt.Store.SaveMeta(sessionID, meta); err != nil {
+	if err := s.app.SessionStore().SaveMeta(sessionID, meta); err != nil {
 		return fmt.Errorf("save meta: %w", err)
 	}
 
 	// Emit event so frontend updates（工作区路径按需从 meta 读取，内存无需同步）
-	application.Get().Event.Emit("workspace:changed", WorkspaceChangedEvent{
+	application.Get().Event.Emit("workspace:changed", &WorkspaceChangedEvent{
 		SessionID: sessionID,
 		Path:      dir,
 		IsCustom:  dir != "",
@@ -67,16 +79,16 @@ func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
 
 // GetWorkspaceInfo returns the current workspace info for a session.
 func (s *AgentService) GetWorkspaceInfo(sessionID string) (*WorkspaceInfo, error) {
-	if !s.rt.Sessions.Has(sessionID) {
+	if !s.app.HasSession(sessionID) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	meta, err := s.rt.Store.LoadMeta(sessionID)
+	meta, err := s.app.SessionStore().LoadMeta(sessionID)
 	if err != nil || meta == nil {
 		return nil, fmt.Errorf("load meta: %w", err)
 	}
 
-	path := s.rt.Store.WorkspaceDir(sessionID)
+	path := s.app.SessionStore().WorkspaceDir(sessionID)
 	isCustom := false
 	if meta.CustomWorkDir != "" {
 		path = meta.CustomWorkDir

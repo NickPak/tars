@@ -27,7 +27,7 @@ const (
 // (no network, workspace-only files) is planned in design plan stage 4;
 // until then it runs with the application's permissions and the description
 // says so (fidelity red line: the description must match reality).
-func CodeInterpreter(workDir string) *Definition {
+func CodeInterpreter() *Definition {
 	return &Definition{
 		Name: "code_interpreter",
 		Description: "Execute Python 3 code with the system interpreter and return stdout/stderr; non-zero " +
@@ -81,7 +81,7 @@ func CodeInterpreter(workDir string) *Definition {
 			cctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(cctx, python, "-u", tmp.Name())
-			cmd.Dir = resolveWorkDir(ctx, workDir)
+			cmd.Dir = resolveWorkDir(ctx)
 			var out bytes.Buffer
 			cmd.Stdout = &out
 			cmd.Stderr = &out

@@ -7,17 +7,18 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as store$0 from "../../pkg/store/models.js";
+import * as schema$0 from "../../pkg/schema/models.js";
 
 /**
- * Info 是会话的内存运行态：会话级元数据 + 消息列表 + 运行标记。
+ * Info 是会话的内存数据：会话级元数据 + 消息列表 + 会话级幂等状态。
+ * 轮的运行态（取消标记）在 boot.Controller——goroutine 在那里创建。
  */
 export class Info {
     "id": string;
     "title": string;
     "createdAt": number;
     "updatedAt": number;
-    "messages": (store$0.Message | null)[];
+    "messages": (schema$0.Message | null)[];
 
     /** Creates a new Info instance. */
     constructor($$source: Partial<Info> = {}) {
@@ -54,6 +55,6 @@ export class Info {
 }
 
 // Private type creation functions
-const $$createType0 = store$0.Message.createFrom;
+const $$createType0 = schema$0.Message.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $Create.Array($$createType1);

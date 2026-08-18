@@ -43,16 +43,16 @@ func NewRegistry(cfg *Config) *Registry {
 	return r
 }
 
-func (r *Registry) SetHealthy(modelID string, ok bool) {
+func (r *Registry) SetHealthy(entryID string, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.healthy[modelID] = ok
+	r.healthy[entryID] = ok
 }
 
-func (r *Registry) IsHealthy(modelID string) bool {
+func (r *Registry) IsHealthy(entryID string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	ok, recorded := r.healthy[modelID]
+	ok, recorded := r.healthy[entryID]
 	return !recorded || ok
 }
 
@@ -79,7 +79,7 @@ func (r *Registry) UpdateConfig(cfg *Config) error {
 	r.cfg = cfg
 	r.models = map[string]model.ToolCallingChatModel{}
 	if m := cfg.ActiveModel(); m != nil && active != nil {
-		r.models[m.ID] = active
+		r.models[m.EntryID] = active
 	}
 	return nil
 }
@@ -96,33 +96,33 @@ func (r *Registry) Active() (model.ToolCallingChatModel, *ModelConfig, error) {
 	if m == nil {
 		return nil, nil, errors.New("尚未配置任何模型，请在设置中添加")
 	}
-	cm, err := r.chatModel(m.ID)
+	cm, err := r.chatModel(m.EntryID)
 	return cm, m, err
 }
 
-func (r *Registry) ChatModel(modelID string) (model.ToolCallingChatModel, error) {
-	return r.chatModel(modelID)
+func (r *Registry) ChatModel(entryID string) (model.ToolCallingChatModel, error) {
+	return r.chatModel(entryID)
 }
 
-func (r *Registry) chatModel(modelID string) (model.ToolCallingChatModel, error) {
+func (r *Registry) chatModel(entryID string) (model.ToolCallingChatModel, error) {
 	r.mu.RLock()
-	if cm, ok := r.models[modelID]; ok {
+	if cm, ok := r.models[entryID]; ok {
 		r.mu.RUnlock()
 		return cm, nil
 	}
 	cfg := r.cfg
 	r.mu.RUnlock()
 
-	m := cfg.FindModel(modelID)
+	m := cfg.FindModel(entryID)
 	if m == nil {
-		return nil, fmt.Errorf("模型条目 %q 不存在", modelID)
+		return nil, fmt.Errorf("模型条目 %q 不存在", entryID)
 	}
 	cm, err := buildOne(context.Background(), cfg, m)
 	if err != nil {
 		return nil, err
 	}
 	r.mu.Lock()
-	r.models[modelID] = cm
+	r.models[entryID] = cm
 	r.mu.Unlock()
 	return cm, nil
 }
@@ -138,7 +138,7 @@ func buildChatModel(ctx context.Context, cfg *Config) (model.ToolCallingChatMode
 func buildOne(ctx context.Context, cfg *Config, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	p := cfg.FindProvider(m.Provider)
 	if p == nil {
-		return nil, fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", m.ID, m.Provider)
+		return nil, fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", m.EntryID, m.Provider)
 	}
 	switch p.Type {
 	case ProviderGemini:
@@ -200,7 +200,7 @@ func buildClaude(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
 	}
 	if m.MaxTokens <= 0 {
-		return nil, fmt.Errorf("Claude 模型 %q 必须配置最大输出 tokens（maxTokens，Anthropic API 必填）", m.ID)
+		return nil, fmt.Errorf("Claude 模型 %q 必须配置最大输出 tokens（maxTokens，Anthropic API 必填）", m.EntryID)
 	}
 	cfg := &claude.Config{
 		APIKey:    p.ApiKey,

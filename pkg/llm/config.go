@@ -62,9 +62,12 @@ type ProviderConfig struct {
 // 不做策略裁剪。
 
 // ModelConfig 是一个可用模型条目。
-// ID 不进 YAML——文件中 map key 即 ID，Validate 时归一化回填。
+// EntryID 不进 YAML——文件中 map key 即条目 ID，Validate 时归一化回填。
 type ModelConfig struct {
-	ID       string `yaml:"-" json:"id"`              // 唯一键（= models map 的 key），如 "gemini/gemini-3.1-flash-lite"
+	// EntryID 配置条目的唯一键（= models map 的 key），"provider/modelId"
+	// 形式，如 "gemini/gemini-3.1-flash-lite"。与 ModelId（发给 API 的
+	// 真实模型名）区分：同一真实模型可配多个条目。
+	EntryID  string `yaml:"-" json:"entryId"`
 	Provider string `yaml:"provider" json:"provider"` // 引用 ProviderConfig.ID
 	// ModelId 发送给 API 的模型名。注意 ark 类型填的是推理接入点 endpoint ID（ep-xxx）。
 	ModelId string `yaml:"modelId" json:"modelId"`
@@ -93,7 +96,7 @@ type ModelConfig struct {
 // Validate 会把条目内的 ID 归一化为 map key（条件写入，不触碰已一致的
 // 共享条目）。Config 在发布后不可变（整体替换语义），map 查找无并发问题。
 type Config struct {
-	Active    string                     `yaml:"active,omitempty" json:"active,omitempty"` // 当前使用的 ModelConfig.ID
+	Active    string                     `yaml:"active,omitempty" json:"active,omitempty"` // 当前使用的 ModelConfig.EntryID
 	Providers map[string]*ProviderConfig `yaml:"providers,omitempty" json:"providers,omitempty"`
 	Models    map[string]*ModelConfig    `yaml:"models,omitempty" json:"models,omitempty"`
 }
@@ -153,8 +156,8 @@ func (c *Config) Validate() error {
 		if m == nil {
 			return fmt.Errorf("模型条目 %q 配置为空", id)
 		}
-		if m.ID != id {
-			m.ID = id
+		if m.EntryID != id {
+			m.EntryID = id
 		}
 		if m.ModelId == "" {
 			return fmt.Errorf("模型条目 %q 的模型 ID 不能为空", id)

@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
+	"tars/pkg/schema"
 )
 
 //go:embed system.md
@@ -72,7 +72,7 @@ func BuildSystemPrompt(env EnvironmentContext) string {
 // BuildSystemMessage 构建系统提示词消息（含工具列表等静态环境上下文）。
 // 返回 *schema.Message 供 agent 直接拼接到消息列表；纯函数，无全局状态。
 func BuildSystemMessage(env EnvironmentContext) *schema.Message {
-	return schema.SystemMessage(BuildSystemPrompt(env))
+	return &schema.Message{Role: schema.RoleSystem, Content: BuildSystemPrompt(env)}
 }
 
 // fallbackPrompt is used only if the embedded file cannot be read (should

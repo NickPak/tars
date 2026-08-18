@@ -55,25 +55,14 @@ type ApprovalRequest struct {
 	TimeoutSeconds int
 }
 
-// Asker 由宿主实现：把询问/审批桥接到前端并等待答复。
+// Asker 由宿主实现：把 ask_user 的询问桥接到前端并等待答复。
+// 宿主经 Env.Asker 注入（见 env.go）；危险调用的审批通道是独立的
+// Approver 接口（见 gate.go），同一宿主实现可同时承担两者。
 type Asker interface {
 	Ask(ctx context.Context, q *Question) (*Answer, error)
-	Approve(ctx context.Context, r *ApprovalRequest) (*Answer, error)
 }
 
-type askerCtxKey struct{}
 type toolCallIDCtxKey struct{}
-
-// WithAsker 把交互询问通道放入 ctx（宿主调用）。
-func WithAsker(ctx context.Context, a Asker) context.Context {
-	return context.WithValue(ctx, askerCtxKey{}, a)
-}
-
-// AskerFromCtx 取出交互询问通道；非交互场景（测试等）返回 nil。
-func AskerFromCtx(ctx context.Context) Asker {
-	a, _ := ctx.Value(askerCtxKey{}).(Asker)
-	return a
-}
 
 // WithToolCallID 把当前工具调用 ID 放入 ctx（执行器调用），
 // 交互工具/审批门用它作为答复的关联键。
@@ -140,11 +129,11 @@ func AskUser() *Definition {
 				return "", err
 			}
 
-			asker := AskerFromCtx(ctx)
-			if asker == nil {
+			env := EnvFromCtx(ctx)
+			if env == nil || env.Asker == nil {
 				return "", errors.New("ask_user requires an interactive session; none available")
 			}
-			ans, err := asker.Ask(ctx, &q)
+			ans, err := env.Asker.Ask(ctx, &q)
 			if err != nil {
 				return "", err // 轮被取消
 			}

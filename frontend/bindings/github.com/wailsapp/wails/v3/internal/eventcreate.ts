@@ -15,29 +15,39 @@ import * as event$0 from "../../../../../tars/internal/event/models.js";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
-        "agent:approval": $$createType0,
-        "agent:chunk": $$createType1,
-        "agent:done": $$createType2,
-        "agent:error": $$createType3,
-        "agent:reasoning": $$createType4,
-        "agent:tool": $$createType5,
-        "agent:tool_result": $$createType6,
-        "model:changed": $$createType7,
-        "session:renamed": $$createType8,
-        "workspace:changed": $$createType9,
+        "agent:approval": $$createType1,
+        "agent:chunk": $$createType3,
+        "agent:done": $$createType5,
+        "agent:error": $$createType7,
+        "agent:reasoning": $$createType9,
+        "agent:tool": $$createType11,
+        "agent:tool_result": $$createType13,
+        "model:changed": $$createType15,
+        "session:renamed": $$createType17,
+        "workspace:changed": $$createType19,
     }));
 }
 
 // Private type creation functions
 const $$createType0 = event$0.ApprovalEvent.createFrom;
-const $$createType1 = event$0.StreamChunk.createFrom;
-const $$createType2 = event$0.StreamDone.createFrom;
-const $$createType3 = event$0.StreamError.createFrom;
-const $$createType4 = event$0.ReasoningEvent.createFrom;
-const $$createType5 = event$0.ToolEvent.createFrom;
-const $$createType6 = event$0.ToolResultEvent.createFrom;
-const $$createType7 = main$0.ModelChangedEvent.createFrom;
-const $$createType8 = event$0.SessionRenamedEvent.createFrom;
-const $$createType9 = main$0.WorkspaceChangedEvent.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = event$0.StreamChunk.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = event$0.StreamDone.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = event$0.StreamError.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = event$0.ReasoningEvent.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = event$0.ToolEvent.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = event$0.ToolResultEvent.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = main$0.ModelChangedEvent.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = event$0.SessionRenamedEvent.createFrom;
+const $$createType17 = $Create.Nullable($$createType16);
+const $$createType18 = main$0.WorkspaceChangedEvent.createFrom;
+const $$createType19 = $Create.Nullable($$createType18);
 
 configure();

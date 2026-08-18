@@ -70,6 +70,7 @@ func (c *AppConfig) Validate() error {
 	if c.Trace == nil {
 		c.Trace = &trace.Config{}
 	}
+	c.Trace.Validate()
 	c.WorkDir = strings.TrimSpace(c.WorkDir)
 	if c.WorkDir == "" {
 		c.WorkDir = DefaultDataDir()

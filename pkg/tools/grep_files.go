@@ -23,7 +23,7 @@ type grepFilesArgs struct {
 // with line numbers. File-name search belongs to glob_files; the two tool
 // descriptions reference each other as boundary counter-examples, per the
 // design plan.
-func GrepFiles(workDir string) *Definition {
+func GrepFiles() *Definition {
 	return &Definition{
 		Name: "grep_files",
 		Description: "Search file CONTENTS with a regular expression, returning matching lines as " +
@@ -52,7 +52,7 @@ func GrepFiles(workDir string) *Definition {
 			if root == "" {
 				root = "."
 			}
-			abs, err := resolveInWorkspace(root, resolveWorkDir(ctx, workDir))
+			abs, err := resolveInWorkspace(root, resolveWorkDir(ctx))
 			if err != nil {
 				return "", err
 			}

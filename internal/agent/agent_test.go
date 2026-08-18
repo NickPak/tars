@@ -4,262 +4,289 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
 
+	"tars/internal/event"
+	"tars/pkg/llm"
+	"tars/pkg/schema"
 	"tars/pkg/tools"
-
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
 )
 
-// stubModel streams canned responses, one per call (cycled). If errs[i] is
+// stubProvider streams canned responses, one per call (cycled). If errs[i] is
 // non-nil, the i-th Stream call fails instead of streaming.
-type stubModel struct {
+type stubProvider struct {
 	responses []*schema.Message
 	errs      []error
 	calls     int
 }
 
-func (m *stubModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	m.calls++
-	idx := (m.calls - 1) % len(m.responses)
-	return m.responses[idx], nil
-}
-
-func (m *stubModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *stubProvider) Stream(ctx context.Context, req *llm.ChatRequest) (llm.Stream, error) {
 	m.calls++
 	idx := (m.calls - 1) % len(m.responses)
 	if m.errs != nil && idx < len(m.errs) && m.errs[idx] != nil {
 		return nil, m.errs[idx]
 	}
-	msg := m.responses[idx]
-	sr, sw := schema.Pipe[*schema.Message](1)
-	go func() {
-		defer sw.Close()
-		sw.Send(msg, nil)
-	}()
-	return sr, nil
+	return &stubStream{msg: m.responses[idx]}, nil
 }
 
-func (m *stubModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
-	return m, nil
+type stubStream struct {
+	msg  *schema.Message
+	sent bool
 }
 
-// stuckModel never yields any chunk; it only closes the stream (with the ctx
-// error) when the context is done — simulating a hung connection that can
-// only be broken by a deadline or cancellation.
-type stuckModel struct{}
-
-func (m *stuckModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
+func (s *stubStream) Recv() (*schema.Message, error) {
+	if s.sent {
+		return nil, io.EOF
+	}
+	s.sent = true
+	return s.msg, nil
 }
 
-func (m *stuckModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	sr, sw := schema.Pipe[*schema.Message](1)
-	go func() {
-		<-ctx.Done()
-		sw.Send(nil, ctx.Err())
-		sw.Close()
-	}()
-	return sr, nil
+func (s *stubStream) Final() (*schema.Message, error) { return s.msg, nil }
+func (s *stubStream) Close() error                    { return nil }
+
+// stuckProvider never yields any chunk; Recv blocks until the context is done —
+// simulating a hung connection that can only be broken by a deadline or cancellation.
+type stuckProvider struct{}
+
+func (m *stuckProvider) Stream(ctx context.Context, req *llm.ChatRequest) (llm.Stream, error) {
+	return &stuckStream{ctx: ctx}, nil
 }
 
-func (m *stuckModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
-	return m, nil
+type stuckStream struct{ ctx context.Context }
+
+func (s *stuckStream) Recv() (*schema.Message, error) {
+	<-s.ctx.Done()
+	return nil, s.ctx.Err()
+}
+func (s *stuckStream) Final() (*schema.Message, error) { return nil, nil }
+func (s *stuckStream) Close() error                    { return nil }
+
+// fakeSession 是 agent.Session 的内存实现：聚合语义对齐 session.Info
+// （assistant 按 ID 聚合，工具结果尾部追加）。
+type fakeSession struct {
+	msgs []*schema.Message
 }
 
-// newTestManager builds a real tools.Manager with the given handlers registered
-// (Manager.Execute already provides parallel execution, panic recovery, and
-// unknown-tool handling — so tests exercise the production path).
-func newTestManager(handlers map[string]tools.Handler) *tools.Manager {
-	mgr := tools.NewManager()
+func (s *fakeSession) History() []*schema.Message {
+	out := make([]*schema.Message, len(s.msgs))
+	copy(out, s.msgs)
+	return out
+}
+
+func (s *fakeSession) UpsertAssistant(id string, delta *schema.Message) {
+	for _, m := range s.msgs {
+		if m.ID == id {
+			m.Content += delta.Content
+			m.ToolCalls = append(m.ToolCalls, delta.ToolCalls...)
+			return
+		}
+	}
+	s.msgs = append(s.msgs, &schema.Message{
+		ID: id, Role: schema.RoleAssistant, Content: delta.Content, ToolCalls: delta.ToolCalls,
+	})
+}
+
+func (s *fakeSession) AppendMessage(_ int64, msg ...*schema.Message) {
+	s.msgs = append(s.msgs, msg...)
+}
+
+func (s *fakeSession) byRole(r schema.Role) []*schema.Message {
+	var out []*schema.Message
+	for _, m := range s.msgs {
+		if m.Role == r {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// newTestRegistry builds a real tools.Registry (builtins + the given custom
+// handlers registered into the session view). Registry.Execute already provides
+// parallel execution, panic recovery, and unknown-tool handling — so tests
+// exercise the production path.
+func newTestRegistry(handlers map[string]tools.Handler) *tools.Registry {
+	r := tools.NewRegistry(nil, nil)
 	for name, h := range handlers {
-		mgr.Register(&tools.Definition{
+		r.Register(&tools.Definition{
 			Name:       name,
 			Parameters: map[string]any{"type": "object"},
 			Handler:   h,
 		})
 	}
-	return mgr
+	return r
 }
 
-// recordingHooks collects hook invocations for assertions.
-type recordingHooks struct {
-	iterStarts   []int
-	iterEnds     []int
-	iterDeltas   [][]*schema.Message
-	chunks       int
-	toolStarts   []string
-	toolResults  []string
-	toolsEndRuns int
-
-	// onError, when set, decides retry behavior; onErrorCalls records every
-	// OnError invocation for assertions.
-	onError      func(iteration, attempt, streamedChunks int, err error) (bool, time.Duration)
-	onErrorCalls []error
+// recordingSink collects emitted events for assertions.
+type recordingSink struct {
+	events []event.Event
 }
 
-func (h *recordingHooks) IterationStart(_ context.Context, i int, _ []*schema.Message) {
-	h.iterStarts = append(h.iterStarts, i)
-}
+func (s *recordingSink) Emit(e event.Event) { s.events = append(s.events, e) }
 
-func (h *recordingHooks) IterationEnd(_ context.Context, i int, _ []*schema.Message, delta []*schema.Message) {
-	h.iterEnds = append(h.iterEnds, i)
-	h.iterDeltas = append(h.iterDeltas, delta)
-}
-
-func (h *recordingHooks) StreamChunk(_ context.Context, _ int, _ *schema.Message) {
-	h.chunks++
-}
-
-func (h *recordingHooks) ToolsStart(_ context.Context, calls []schema.ToolCall) {
-	for _, c := range calls {
-		h.toolStarts = append(h.toolStarts, c.Function.Name)
+func (s *recordingSink) count(k event.Kind) int {
+	n := 0
+	for _, e := range s.events {
+		if e.Kind == k {
+			n++
+		}
 	}
+	return n
 }
 
-func (h *recordingHooks) ToolResult(_ context.Context, r tools.ToolResult) {
-	h.toolResults = append(h.toolResults, r.Output)
-}
-
-func (h *recordingHooks) ToolsEnd(_ context.Context, _ []tools.ToolResult) {
-	h.toolsEndRuns++
-}
-
-func (h *recordingHooks) OnError(_ context.Context, iter, attempt, chunks int, err error) (bool, time.Duration) {
-	h.onErrorCalls = append(h.onErrorCalls, err)
-	if h.onError != nil {
-		return h.onError(iter, attempt, chunks, err)
+func (s *recordingSink) toolResults() []string {
+	var out []string
+	for _, e := range s.events {
+		if e.Kind == event.KindToolResult {
+			out = append(out, e.ToolResult.Output)
+		}
 	}
-	return false, 0
+	return out
+}
+
+func newTestAgent(reg *tools.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
+	return NewReAct(Options{
+		System:    func() []*schema.Message { return nil },
+		Registry:  reg,
+		Session:   sess,
+		Sink:      sink,
+		SessionID: "test-session",
+		Limits:    func() Limits { return Limits{MaxIterations: maxIter} },
+	})
+}
+
+// runTurn 以固定 assistantID 跑一轮（provider 作为轮级输入）。
+func runTurn(a *ReActAgent, ctx context.Context, userMsg string, p llm.Provider) (*Result, error) {
+	return a.Run(ctx, userMsg, "test-assistant", p)
 }
 
 func TestRun_PlainTextAnswer(t *testing.T) {
-	m := &stubModel{responses: []*schema.Message{
-		{Role: schema.Assistant, Content: "hello"},
+	m := &stubProvider{responses: []*schema.Message{
+		{Role: schema.RoleAssistant, Content: "hello"},
 	}}
-	a := New(5, 0, newTestManager(nil), m)
+	sess := &fakeSession{}
+	sink := &recordingSink{}
+	a := newTestAgent(newTestRegistry(nil), sess, sink, 5)
 
-	h := &recordingHooks{}
-	res, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "hi"}}, h)
+	res, err := runTurn(a, context.Background(), "hi", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if res.FinalMessage.Content != "hello" {
-		t.Errorf("final = %q, want %q", res.FinalMessage.Content, "hello")
+	if res.Content != "hello" {
+		t.Errorf("final = %q, want %q", res.Content, "hello")
 	}
-	if len(h.iterStarts) != 1 {
-		t.Errorf("iterStarts = %v, want 1 round", h.iterStarts)
+	if sink.count(event.KindIterationStart) != 1 || sink.count(event.KindIterationEnd) != 1 {
+		t.Errorf("iteration events = %d/%d, want 1/1",
+			sink.count(event.KindIterationStart), sink.count(event.KindIterationEnd))
 	}
-	// IterationEnd must fire for the final plain-text round too, carrying the
-	// assistant message as delta — hosts persist it there.
-	if len(h.iterEnds) != 1 {
-		t.Fatalf("iterEnds = %v, want 1", h.iterEnds)
+	// assistant 消息落会话
+	assistants := sess.byRole(schema.RoleAssistant)
+	if len(assistants) != 1 || assistants[0].Content != "hello" {
+		t.Errorf("session assistants = %v, want [assistant(hello)]", assistants)
 	}
-	if len(h.iterDeltas[0]) != 1 || h.iterDeltas[0][0].Content != "hello" {
-		t.Errorf("delta = %v, want [assistant(hello)]", h.iterDeltas[0])
-	}
-	if h.toolsEndRuns != 0 {
-		t.Errorf("toolsEndRuns = %d, want 0 (no tool calls)", h.toolsEndRuns)
+	if sink.count(event.KindToolDispatch) != 0 {
+		t.Errorf("tool dispatch = %d, want 0 (no tool calls)", sink.count(event.KindToolDispatch))
 	}
 }
 
 func TestRun_OneToolRound(t *testing.T) {
-	m := &stubModel{responses: []*schema.Message{
-		{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
-			{ID: "call_1", Function: schema.FunctionCall{Name: "echo", Arguments: `{"text":"abc"}`}},
+	m := &stubProvider{responses: []*schema.Message{
+		{Role: schema.RoleAssistant, ToolCalls: []schema.ToolCall{
+			{ID: "call_1", Name: "echo", Args: `{"text":"abc"}`},
 		}},
-		{Role: schema.Assistant, Content: "done"},
+		{Role: schema.RoleAssistant, Content: "done"},
 	}}
-	mgr := newTestManager(map[string]tools.Handler{
+	reg := newTestRegistry(map[string]tools.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "abc", nil },
 	})
-	a := New(5, 0, mgr, m)
+	sess := &fakeSession{}
+	sink := &recordingSink{}
+	a := newTestAgent(reg, sess, sink, 5)
 
-	h := &recordingHooks{}
-	res, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
+	res, err := runTurn(a, context.Background(), "go", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if res.FinalMessage.Content != "done" {
-		t.Errorf("final = %q, want done", res.FinalMessage.Content)
+	if res.Content != "done" {
+		t.Errorf("final = %q, want done", res.Content)
 	}
-	if len(h.iterEnds) != 2 {
-		t.Fatalf("iterEnds = %v, want 2 rounds", h.iterEnds)
+	if sink.count(event.KindIterationEnd) != 2 {
+		t.Fatalf("iteration ends = %d, want 2 rounds", sink.count(event.KindIterationEnd))
 	}
-	// Round 1 delta: assistant + tool result; round 2 delta: assistant only.
-	if len(h.iterDeltas[0]) != 2 {
-		t.Errorf("round1 delta len = %d, want 2 (assistant + tool)", len(h.iterDeltas[0]))
+	if sink.count(event.KindToolDispatch) != 1 || sink.count(event.KindToolResult) != 1 {
+		t.Errorf("tool events = %d/%d, want 1/1",
+			sink.count(event.KindToolDispatch), sink.count(event.KindToolResult))
 	}
-	if len(h.iterDeltas[1]) != 1 {
-		t.Errorf("round2 delta len = %d, want 1 (assistant)", len(h.iterDeltas[1]))
+	results := sink.toolResults()
+	if len(results) != 1 || results[0] != "abc" {
+		t.Errorf("toolResults = %v", results)
 	}
-	if len(h.toolStarts) != 1 || h.toolStarts[0] != "echo" {
-		t.Errorf("toolStarts = %v", h.toolStarts)
-	}
-	if len(h.toolResults) != 1 || h.toolResults[0] != "abc" {
-		t.Errorf("toolResults = %v", h.toolResults)
-	}
-	if h.toolsEndRuns != 1 {
-		t.Errorf("toolsEndRuns = %d, want 1", h.toolsEndRuns)
+	// 工具结果消息落会话
+	toolMsgs := sess.byRole(schema.RoleTool)
+	if len(toolMsgs) != 1 || toolMsgs[0].Content != "abc" || toolMsgs[0].ToolCallID != "call_1" {
+		t.Errorf("session tool messages = %v", toolMsgs)
 	}
 }
 
 func TestRun_UnknownTool(t *testing.T) {
-	m := &stubModel{responses: []*schema.Message{
-		{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
-			{ID: "call_1", Function: schema.FunctionCall{Name: "missing", Arguments: "{}"}},
+	m := &stubProvider{responses: []*schema.Message{
+		{Role: schema.RoleAssistant, ToolCalls: []schema.ToolCall{
+			{ID: "call_1", Name: "missing", Args: "{}"},
 		}},
-		{Role: schema.Assistant, Content: "recovered"},
+		{Role: schema.RoleAssistant, Content: "recovered"},
 	}}
-	a := New(5, 0, newTestManager(nil), m)
+	sess := &fakeSession{}
+	sink := &recordingSink{}
+	a := newTestAgent(newTestRegistry(nil), sess, sink, 5)
 
-	h := &recordingHooks{}
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
+	_, err := runTurn(a, context.Background(), "go", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(h.toolResults) != 1 || !strings.Contains(h.toolResults[0], "unknown tool") {
-		t.Errorf("expected unknown-tool error result, got %v", h.toolResults)
+	results := sink.toolResults()
+	if len(results) != 1 || !strings.Contains(results[0], "unknown tool") {
+		t.Errorf("expected unknown-tool error result, got %v", results)
 	}
 }
 
 func TestRun_ToolPanicRecovered(t *testing.T) {
-	m := &stubModel{responses: []*schema.Message{
-		{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
-			{ID: "call_1", Function: schema.FunctionCall{Name: "boom", Arguments: "{}"}},
+	m := &stubProvider{responses: []*schema.Message{
+		{Role: schema.RoleAssistant, ToolCalls: []schema.ToolCall{
+			{ID: "call_1", Name: "boom", Args: "{}"},
 		}},
-		{Role: schema.Assistant, Content: "ok"},
+		{Role: schema.RoleAssistant, Content: "ok"},
 	}}
-	mgr := newTestManager(map[string]tools.Handler{
+	reg := newTestRegistry(map[string]tools.Handler{
 		"boom": func(ctx context.Context, args json.RawMessage) (string, error) { panic("exploded") },
 	})
-	a := New(5, 0, mgr, m)
+	sess := &fakeSession{}
+	sink := &recordingSink{}
+	a := newTestAgent(reg, sess, sink, 5)
 
-	h := &recordingHooks{}
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
+	_, err := runTurn(a, context.Background(), "go", m)
 	if err != nil {
 		t.Fatalf("Run should not return error on tool panic: %v", err)
 	}
-	if len(h.toolResults) == 0 || !strings.Contains(h.toolResults[0], "panicked") {
-		t.Fatalf("expected panic error result, got %v", h.toolResults)
+	results := sink.toolResults()
+	if len(results) == 0 || !strings.Contains(results[0], "panicked") {
+		t.Fatalf("expected panic error result, got %v", results)
 	}
 }
 
 func TestRun_MaxIterationsExceeded(t *testing.T) {
-	tcMsg := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
-		{ID: "call_1", Function: schema.FunctionCall{Name: "echo", Arguments: "{}"}},
+	tcMsg := &schema.Message{Role: schema.RoleAssistant, ToolCalls: []schema.ToolCall{
+		{ID: "call_1", Name: "echo", Args: "{}"},
 	}}
-	m := &stubModel{responses: []*schema.Message{tcMsg}}
-	mgr := newTestManager(map[string]tools.Handler{
+	m := &stubProvider{responses: []*schema.Message{tcMsg}}
+	reg := newTestRegistry(map[string]tools.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "x", nil },
 	})
-	a := New(2, 0, mgr, m)
+	a := newTestAgent(reg, &fakeSession{}, &recordingSink{}, 2)
 
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, &recordingHooks{})
+	_, err := runTurn(a, context.Background(), "go", m)
 	if err == nil {
 		t.Fatal("expected max-iterations error")
 	}
@@ -269,120 +296,62 @@ func TestRun_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	m := &stubModel{responses: []*schema.Message{{Role: schema.Assistant, Content: "x"}}}
-	a := New(5, 0, newTestManager(nil), m)
+	m := &stubProvider{responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "x"}}}
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, &recordingSink{}, 5)
 
-	_, err := a.Run(ctx, []*schema.Message{{Role: schema.User, Content: "go"}}, &recordingHooks{})
+	_, err := runTurn(a, ctx, "go", m)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
 }
 
-func TestRun_NilHooks(t *testing.T) {
-	m := &stubModel{responses: []*schema.Message{{Role: schema.Assistant, Content: "hi"}}}
-	a := New(1, 0, newTestManager(nil), m)
+func TestRun_NilSink(t *testing.T) {
+	m := &stubProvider{responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "hi"}}}
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, nil, 1)
 
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, nil)
+	_, err := runTurn(a, context.Background(), "go", m)
 	if err != nil {
-		t.Fatalf("Run with nil hooks: %v", err)
+		t.Fatalf("Run with nil sink: %v", err)
 	}
 }
 
-func TestRun_OnErrorRetryThenSuccess(t *testing.T) {
-	// First call fails, second succeeds.
-	m := &stubModel{
-		responses: []*schema.Message{
-			{Role: schema.Assistant, Content: "recovered"},
-			{Role: schema.Assistant, Content: "recovered"},
-		},
-		errs: []error{errors.New("provider 503"), nil},
-	}
-	a := New(5, 0, newTestManager(nil), m)
-
-	h := &recordingHooks{
-		onError: func(iter, attempt, chunks int, err error) (bool, time.Duration) {
-			if attempt > 1 {
-				return false, 0
-			}
-			return true, 0 // retry immediately
-		},
-	}
-	res, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if res.FinalMessage.Content != "recovered" {
-		t.Errorf("final = %q", res.FinalMessage.Content)
-	}
-	if len(h.onErrorCalls) != 1 {
-		t.Errorf("onErrorCalls = %d, want 1", len(h.onErrorCalls))
-	}
-}
-
-func TestRun_OnErrorDeclineAborts(t *testing.T) {
-	m := &stubModel{
-		responses: []*schema.Message{{Role: schema.Assistant, Content: "x"}},
+func TestRun_ProviderErrorFailsFast(t *testing.T) {
+	m := &stubProvider{
+		responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "x"}},
 		errs:      []error{errors.New("provider down")},
 	}
-	a := New(5, 0, newTestManager(nil), m)
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, &recordingSink{}, 5)
 
-	h := &recordingHooks{} // default: no retry
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
+	_, err := runTurn(a, context.Background(), "go", m)
 	if err == nil {
-		t.Fatal("expected error when host declines retry")
+		t.Fatal("expected error on provider failure")
 	}
-	if len(h.onErrorCalls) != 1 {
-		t.Errorf("onErrorCalls = %d, want 1", len(h.onErrorCalls))
+	if m.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (fail fast, no retry)", m.calls)
 	}
 }
 
-func TestRun_CancelDoesNotTriggerOnError(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	m := &stubModel{
-		responses: []*schema.Message{{Role: schema.Assistant, Content: "x"}},
-		errs:      []error{context.Canceled}, // model call fails because ctx died
-	}
-	a := New(5, 0, newTestManager(nil), m)
-	cancel() // parent ctx already done
-
-	h := &recordingHooks{}
-	_, err := a.Run(ctx, []*schema.Message{{Role: schema.User, Content: "go"}}, h)
-	if err == nil {
-		t.Fatal("expected error on cancelled ctx")
-	}
-	if len(h.onErrorCalls) != 0 {
-		t.Errorf("OnError must not fire on user cancellation, got %d calls", len(h.onErrorCalls))
-	}
-}
-
-func TestRun_IterationTimeoutTriggersOnError(t *testing.T) {
-	a := New(5, 0, newTestManager(nil), &stuckModel{})
-	a.IterationTimeout = 50 * time.Millisecond
-
-	var gotChunks int = -1
-	h := &recordingHooks{
-		onError: func(iter, attempt, chunks int, err error) (bool, time.Duration) {
-			gotChunks = chunks
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Errorf("err = %v, want DeadlineExceeded", err)
-			}
-			return false, 0
+func TestRun_IterationTimeout(t *testing.T) {
+	a := NewReAct(Options{
+		System:    func() []*schema.Message { return nil },
+		Registry:  newTestRegistry(nil),
+		Session:   &fakeSession{},
+		Sink:      &recordingSink{},
+		SessionID: "test-session",
+		Limits: func() Limits {
+			return Limits{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
 		},
-	}
+	})
 
 	start := time.Now()
-	_, err := a.Run(context.Background(), []*schema.Message{{Role: schema.User, Content: "go"}}, h)
+	_, err := runTurn(a, context.Background(), "go", &stuckProvider{})
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want DeadlineExceeded", err)
+	}
 	if time.Since(start) > 2*time.Second {
 		t.Fatal("iteration timeout did not fire promptly")
-	}
-	if len(h.onErrorCalls) != 1 {
-		t.Fatalf("onErrorCalls = %d, want 1", len(h.onErrorCalls))
-	}
-	if gotChunks != 0 {
-		t.Errorf("streamedChunks = %d, want 0 (stream hung before any chunk)", gotChunks)
 	}
 }

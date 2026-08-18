@@ -37,7 +37,7 @@ func (m *mockSkillRuntime) Search(query string, limit int) ([]SkillSummary, erro
 
 func callLoadSkill(t *testing.T, rt SkillRuntime, name string) string {
 	t.Helper()
-	ctx := WithSkillRuntime(context.Background(), rt)
+	ctx := WithEnv(context.Background(), &Env{Skills: rt})
 	args, _ := json.Marshal(map[string]string{"name": name})
 	out, err := LoadSkill().Handler(ctx, args)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestLoadSkill_Idempotent(t *testing.T) {
 
 func TestLoadSkill_RequiresName(t *testing.T) {
 	rt := newMockSkillRuntime()
-	ctx := WithSkillRuntime(context.Background(), rt)
+	ctx := WithEnv(context.Background(), &Env{Skills: rt})
 	if _, err := LoadSkill().Handler(ctx, json.RawMessage(`{}`)); err == nil {
 		t.Error("expected error for missing name")
 	}

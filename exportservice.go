@@ -6,10 +6,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"tars/pkg/store"
+	"tars/pkg/schema"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -18,12 +17,12 @@ import (
 // Returns the chosen path ("" if the user cancelled).
 func (s *AgentService) ExportSession(sessionID string) (string, error) {
 	// 渲染 Markdown（拷贝切片头做只读快照）
-	sess, ok := s.rt.Sessions.Find(sessionID)
+	sess, ok := s.app.FindSession(sessionID)
 	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
 	title := sess.Title
-	msgs := append([]*store.Message{}, sess.Messages...)
+	msgs := append([]*schema.Message{}, sess.Messages...)
 
 	md := renderSessionMarkdown(title, msgs)
 
@@ -36,6 +35,9 @@ func (s *AgentService) ExportSession(sessionID string) (string, error) {
 		CanCreateDirectories(true).
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCancelled(err) {
+			return "", nil // 用户取消
+		}
 		return "", fmt.Errorf("save dialog: %w", err)
 	}
 	if target == "" {
@@ -52,7 +54,7 @@ func (s *AgentService) ExportSession(sessionID string) (string, error) {
 //   - user → ## 👤 用户
 //   - assistant → ## 🤖 TARS（工具调用以状态行 + 折叠块呈现）
 //   - tool 消息不单独渲染（其结果已通过 assistant 的 ToolCalls.Output 合并）
-func renderSessionMarkdown(title string, msgs []*store.Message) string {
+func renderSessionMarkdown(title string, msgs []*schema.Message) string {
 	var b strings.Builder
 	b.WriteString("# " + title + "\n\n")
 	if len(msgs) > 0 {
@@ -62,11 +64,11 @@ func renderSessionMarkdown(title string, msgs []*store.Message) string {
 
 	for _, m := range msgs {
 		switch m.Role {
-		case schema.User:
+		case schema.RoleUser:
 			b.WriteString("## 👤 用户\n\n")
 			b.WriteString(strings.TrimSpace(m.Content) + "\n\n")
 
-		case schema.Assistant:
+		case schema.RoleAssistant:
 			b.WriteString("## 🤖 TARS\n\n")
 			if m.Reasoning != "" {
 				reasoning := m.Reasoning

@@ -4,6 +4,7 @@
 export {
     Message,
     MessagePart,
+    Role,
     ToolCall,
     UsageInfo
 } from "./models.js";

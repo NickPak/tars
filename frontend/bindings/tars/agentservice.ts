@@ -30,7 +30,7 @@ export function AnswerAskUser(requestID: string, value: string, reason: string):
 }
 
 /**
- * CancelMessage cancels an in-flight SendMessage turn.
+ * CancelMessage cancels an in-flight SubmitMessage turn.
  */
 export function CancelMessage(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(813006285, sessionID);
@@ -232,13 +232,6 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
 }
 
 /**
- * SendMessage sends a user message and starts the agent loop.
- */
-export function SendMessage(sessionID: string, content: string): $CancellablePromise<void> {
-    return $Call.ByID(729126489, sessionID, content);
-}
-
-/**
  * SetActiveModel switches the active model: 预构建目标模型（失败则不切换），
  * 热更新注册表并落盘（active 键），最后广播 model:changed 事件。
  */
@@ -263,6 +256,13 @@ export function SkillCategories(): $CancellablePromise<string[]> {
     return $Call.ByID(692754289).then(($result: any) => {
         return $$createType17($result);
     });
+}
+
+/**
+ * SubmitMessage submits a user message and starts the agent loop.
+ */
+export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(382211931, sessionID, content);
 }
 
 /**
