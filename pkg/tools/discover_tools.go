@@ -11,8 +11,9 @@ import (
 // ============================================================================
 // discover_tools 工具（plan 3.1 发现元工具）
 //
-// 按自然语言能力需求检索可用能力，返回 3–5 个候选。当前只对 Skills
-// 检索（MCP 未接入；接入后同一通道扩展 source 级→item 级两级路由）。
+// 按自然语言能力需求检索可用能力，返回少量候选（数量由 skills 配置的
+// discoverResultLimit 决定）。当前只对 Skills 检索（MCP 未接入；接入后
+// 同一通道扩展 source 级→item 级两级路由）。
 // 命中返回候选的 name + description，提示用 load_skill 加载；
 // 无命中明确返回"未找到"，触发兜底链路（改需求重试 / 核心工具自行实现）。
 // ============================================================================
@@ -21,7 +22,7 @@ import (
 func DiscoverTools() *Definition {
 	return &Definition{
 		Name: "discover_tools",
-		Description: "Search installed skills by natural-language need. Returns up to 5 candidate skills " +
+		Description: "Search installed skills by natural-language need. Returns the top candidate skills " +
 			"(name + description + category) matching the query. Use when you face a task that the core " +
 			"tools and already-loaded skills don't cover — describe the capability you need and this will " +
 			"find relevant skills. After finding one, call load_skill(name) to get its full instructions. " +
@@ -55,7 +56,7 @@ func DiscoverTools() *Definition {
 			}
 			rt := env.Skills
 
-			hits, err := rt.Search(query, 5)
+			hits, err := rt.Search(query, rt.SearchLimit())
 			if err != nil {
 				return "", err
 			}

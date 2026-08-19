@@ -22,10 +22,11 @@ func (s *Manager) GenerateIndex() error {
 	}
 
 	var content string
+	cfg := s.GetConfig()
 	switch {
-	case len(list) <= s.cfg.TierFullMax:
+	case len(list) <= cfg.TierFullMax:
 		content = renderFullIndex(list)
-	case len(list) <= s.cfg.TierResidentMax:
+	case len(list) <= cfg.TierResidentMax:
 		var err error
 		content, err = s.renderCategoryIndex(list)
 		if err != nil {
@@ -70,7 +71,10 @@ func (s *Manager) renderCategoryIndex(list []*SkillMeta) (string, error) {
 
 	var b strings.Builder
 	b.WriteString("# Available Skills by Category\n\n")
-	b.WriteString("Read `index/<category>.md` for the skills in a category, or use ")
+	// 表头说明文档格式（每行 = 类别 + 该类全部技能名）与两跳导航；
+	// discover_tools 的用法教学由工具自身 description 承担（单一事实源），不在此重复。
+	b.WriteString("Each line below is a category followed by the names of all skills in it. ")
+	b.WriteString("Read `index/<category>.md` for their full descriptions, or use ")
 	b.WriteString("`discover_tools` to search by need.\n\n")
 
 	// 类别名排序，稳定输出
@@ -82,7 +86,7 @@ func (s *Manager) renderCategoryIndex(list []*SkillMeta) (string, error) {
 
 	for _, c := range names {
 		items := groups[c]
-		fmt.Fprintf(&b, "- **%s**（%d 个）— %s\n", c, len(items), oneLineDesc(items))
+		fmt.Fprintf(&b, "- **%s** (%d skills) — %s\n", c, len(items), skillNamesLine(items))
 
 		// 生成类别索引页
 		var cb strings.Builder
@@ -129,9 +133,13 @@ func groupsByCategory(list []*SkillMeta) map[string][]*SkillMeta {
 	return groups
 }
 
-func oneLineDesc(items []*SkillMeta) string {
-	if len(items) == 0 {
-		return ""
+// skillNamesLine 用类内全部技能名渲染一行概览：模型凭技能名即可判断类别
+// 内容轮廓，description 留给 index/<category>.md 详情页（避免只展示第一个
+// 技能的描述造成以偏概全）。
+func skillNamesLine(items []*SkillMeta) string {
+	names := make([]string, 0, len(items))
+	for _, sk := range items {
+		names = append(names, sk.Name)
 	}
-	return items[0].Description
+	return strings.Join(names, ", ")
 }

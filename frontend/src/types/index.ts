@@ -293,10 +293,12 @@ export interface AppConfig {
   skills: SkillsConfig;
 }
 
-/** Skills 索引档位阈值（config.SkillsConfig） */
+/** Skills 索引档位阈值与检索配置（config.SkillsConfig） */
 export interface SkillsConfig {
   tierFullMax: number;
   tierResidentMax: number;
+  /** 模糊检索返回的候选数上限（discover_tools 与设置页搜索共用） */
+  discoverResultLimit: number;
 }
 
 /** 已安装技能（skills.Skill） */

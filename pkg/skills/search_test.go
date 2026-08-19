@@ -39,6 +39,44 @@ func TestSearch_English(t *testing.T) {
 	}
 }
 
+// 前缀命中：查询词是文档词的前缀时应命中（edge n-gram 索引）
+func TestSearch_Prefix(t *testing.T) {
+	s := mustInit(t)
+	addSkill(t, s, "pptx", "Create and edit PowerPoint presentations", "documents")
+	addSkill(t, s, "docx", "Create and edit Word documents", "documents")
+	addSkill(t, s, "xlsx", "Create and edit Excel spreadsheets", "documents")
+	addSkill(t, s, "pdf", "Read and extract PDF files", "documents")
+
+	cases := map[string]string{
+		"ppt":   "pptx",
+		"doc":   "docx",
+		"xls":   "xlsx",
+		"power": "pptx", // powerpoint 的前缀
+	}
+	for q, want := range cases {
+		hits, err := s.Search(q, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, h := range hits {
+			if h.Name == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Search(%q): %q not in results %+v", q, want, hits)
+		}
+	}
+
+	// 不相关前缀仍应无结果
+	hits, _ := s.Search("zzz", 5)
+	if len(hits) != 0 {
+		t.Errorf("Search(zzz) = %+v, want empty", hits)
+	}
+}
+
 func TestSearch_Chinese(t *testing.T) {
 	s := mustInit(t)
 	addSkill(t, s, "stock-data", "查询股票行情与财经数据", "data")

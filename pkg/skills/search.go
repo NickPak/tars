@@ -22,7 +22,7 @@ func (s *Manager) Search(query string, limit int) ([]*SkillMeta, error) {
 	docLens := make([]int, 0, len(list))
 	for _, sk := range list {
 		text := sk.Name + " " + sk.Description + " " + sk.Category
-		tokens := tokenize(text)
+		tokens := tokenizeForIndex(text)
 		if len(tokens) == 0 {
 			continue
 		}
@@ -88,12 +88,12 @@ func (s *Manager) Search(query string, limit int) ([]*SkillMeta, error) {
 	return out, nil
 }
 
+// idf 采用 Lucene BM25 的非负形式：ln(1 + (N-df+0.5)/(df+0.5))。
+// 常见词（df 接近 N）权重平滑趋近 0，而不是像 RSJ 原始形式那样变负——
+// 前缀索引会制造大量遍布全库的 token（如 category 词 "documents" 的前缀
+// "doc"），负 IDF 会把含这些词的文档整体惩罚到 score<=0 被过滤掉。
 func idf(N float64, df int) float64 {
-	x := (N - float64(df) + 0.5) / (float64(df) + 0.5)
-	if x <= 0 {
-		return 0
-	}
-	return math.Log(x) + 1
+	return math.Log(1 + (N-float64(df)+0.5)/(float64(df)+0.5))
 }
 
 func unique(ts []string) map[string]struct{} {
@@ -102,6 +102,25 @@ func unique(ts []string) map[string]struct{} {
 		m[t] = struct{}{}
 	}
 	return m
+}
+
+// tokenizeForIndex 在 tokenize 基础上为每个拉丁词追加 edge n-gram 前缀
+// （最小长度 2），使查询词可前缀命中文档词（如查询 "ppt" 命中技能名
+// "pptx"）。查询侧不展开（经典非对称策略：索引侧展开、查询侧原样），
+// 精确词命中与前缀命中在同一 BM25 框架内比较——前缀通常稀有、IDF 高，
+// 前缀命中的文档自然靠前。CJK token 已有单字+bigram 覆盖，不再展开。
+func tokenizeForIndex(s string) []string {
+	toks := tokenize(s)
+	for _, t := range toks {
+		rs := []rune(t)
+		if len(rs) < 3 || !isASCIIWord(rs[0]) {
+			continue // 长度 2 的词前缀即自身；CJK 单字/bigram 不展开
+		}
+		for i := 2; i < len(rs); i++ {
+			toks = append(toks, string(rs[:i]))
+		}
+	}
+	return toks
 }
 
 func tokenize(s string) []string {

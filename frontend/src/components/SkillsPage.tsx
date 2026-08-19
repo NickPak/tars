@@ -4,7 +4,14 @@
  * 的 system 消息即包含新技能目录。
  */
 import { useEffect, useState } from "react";
-import { Download, PackageOpen, RefreshCw, Shield, Trash2 } from "lucide-react";
+import {
+  Download,
+  PackageOpen,
+  RefreshCw,
+  Search,
+  Shield,
+  Trash2,
+} from "lucide-react";
 import { agentApi } from "../services/agentApi";
 import type { AppConfig, Skill } from "../types";
 
@@ -157,12 +164,40 @@ export default function SkillsPage({
     }
   };
 
-  const setTier = (key: "tierFullMax" | "tierResidentMax", v: number) => {
+  const setTier = (
+    key: "tierFullMax" | "tierResidentMax" | "discoverResultLimit",
+    v: number,
+  ) => {
     update((d) => ({
       ...d,
       skills: { ...d.skills, [key]: v },
     }));
   };
+
+  // 模糊搜索：与模型侧 discover_tools 同款 BM25 检索和候选数上限，
+  // 页面所见 = 模型所得（调试检索精确度用）。防抖 300ms；清空恢复完整列表。
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Skill[] | null>(null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setSearchResults(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          setSearchResults(await agentApi.searchSkills(q));
+        } catch (e) {
+          setError(errText(e));
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const displayed = searchResults ?? skills;
 
   return (
     <div className="settings-page">
@@ -208,6 +243,26 @@ export default function SkillsPage({
               className="settings-input"
               value={draft.skills.tierResidentMax}
               onChange={(e) => setTier("tierResidentMax", Number(e.target.value))}
+            />
+          </div>
+        </div>
+        <div className="settings-field">
+          <div className="settings-field-copy">
+            <span className="settings-field-label">检索候选数上限</span>
+            <span className="settings-field-hint">
+              discover_tools 与下方搜索框每次返回的候选技能数（默认 5），两者共用。
+            </span>
+          </div>
+          <div className="settings-field-control">
+            <input
+              type="number"
+              min={1}
+              max={50}
+              className="settings-input"
+              value={draft.skills.discoverResultLimit}
+              onChange={(e) =>
+                setTier("discoverResultLimit", Number(e.target.value))
+              }
             />
           </div>
         </div>
@@ -287,26 +342,44 @@ export default function SkillsPage({
 
       {/* 已安装列表 */}
       <section className="settings-section">
-        <div className="settings-section-title">
-          已安装（{skills?.length ?? 0}）
-          <button
-            className="skills-refresh"
-            title="刷新"
-            onClick={() => void refresh()}
-          >
-            <RefreshCw size={13} />
-          </button>
+        <div className="settings-section-title skills-list-title">
+          已安装（{displayed?.length ?? 0}
+          {searchResults ? ` / ${skills?.length ?? 0}` : ""}）
+          <span className="skills-title-actions">
+            <span className="skills-search">
+              <Search size={12} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="模糊搜索（与模型同款检索）"
+                spellCheck={false}
+              />
+            </span>
+            <button
+              className="skills-refresh"
+              title="刷新"
+              onClick={() => void refresh()}
+            >
+              <RefreshCw size={13} />
+            </button>
+          </span>
         </div>
 
         {loading && <div className="settings-loading">加载中…</div>}
-        {!loading && skills && skills.length === 0 && (
+        {!loading && searchResults && searchResults.length === 0 && (
+          <div className="skills-empty">
+            <PackageOpen size={20} />
+            <span>没有匹配的技能。换个描述试试，或确认是否已安装。</span>
+          </div>
+        )}
+        {!loading && !searchResults && skills && skills.length === 0 && (
           <div className="skills-empty">
             <PackageOpen size={20} />
             <span>还没有安装技能。上方选择制品即可安装。</span>
           </div>
         )}
         {!loading &&
-          skills?.map((sk) => (
+          displayed?.map((sk) => (
             <div
               key={sk.name}
               className={`skill-item${sk.enabled ? "" : " disabled"}`}

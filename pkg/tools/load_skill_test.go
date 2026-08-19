@@ -34,6 +34,7 @@ func (m *mockSkillRuntime) Loaded() []string {
 func (m *mockSkillRuntime) Search(query string, limit int) ([]SkillSummary, error) {
 	return []SkillSummary{{Name: "pptx", Description: "slides", Category: "docs"}}, nil
 }
+func (m *mockSkillRuntime) SearchLimit() int { return 5 }
 
 func callLoadSkill(t *testing.T, rt SkillRuntime, name string) string {
 	t.Helper()

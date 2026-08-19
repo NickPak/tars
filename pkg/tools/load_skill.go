@@ -19,6 +19,9 @@ type SkillRuntime interface {
 	Loaded() []string
 	// Search 按自然语言需求检索技能（BM25），返回候选；无命中返回空。
 	Search(query string, limit int) ([]SkillSummary, error)
+	// SearchLimit 是检索返回的候选数上限（配置驱动；discover_tools 与
+	// 设置页搜索共用，保证"页面所见 = 模型所得"）。
+	SearchLimit() int
 }
 
 // SkillSummary 是一次检索命中的技能摘要（discover_tools 返回用）。

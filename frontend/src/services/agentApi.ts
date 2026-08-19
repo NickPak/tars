@@ -69,6 +69,7 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
     skills: {
       tierFullMax: cfg.skills?.tierFullMax ?? 50,
       tierResidentMax: cfg.skills?.tierResidentMax ?? 500,
+      discoverResultLimit: cfg.skills?.discoverResultLimit ?? 5,
     },
   };
 }
@@ -224,6 +225,11 @@ export const agentApi = {
   /** 启用/禁用技能（禁用后对 Agent 不可见：索引/检索/加载排除） */
   setSkillEnabled: async (name: string, enabled: boolean): Promise<void> =>
     await AgentService.SetSkillEnabled(name, enabled),
+
+  /** 模糊搜索已安装技能（与 discover_tools 同款 BM25 检索和候选数上限，
+   *  页面所见 = 模型所得；空查询返回完整列表） */
+  searchSkills: async (query: string): Promise<Skill[]> =>
+    (await AgentService.SearchSkills(query)) as Skill[],
 
   /** 弹出系统选择器选择技能制品文件（SKILL.md / zip / tar.gz），取消返回空串 */
   openSkillFileDialog: async (): Promise<string> =>

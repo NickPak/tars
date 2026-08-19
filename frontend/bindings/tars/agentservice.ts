@@ -233,6 +233,18 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
 }
 
 /**
+ * SearchSkills searches installed skills by natural-language query — the same
+ * BM25 retrieval and result limit as the agent-facing discover_tools tool,
+ * so the settings page shows exactly what the model would get. An empty query
+ * returns the full list.
+ */
+export function SearchSkills(query: string): $CancellablePromise<(skills$0.SkillMeta | null)[]> {
+    return $Call.ByID(1567288730, query).then(($result: any) => {
+        return $$createType14($result);
+    });
+}
+
+/**
  * SetActiveModel switches the active model: 预构建目标模型（失败则不切换），
  * 热更新注册表并落盘（active 键），最后广播 model:changed 事件。
  */

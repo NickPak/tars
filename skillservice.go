@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"tars/pkg/skills"
 
@@ -69,6 +70,22 @@ func (s *AgentService) SetSkillEnabled(name string, enabled bool) error {
 		return fmt.Errorf("skills store not initialized")
 	}
 	return st.SetEnabled(name, enabled)
+}
+
+// SearchSkills searches installed skills by natural-language query — the same
+// BM25 retrieval and result limit as the agent-facing discover_tools tool,
+// so the settings page shows exactly what the model would get. An empty query
+// returns the full list.
+func (s *AgentService) SearchSkills(query string) ([]*skills.SkillMeta, error) {
+	st := s.app.Skills()
+	if st == nil {
+		return nil, fmt.Errorf("skills store not initialized")
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return st.List(), nil
+	}
+	return st.Search(query, st.GetConfig().DiscoverResultLimit)
 }
 
 // OpenSkillFileDialog shows the OS native picker for a skill artifact FILE

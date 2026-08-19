@@ -2277,6 +2277,45 @@ body.resizing-col .resize-handle::after {
   flex: none;
 }
 
+/* 已安装区块头：标题文字 + 右侧搜索框/刷新按钮 */
+.skills-list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skills-title-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-weight: normal;
+}
+
+.skills-search input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  width: 180px;
+}
+
+.skills-search input::placeholder {
+  color: var(--text-dim);
+}
+
 /* 条目行内的分类下拉：与 .skill-item-tag 同款药丸外观 */
 .skill-item-category {
   font-size: 11px;

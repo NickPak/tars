@@ -48,4 +48,11 @@ func (r *skillRuntime) Search(query string, limit int) ([]tools.SkillSummary, er
 	return out, nil
 }
 
+func (r *skillRuntime) SearchLimit() int {
+	if r.mgr == nil || r.mgr.GetConfig() == nil {
+		return skills.DefaultDiscoverResultLimit
+	}
+	return r.mgr.GetConfig().DiscoverResultLimit
+}
+
 var _ tools.SkillRuntime = (*skillRuntime)(nil)

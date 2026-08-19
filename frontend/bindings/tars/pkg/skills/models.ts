@@ -9,6 +9,12 @@ export class Config {
     "tierFullMax"?: number;
     "tierResidentMax"?: number;
 
+    /**
+     * DiscoverResultLimit 是模糊检索返回的候选数上限：
+     * discover_tools（模型侧）与设置页搜索（用户侧）共用同一值。
+     */
+    "discoverResultLimit"?: number;
+
     /** Creates a new Config instance. */
     constructor($$source: Partial<Config> = {}) {
 

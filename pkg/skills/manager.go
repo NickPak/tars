@@ -16,7 +16,7 @@ const (
 )
 
 type Manager struct {
-	cfg       *Config
+	cfg       atomic.Pointer[Config]
 	rootDir   string
 	indexPath string
 	registry  atomic.Pointer[Registry]
@@ -31,12 +31,16 @@ func NewManager(workDir string, cfg *Config) (*Manager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("skills: create root dir: %w", err)
 	}
+	if cfg == nil {
+		cfg = &Config{}
+		cfg.Validate()
+	}
 
 	m := &Manager{
-		cfg:       cfg,
 		rootDir:   rootDir,
 		indexPath: filepath.Join(rootDir, indexFile),
 	}
+	m.cfg.Store(cfg)
 
 	reg := NewRegistry(rootDir)
 	err = reg.Load()
@@ -48,17 +52,25 @@ func NewManager(workDir string, cfg *Config) (*Manager, error) {
 	return m, nil
 }
 
+// GetConfig 返回当前配置（原子读；返回值视为只读）。
+func (s *Manager) GetConfig() *Config {
+	return s.cfg.Load()
+}
+
+// UpdateConfig 原子替换配置（配置保存流调用；nil 忽略）。
 func (s *Manager) UpdateConfig(v *Config) {
-	s.cfg = v
+	if v == nil {
+		return
+	}
+	s.cfg.Store(v)
 }
 
 // SetTiers 设置索引档位阈值（测试辅助；运行时由配置决定）。
 func (s *Manager) SetTiers(fullMax, residentMax int) {
-	if s.cfg == nil {
-		s.cfg = &Config{}
-	}
-	s.cfg.TierFullMax = fullMax
-	s.cfg.TierResidentMax = residentMax
+	c := *s.GetConfig()
+	c.TierFullMax = fullMax
+	c.TierResidentMax = residentMax
+	s.cfg.Store(&c)
 }
 
 func (s *Manager) RootDir() string {
