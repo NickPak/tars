@@ -61,11 +61,11 @@ func DiscoverTools() *Definition {
 				return "", err
 			}
 			if len(hits) == 0 {
-				return "未找到匹配的技能。请改写查询重试；若仍无匹配，可用核心工具自行实现或现场写代码。", nil
+				return "No matching skills found. Rephrase the query and retry; if there is still no match, implement it with the core tools or write code on the fly.", nil
 			}
 
 			var b strings.Builder
-			b.WriteString(fmt.Sprintf("找到 %d 个候选技能：\n", len(hits)))
+			b.WriteString(fmt.Sprintf("Found %d candidate skills:\n", len(hits)))
 			for i, h := range hits {
 				fmt.Fprintf(&b, "%d. %s — %s", i+1, h.Name, h.Description)
 				if h.Category != "" {
@@ -73,7 +73,7 @@ func DiscoverTools() *Definition {
 				}
 				b.WriteString("\n")
 			}
-			b.WriteString("\n用 load_skill(name) 加载你需要的技能以获取完整操作手册。")
+			b.WriteString("\nCall load_skill(name) on the skill you need to get its full playbook.")
 			return b.String(), nil
 		},
 	}

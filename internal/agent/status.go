@@ -215,15 +215,15 @@ func (sb *StatusBar) render() *schema.Message {
 	}
 
 	if sb.consecutiveErrors > 0 {
-		b.WriteString("    errors: 连续 ")
+		b.WriteString("    errors: ")
 		b.WriteString(strconv.Itoa(sb.consecutiveErrors))
-		b.WriteString(" 次失败")
+		b.WriteString(" consecutive failures")
 		if sb.lastError != "" {
-			b.WriteString("（上次：")
+			b.WriteString(" (last: ")
 			b.WriteString(sb.lastError)
-			b.WriteString("）")
+			b.WriteString(")")
 		}
-		b.WriteString(" → 勿原样重试，换方案或向用户说明\n")
+		b.WriteString(" → do not retry as-is; change approach or inform the user\n")
 	}
 
 	// TODO 陈旧提醒：列表存在且 N 轮未更新且有未完成项时提示推进
@@ -236,11 +236,11 @@ func (sb *StatusBar) render() *schema.Message {
 		}
 		stale := sb.iteration - sb.todoChangedIter
 		if stale >= 3 && pending > 0 {
-			b.WriteString("    todo: 已 ")
+			b.WriteString("    todo: unchanged for ")
 			b.WriteString(strconv.Itoa(stale))
-			b.WriteString(" 轮未更新（")
+			b.WriteString(" turns (")
 			b.WriteString(strconv.Itoa(pending))
-			b.WriteString(" 项待处理）→ 检查是否需要推进或更新\n")
+			b.WriteString(" items pending) → check whether to advance or update it\n")
 		}
 	}
 

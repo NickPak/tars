@@ -35,7 +35,7 @@ func TestDiscoverTools_NoMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discover_tools: %v", err)
 	}
-	if !strings.Contains(out, "未找到") {
+	if !strings.Contains(out, "No matching skills") {
 		t.Errorf("expected no-match notice, got:\n%s", out)
 	}
 	_ = rt

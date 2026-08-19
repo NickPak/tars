@@ -69,10 +69,10 @@ func TestStatusBar_ConsecutiveErrorsProduceHint(t *testing.T) {
 	sb.RecordToolCall("fail", fmt.Errorf("boom"))
 
 	msg := sb.Render(context.Background(), 2)
-	if !strings.Contains(msg.Content, "连续 1 次失败") {
+	if !strings.Contains(msg.Content, "1 consecutive failures") {
 		t.Errorf("expected consecutive failure hint: %q", msg.Content)
 	}
-	if !strings.Contains(msg.Content, "勿原样重试") {
+	if !strings.Contains(msg.Content, "do not retry as-is") {
 		t.Errorf("expected do-not-retry hint: %q", msg.Content)
 	}
 
@@ -189,7 +189,7 @@ func TestStatusBar_TodoStalenessReminder(t *testing.T) {
 
 	// 第 4 轮：已 3 轮未更新，应提示
 	msg = sb.Render(ctx, 4)
-	if !strings.Contains(msg.Content, "已 3 轮未更新") {
+	if !strings.Contains(msg.Content, "unchanged for 3 turns") {
 		t.Errorf("iteration 4 should show staleness reminder: %q", msg.Content)
 	}
 
