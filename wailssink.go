@@ -36,6 +36,10 @@ func (s *WailsSink) Emit(e event.Event) {
 		app.Event.Emit("agent:error", e.Error)
 	case event.KindApproval:
 		app.Event.Emit("agent:approval", e.Approval)
+	case event.KindSessionRenamed:
+		app.Event.Emit("session:renamed", e.SessionRenamed)
+	case event.KindWorkspaceChanged:
+		app.Event.Emit("workspace:changed", e.Workspace)
 	case event.KindMessageAppended, event.KindIterationStart,
 		event.KindIterationEnd, event.KindTurnStarted:
 		// 内核事件：不透出前端（trace 等其他订阅者经 FanOut 消费）。

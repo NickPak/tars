@@ -10,7 +10,8 @@ import { AgentService } from "../../bindings/tars";
 import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
-import type { AppConfig, Session, FileEntry, ModelInfo, SessionStats, Skill, WorkspaceInfo } from "../types";
+import type * as mcpModels from "../../bindings/tars/pkg/mcp/models";
+import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent, ApprovalEvent } from "../types";
@@ -230,6 +231,28 @@ export const agentApi = {
    *  页面所见 = 模型所得；空查询返回完整列表） */
   searchSkills: async (query: string): Promise<Skill[]> =>
     (await AgentService.SearchSkills(query)) as Skill[],
+
+  // ---- MCP 服务器管理 ----
+
+  /** 全部已配置 MCP 服务器（含禁用项与工具计数） */
+  listMCPServers: async (): Promise<MCPServerInfo[]> =>
+    (await AgentService.ListMCPServers()) as MCPServerInfo[],
+
+  /** 探测服务器：拉起进程抓取工具清单并缓存（60s 超时） */
+  probeMCPServer: async (name: string): Promise<void> =>
+    await AgentService.ProbeMCPServer(name),
+
+  /** 登记/覆盖一个 MCP 服务器（立即落盘生效；覆盖时连接即回收） */
+  upsertMCPServer: async (name: string, cfg: MCPServerConfig): Promise<void> =>
+    await AgentService.UpsertMCPServer(name, cfg as mcpModels.ServerConfig),
+
+  /** 移除一个 MCP 服务器（立即落盘生效；连接即回收，探测缓存清理） */
+  removeMCPServer: async (name: string): Promise<void> =>
+    await AgentService.RemoveMCPServer(name),
+
+  /** 启用/禁用服务器（立即落盘生效；禁用后对 Agent 不可见，连接即回收） */
+  setMCPServerEnabled: async (name: string, enabled: boolean): Promise<void> =>
+    await AgentService.SetMCPServerEnabled(name, enabled),
 
   /** 弹出系统选择器选择技能制品文件（SKILL.md / zip / tar.gz），取消返回空串 */
   openSkillFileDialog: async (): Promise<string> =>

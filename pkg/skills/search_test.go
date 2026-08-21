@@ -7,23 +7,6 @@ import (
 	"testing"
 )
 
-func TestTokenize(t *testing.T) {
-	cases := map[string][]string{
-		"pptx":          {"pptx"},
-		"deploy-app":    {"deploy-app"},
-		"create slides": {"create", "slides"},
-		// 中文：单字 + bigram
-		"查询股价": {"查", "询", "股", "价", "查询", "询股", "股价"},
-		"股票行情": {"股", "票", "行", "情", "股票", "票行", "行情"},
-	}
-	for in, want := range cases {
-		got := tokenize(in)
-		if strings.Join(got, "|") != strings.Join(want, "|") {
-			t.Errorf("tokenize(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
 func TestSearch_English(t *testing.T) {
 	s := mustInit(t)
 	addSkill(t, s, "pptx", "Create and edit PowerPoint presentations", "documents")

@@ -42,22 +42,31 @@ const (
 	// 轮级元信息（模型/系统提示词/工具描述）经此传给 trace 等订阅者；
 	// 不透出到 Wails 前端。
 	KindTurnStarted
+	// KindSessionRenamed 会话标题被修改（RenameSession 字段有效）。
+	// 纯内核通知：供持久化/遥测等订阅者使用；不透出到 Wails 前端。
+	KindSessionRenamed
+
+	// KindWorkspaceChanged 工作区被修改（Workspace 字段有效）。
+	// 纯内核通知：供持久化/遥测等订阅者使用；不透出到 Wails 前端。
+	KindWorkspaceChanged
 )
 
 // Event 是后端事件流中的一个增量。按 Kind 读取对应的非 nil 载荷字段，
 // 其余字段为 nil。载荷用指针：避免大结构拷贝，且非目标字段不占空间。
 type Event struct {
-	Kind       Kind
-	Chunk      *StreamChunk          // KindStreamChunk
-	Reasoning  *ReasoningEvent       // KindReasoning
-	Tool       *ToolEvent            // KindToolDispatch
-	ToolResult *ToolResultEvent      // KindToolResult
-	Done       *StreamDone           // KindDone
-	Error      *StreamError          // KindError
-	Approval   *ApprovalEvent        // KindApproval
-	Message    *MessageAppendedEvent // KindMessageAppended
-	Iteration  *IterationEvent       // KindIterationStart / KindIterationEnd
-	Turn       *TurnEvent            // KindTurnStarted
+	Kind           Kind
+	Chunk          *StreamChunk           // KindStreamChunk
+	Reasoning      *ReasoningEvent        // KindReasoning
+	Tool           *ToolEvent             // KindToolDispatch
+	ToolResult     *ToolResultEvent       // KindToolResult
+	Done           *StreamDone            // KindDone
+	Error          *StreamError           // KindError
+	Approval       *ApprovalEvent         // KindApproval
+	Message        *MessageAppendedEvent  // KindMessageAppended
+	Iteration      *IterationEvent        // KindIterationStart / KindIterationEnd
+	Turn           *TurnEvent             // KindTurnStarted
+	SessionRenamed *SessionRenamedEvent   // KindSessionRenamed
+	Workspace      *WorkspaceChangedEvent // KindWorkspaceChanged
 }
 
 // TurnEvent 一轮对话的开始（内核事件，不透出前端）。trace 等订阅者据此
@@ -160,4 +169,11 @@ type ApprovalEvent struct {
 	Summary        string `json:"summary"` // 待批准的危险内容（如完整命令）
 	Reason         string `json:"reason"`  // 命中的风险规则说明
 	TimeoutSeconds int    `json:"timeoutSeconds"`
+}
+
+// WorkspaceChangedEvent is the payload of the "workspace:changed" event.
+type WorkspaceChangedEvent struct {
+	SessionID string `json:"sessionId"`
+	Path      string `json:"path"`
+	IsCustom  bool   `json:"isCustom"`
 }

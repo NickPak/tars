@@ -52,7 +52,7 @@ func GrepFiles() *Definition {
 			if root == "" {
 				root = "."
 			}
-			abs, err := resolveInWorkspace(root, resolveWorkDir(ctx))
+			abs, err := resolveInWorkspace(root, resolveWorkspaceDir(ctx))
 			if err != nil {
 				return "", err
 			}

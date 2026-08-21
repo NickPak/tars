@@ -284,13 +284,41 @@ export interface TraceConfig {
   otlpGrpcEndpoint: string;
 }
 
-/** 完整应用配置（config.AppConfig） */
+/** 完整应用配置（config.AppConfig）
+ *  注意：MCP 服务器配置不在其中——由后端 mcp.Manager 自管（即改即存），
+ *  前端经 listMCPServers / upsertMCPServer / removeMCPServer /
+ *  setMCPServerEnabled 直连。 */
 export interface AppConfig {
   llm: LLMConfig;
   workDir: string;
   agent: AgentConfig;
   trace: TraceConfig;
   skills: SkillsConfig;
+}
+
+/** MCP 服务器配置（mcp.ServerConfig） */
+export interface MCPServerConfig {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  description?: string;
+  sourceType?: string;
+  /** 默认关闭（false），显式启用 */
+  enabled?: boolean;
+  /** 工具默认风险级别：low/medium/high（默认 medium，走审批） */
+  risk?: string;
+}
+
+/** MCP 服务器展示视图（mcp.ServerInfo） */
+export interface MCPServerInfo {
+  name: string;
+  command: string;
+  description: string;
+  sourceType: string;
+  enabled: boolean;
+  risk: string;
+  /** 探测缓存中的工具数（0 表示未探测） */
+  toolCount: number;
 }
 
 /** Skills 索引档位阈值与检索配置（config.SkillsConfig） */

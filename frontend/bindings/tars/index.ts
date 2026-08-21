@@ -13,6 +13,5 @@ export {
     ModelPrice,
     SessionStats,
     SubmitResult,
-    WorkspaceChangedEvent,
     WorkspaceInfo
 } from "./models.js";

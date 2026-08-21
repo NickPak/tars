@@ -10,18 +10,19 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as schema$0 from "../../pkg/schema/models.js";
 
 /**
- * Info 是会话的内存数据：会话级元数据 + 消息列表 + 会话级幂等状态。
+ * Data 是会话的内存数据：会话级元数据 + 消息列表 + 会话级幂等状态。
  * 轮的运行态（取消标记）在 boot.Controller——goroutine 在那里创建。
  */
-export class Info {
+export class Data {
     "id": string;
     "title": string;
     "createdAt": number;
     "updatedAt": number;
+    "workspaceDir": string;
     "messages": (schema$0.Message | null)[];
 
-    /** Creates a new Info instance. */
-    constructor($$source: Partial<Info> = {}) {
+    /** Creates a new Data instance. */
+    constructor($$source: Partial<Data> = {}) {
         if (!("id" in $$source)) {
             this["id"] = "";
         }
@@ -34,6 +35,9 @@ export class Info {
         if (!("updatedAt" in $$source)) {
             this["updatedAt"] = 0;
         }
+        if (!("workspaceDir" in $$source)) {
+            this["workspaceDir"] = "";
+        }
         if (!("messages" in $$source)) {
             this["messages"] = [];
         }
@@ -42,15 +46,15 @@ export class Info {
     }
 
     /**
-     * Creates a new Info instance from a string or object.
+     * Creates a new Data instance from a string or object.
      */
-    static createFrom($$source: any = {}): Info {
-        const $$createField4_0 = $$createType2;
+    static createFrom($$source: any = {}): Data {
+        const $$createField5_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("messages" in $$parsedSource) {
-            $$parsedSource["messages"] = $$createField4_0($$parsedSource["messages"]);
+            $$parsedSource["messages"] = $$createField5_0($$parsedSource["messages"]);
         }
-        return new Info($$parsedSource as Partial<Info>);
+        return new Data($$parsedSource as Partial<Data>);
     }
 }
 

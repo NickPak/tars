@@ -81,7 +81,7 @@ func CodeInterpreter() *Definition {
 			cctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(cctx, python, "-u", tmp.Name())
-			cmd.Dir = resolveWorkDir(ctx)
+			cmd.Dir = resolveWorkspaceDir(ctx)
 			var out bytes.Buffer
 			cmd.Stdout = &out
 			cmd.Stderr = &out

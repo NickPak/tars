@@ -5,80 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-)
-
-// ============================================================================
-// 交互询问（ask_user 工具 + 危险调用审批门）的共享类型与 ctx 通道
-//
-// 设计（plan/agent-tool-design-plan.md 2.13）：
-//   - ask_user：模型主动发起的人机对齐询问（澄清需求/方案选择/信息请求）。
-//   - 审批门：框架在执行层拦截危险调用后自动发起的安全审批——模型不参与
-//     决策（否则提示注入可让模型自己批自己）。
-// 两者共用同一套"阻塞等待用户答复"机制：handler 阻塞在 channel 上，
-// 前端提交答案后经 ResolveAsk 回写。Asker 由宿主（turn 脚手架）实现并
-// 经 ctx 注入，tools 包保持对 Wails 事件的无知。
-// ============================================================================
-
-// Question 是 ask_user 工具的一次结构化询问。
-type Question struct {
-	Type           string           `json:"type"`                      // confirm / select / input
-	Question       string           `json:"question"`                  // 完整、独立的问题
-	Options        []QuestionOption `json:"options,omitempty"`         // select 必填
-	Recommended    string           `json:"recommended,omitempty"`     // 推荐项 id + 理由（展示用）
-	TimeoutSeconds int              `json:"timeout_seconds,omitempty"` // 超时秒数
-	Default        string           `json:"default,omitempty"`         // 超时默认答案（必须保守）
-}
-
-type QuestionOption struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Description string `json:"description,omitempty"`
-}
-
-// Answer 是一次询问/审批的答复。
-type Answer struct {
-	// Value：confirm 为 "confirm"/"deny"；select 为选项 id；input 为文本；
-	// 审批为 "allow"/"allow_always"/"deny"。
-	Value  string `json:"value"`
-	Reason string `json:"reason,omitempty"` // 拒绝理由（可选，回模型调整方案）
-	// Source："user" 用户答复 / "timeout_default" 超时默认 / "rule" 常允许命中。
-	Source string `json:"source"`
-}
-
-// ApprovalRequest 是执行层拦截危险调用后生成的审批请求。
-type ApprovalRequest struct {
-	ToolCallID     string // 即被拦截调用的 ID，也是答复键
-	ToolName       string
-	Summary        string // 待批准的危险内容（如完整命令）
-	Reason         string // 命中的风险规则说明
-	RiskKey        string // 常允许规则键（"本会话常允许此类"按此记忆）
-	TimeoutSeconds int
-}
-
-// Asker 由宿主实现：把 ask_user 的询问桥接到前端并等待答复。
-// 宿主经 Env.Asker 注入（见 env.go）；危险调用的审批通道是独立的
-// Approver 接口（见 gate.go），同一宿主实现可同时承担两者。
-type Asker interface {
-	Ask(ctx context.Context, q *Question) (*Answer, error)
-}
-
-type toolCallIDCtxKey struct{}
-
-// WithToolCallID 把当前工具调用 ID 放入 ctx（执行器调用），
-// 交互工具/审批门用它作为答复的关联键。
-func WithToolCallID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, toolCallIDCtxKey{}, id)
-}
-
-// ToolCallIDFromCtx 取出当前工具调用 ID；不存在返回 ""。
-func ToolCallIDFromCtx(ctx context.Context) string {
-	id, _ := ctx.Value(toolCallIDCtxKey{}).(string)
-	return id
-}
-
-const (
-	askDefaultTimeout = 120 // 秒
-	askMaxTimeout     = 600
+	"tars/pkg/ask"
 )
 
 // AskUser 返回 ask_user 工具：模型主动向用户发起结构化询问。
@@ -121,7 +48,7 @@ func AskUser() *Definition {
 			"required": []string{"question", "type"},
 		},
 		Handler: func(ctx context.Context, raw json.RawMessage) (string, error) {
-			var q Question
+			var q ask.Question
 			if err := json.Unmarshal(raw, &q); err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
@@ -129,11 +56,13 @@ func AskUser() *Definition {
 				return "", err
 			}
 
+			toolCallID := ToolCallIDFromCtx(ctx)
+
 			env := EnvFromCtx(ctx)
-			if env == nil || env.Asker == nil {
+			if env == nil || env.Ask == nil {
 				return "", errors.New("ask_user requires an interactive session; none available")
 			}
-			ans, err := env.Asker.Ask(ctx, &q)
+			ans, err := env.Ask.Ask(ctx, toolCallID, &q)
 			if err != nil {
 				return "", err // 轮被取消
 			}
@@ -160,7 +89,7 @@ func AskUser() *Definition {
 	}
 }
 
-func validateQuestion(q *Question) error {
+func validateQuestion(q *ask.Question) error {
 	switch q.Type {
 	case "confirm", "input":
 	case "select":
@@ -174,9 +103,9 @@ func validateQuestion(q *Question) error {
 		return errors.New("question is required")
 	}
 	if q.TimeoutSeconds <= 0 {
-		q.TimeoutSeconds = askDefaultTimeout
+		q.TimeoutSeconds = ask.DefaultAskTimeout
 	}
-	q.TimeoutSeconds = min(q.TimeoutSeconds, askMaxTimeout)
+	q.TimeoutSeconds = min(q.TimeoutSeconds, ask.DefaultAskMaxTimeout)
 	if q.Default == "" {
 		// 保守兜底：confirm 拒绝，select 取推荐项或第一项，input 空
 		switch q.Type {

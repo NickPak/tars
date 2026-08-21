@@ -47,7 +47,7 @@ const $$createType14 = main$0.ModelChangedEvent.createFrom;
 const $$createType15 = $Create.Nullable($$createType14);
 const $$createType16 = event$0.SessionRenamedEvent.createFrom;
 const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = main$0.WorkspaceChangedEvent.createFrom;
+const $$createType18 = event$0.WorkspaceChangedEvent.createFrom;
 const $$createType19 = $Create.Nullable($$createType18);
 
 configure();

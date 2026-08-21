@@ -2316,6 +2316,158 @@ body.resizing-col .resize-handle::after {
   color: var(--text-dim);
 }
 
+/* MCP 列表条目操作按钮（探测/删除）：统一的紧凑图标按钮风格
+   （此前 btn-subtle 无样式定义，两个按钮渲染不一致） */
+.mcp-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mcp-icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.mcp-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mcp-icon-btn.danger {
+  color: var(--error);
+}
+
+.mcp-icon-btn.danger:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.skill-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* 条目纵向容器（主体 + 行内提示）：探测反馈显示在条目下方 */
+.skill-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skill-item-body .skill-item-main {
+  width: 100%;
+}
+
+.mcp-row-msg {
+  margin-top: 2px;
+}
+
+/* MCP 添加按钮：小一号字体，与容器底边留白 */
+.mcp-add-actions {
+  margin: 4px 0 14px;
+}
+
+.dialog-btn.mcp-add-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+}
+
+.dialog-btn.primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.dialog-btn.primary:disabled:hover {
+  filter: none;
+  transform: none;
+}
+
+/* MCP 添加服务器的三态分段控件（快速安装/手动配置/JSON） */
+.mcp-mode-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  margin-bottom: 12px;
+}
+
+.mcp-mode-seg-btn {
+  padding: 3px 14px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mcp-mode-seg-btn:hover {
+  color: var(--text);
+}
+
+.mcp-mode-seg-btn.on {
+  background: var(--code-bg);
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* 多行输入（textarea）的 field 改上下排列：settings-field 默认是左右布局
+   （标签列 + 250px 控件列），textarea 塞进控件列会被压窄——整行占满。
+   手动配置里的 env 文本域与快速安装/JSON 输入均走此类。 */
+.settings-field-block {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* block 模式下控件列占满整行，输入控件同宽（标签与说明在上、输入在下） */
+.settings-field-block .settings-field-control {
+  width: 100%;
+  flex-shrink: 1;
+}
+
+.settings-field-block .settings-field-control .settings-input,
+.settings-field-block .settings-field-control .mcp-quick-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* block 模式下下拉框自适应（信息源类型/风险并排时各占一半） */
+.settings-field-block .settings-field-control .settings-select {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+/* 快速安装/JSON 的多行输入 */
+.mcp-quick-input {
+  width: 100%;
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.mcp-json-input {
+  min-height: 120px;
+}
+
 /* 条目行内的分类下拉：与 .skill-item-tag 同款药丸外观 */
 .skill-item-category {
   font-size: 11px;
@@ -2509,6 +2661,14 @@ body.resizing-col .resize-handle::after {
 
 .settings-error {
   color: var(--error);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* 操作成功提示（与 settings-error 同字号，绿色；此前只有 className 引用、
+   无样式定义，导致字号继承页面正文、与错误/保存提示不一致） */
+.settings-notice {
+  color: #81c995;
   font-size: 12px;
   overflow-wrap: anywhere;
 }

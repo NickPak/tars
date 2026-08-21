@@ -160,7 +160,7 @@ func RunCommand() *Definition {
 			if env == nil {
 				return "", fmt.Errorf("run_command: no execution env")
 			}
-			wd := resolveWorkDir(ctx)
+			wd := resolveWorkspaceDir(ctx)
 			// 持久终端状态按工作目录键控，存于会话级 Env（跨轮共享）。
 			v, _ := env.TermSessions.LoadOrStore(wd, &termSession{cwd: wd, env: os.Environ()})
 			sess := v.(*termSession)

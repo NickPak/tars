@@ -3,17 +3,16 @@ package boot
 import (
 	"tars/internal/session"
 	"tars/pkg/skills"
-	"tars/pkg/tools"
 )
 
 // skillRuntime 实现 tools.SkillRuntime：读 SKILL.md 走 skills.Manager，
 // "已加载"幂等状态走会话级 Info.LoadedSkills。
 type skillRuntime struct {
 	mgr  *skills.Manager
-	sess *session.Info
+	sess *session.Manager
 }
 
-func newSkillRuntime(mgr *skills.Manager, sess *session.Info) *skillRuntime {
+func newSkillRuntime(mgr *skills.Manager, sess *session.Manager) *skillRuntime {
 	return &skillRuntime{mgr: mgr, sess: sess}
 }
 
@@ -33,7 +32,7 @@ func (r *skillRuntime) Loaded() []string {
 	return r.sess.LoadedSkillNames()
 }
 
-func (r *skillRuntime) Search(query string, limit int) ([]tools.SkillSummary, error) {
+func (r *skillRuntime) Search(query string, limit int) ([]skills.SkillSummary, error) {
 	if r.mgr == nil {
 		return nil, nil
 	}
@@ -41,9 +40,9 @@ func (r *skillRuntime) Search(query string, limit int) ([]tools.SkillSummary, er
 	if err != nil {
 		return nil, err
 	}
-	out := make([]tools.SkillSummary, len(hits))
+	out := make([]skills.SkillSummary, len(hits))
 	for i, h := range hits {
-		out[i] = tools.SkillSummary{Name: h.Name, Description: h.Description, Category: h.Category}
+		out[i] = skills.SkillSummary{Name: h.Name, Description: h.Description, Category: h.Category}
 	}
 	return out, nil
 }
@@ -55,4 +54,4 @@ func (r *skillRuntime) SearchLimit() int {
 	return r.mgr.GetConfig().DiscoverResultLimit
 }
 
-var _ tools.SkillRuntime = (*skillRuntime)(nil)
+var _ skills.SkillProvider = (*skillRuntime)(nil)

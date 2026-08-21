@@ -1,0 +1,256 @@
+package session
+
+import (
+	"log/slog"
+	"slices"
+	"tars/pkg/tools"
+	"time"
+
+	"tars/internal/event"
+	"tars/pkg/schema"
+
+	"github.com/google/uuid"
+)
+
+// Manager 是会话的存储与工厂：目录布局、jsonl 快照、meta.json，
+// 以及 Info 的创建与恢复。会话的持久化细节全部封装在本包，
+// 外部（boot）只面对 Info 与本类型的少量方法。
+// Store 为普通对象，由装配层（boot）创建并注入。
+type Manager struct {
+	// 会话的数据
+	data *Data
+
+	// risks 是"本会话常允许"的危险操作常允许表（内存态，重启清空），
+	// 由 tools.Gate 消费；会话级载体，跨轮共享。
+	risks *tools.RiskTable
+	// LoadedSkills 记录本会话已 load_skill 的技能（内存态，跨轮幂等，
+	// 重启清空）。状态栏据此展示"已加载技能"。
+	LoadedSkills map[string]bool
+	// store 会话持久化后端，由 Store 创建/恢复会话时注入（非序列化）。
+	// sink 事件出口：消息追加/聚合更新时发射 KindMessageAppended（非序列化）。
+	sink event.Sink
+}
+
+// NewManager 创建会话存储；workDir 为应用工作目录根，sink 注入每个
+// 创建/恢复出的会话（消息追加时发射事件），nil 时静默。
+func NewManager(data *Data, sink event.Sink) *Manager {
+	return &Manager{
+		data:         data,
+		risks:        tools.NewRiskTable(),
+		LoadedSkills: make(map[string]bool),
+		sink:         sink,
+	}
+}
+
+func (s *Manager) GetID() string {
+	if s.data != nil {
+		return s.data.ID
+	}
+	return ""
+}
+
+func (s *Manager) GetData() *Data {
+	return s.data
+}
+
+func (s *Manager) GetBaseDir() string {
+	return GetBaseDir(instance.GetWorkDir())
+}
+
+func (s *Manager) GetSessionDir() string {
+	return GetSessionDir(instance.GetWorkDir(), s.data.ID)
+}
+
+func (s *Manager) GetDataDir() string {
+	return GetDataDir(instance.GetWorkDir(), s.data.ID)
+}
+
+func (s *Manager) GetWorkspaceDir() string {
+	return s.data.WorkspaceDir
+}
+
+func (s *Manager) SetWorkspaceDir(dir string) error {
+	s.data.WorkspaceDir = dir
+	s.data.UpdatedAt = time.Now().UnixMilli()
+
+	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+
+	s.sink.Emit(event.Event{
+		Kind: event.KindWorkspaceChanged,
+		Workspace: &event.WorkspaceChangedEvent{
+			SessionID: s.data.ID,
+			Path:      dir,
+			IsCustom:  true,
+		},
+	})
+	return err
+}
+
+// RiskTable 返回会话级常允许表（惰性创建；重启清空）。
+// 装配工具权限门（tools.NewGate）时注入。
+func (s *Manager) RiskTable() *tools.RiskTable {
+	return s.risks
+}
+
+// IsSkillLoaded 报告技能是否已在本会话加载。
+func (s *Manager) IsSkillLoaded(name string) bool {
+	return s.LoadedSkills[name]
+}
+
+// MarkSkillLoaded 标记技能已在本会话加载（幂等）。
+func (s *Manager) MarkSkillLoaded(name string) {
+	s.LoadedSkills[name] = true
+}
+
+// LoadedSkillNames 返回已加载技能名（排序后），供状态栏展示。
+func (s *Manager) LoadedSkillNames() []string {
+	names := make([]string, 0, len(s.LoadedSkills))
+	for n := range s.LoadedSkills {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	return names
+}
+
+func (s *Manager) RenameSession(title string) error {
+	return s.SetTitle(title)
+}
+
+// --- 会话生命周期（Info 的创建/恢复/删除） ---
+
+// --- 消息持久化（jsonl 快照日志；Info 内部使用） ---
+
+// AppendUserMessage 新一轮对话的消息准备：追加 user 消息，首条消息顺便完成自动命名。
+// 返回新建 user 消息的 ID（服务层透传给前端回填本地占位）。
+// assistant 消息不再预置——由轮运行中首轮产出时经 UpsertAssistant 创建。
+func (s *Manager) AppendUserMessage(content string) string {
+	now := time.Now().UnixMilli()
+	id := uuid.NewString()
+	s.data.AppendMessage(now,
+		&schema.Message{
+			ID:        id,
+			Role:      schema.RoleUser,
+			Content:   content,
+			CreatedAt: now,
+		},
+	)
+
+	v := s.data.UpdateTitle(content)
+	if v {
+		err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+		if err != nil {
+			slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+		}
+	}
+	return id
+}
+
+// UpsertAssistant 把一轮迭代的 assistant 产出聚合进指定 ID 的消息：
+// 不存在则创建（本轮首轮产出），存在则按增量聚合（Content/Reasoning 拼接、
+// ToolCalls 追加、Parts 按迭代追加一片），并写 jsonl 快照（按消息 ID 去重，
+// 崩溃安全：部分进度不丢）。
+func (s *Manager) UpsertAssistant(id string, delta *schema.Message) {
+	m := s.data.UpsertAssistant(id, delta)
+	if m == nil {
+		return
+	}
+
+	err := instance.AppendSaveMessage(s.data.ID, m)
+	if err != nil {
+		slog.Warn("Failed to snapshot assistant message", "id", s.data.ID, "error", err)
+	}
+	EmitMessageAppended(s.sink, s.data.ID, m)
+}
+
+// FinalizeAssistant 把一轮的 token 用量与总耗时写回 assistant 消息并快照，
+// 历史会话重新打开后每条消息的用量信息才能恢复。
+// 消息不存在（一轮未产出，如首轮即失败）时静默跳过。
+func (s *Manager) FinalizeAssistant(id string, usage *schema.UsageInfo, elapsedMs int64) {
+	m := s.data.FinalizeAssistant(id, usage, elapsedMs)
+	if m == nil {
+		return
+	}
+
+	err := instance.AppendSaveMessage(s.data.ID, m)
+	if err != nil {
+		slog.Warn("Failed to store message", "id", s.data.ID, "error", err)
+	}
+	EmitMessageAppended(s.sink, s.data.ID, m)
+}
+
+// PrepareRetry 重试的消息准备：截断到目标轮的 user 消息，全量覆写持久化。
+// messageID 指定目标 assistant 消息（取其前最近的 user）；空 = 截断到
+// 最后一条 user 消息（涵盖"最后一轮 assistant"与"上一轮未产出"两种情形）。
+// 返回该轮的 user 消息内容（trace 展示用）。
+func (s *Manager) PrepareRetry(messageID string) (string, error) {
+	userText, err := s.data.PrepareRetry(messageID)
+
+	wErr := instance.RewriteMessages(s.data.ID, s.data.Messages)
+	if wErr != nil {
+		return "", wErr
+	}
+	return userText, err
+}
+
+// DeleteFrom 删除 messageID 及其后全部消息（截断语义），返回被删消息的原下标。
+// 轮运行中禁止（服务层已 guard）。
+func (s *Manager) DeleteFrom(messageID string) (int, error) {
+	idx, err := s.data.DeleteFrom(messageID)
+	if err != nil {
+		return idx, err
+	}
+
+	return idx, instance.RewriteMessages(s.data.ID, s.data.Messages)
+}
+
+// EditUserMessage 就地编辑一条 user 消息的内容（不触发重新生成）。
+func (s *Manager) EditUserMessage(messageID, content string) error {
+	err := s.data.EditUserMessage(messageID, content)
+	if err != nil {
+		return err
+	}
+
+	return instance.RewriteMessages(s.data.ID, s.data.Messages)
+}
+
+// SetTitle 重命名会话（内存 + 磁盘 meta）；事件通知由服务层负责。
+func (s *Manager) SetTitle(title string) error {
+	s.data.SetTitle(title)
+
+	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	if err != nil {
+		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+	}
+
+	s.sink.Emit(event.Event{
+		Kind:           event.KindSessionRenamed,
+		SessionRenamed: &event.SessionRenamedEvent{SessionID: s.data.ID, Title: title},
+	})
+
+	return nil
+}
+
+// AppendMessage 追加消息：内存列表 + jsonl 持久化 + 事件通知，一处完成。
+func (s *Manager) AppendMessage(updateAt int64, msg ...*schema.Message) {
+	s.data.AppendMessage(updateAt, msg...)
+
+	err := instance.AppendSaveMessage(s.data.ID, msg...)
+	if err != nil {
+		slog.Warn("Failed to store message", "id", s.data.ID, "error", err)
+	}
+	for _, m := range msg {
+		EmitMessageAppended(s.sink, s.data.ID, m)
+	}
+}
+
+func (s *Manager) History() []*schema.Message {
+	return s.data.History()
+}
+
+// EmitMessageAppended 发射消息追加/更新事件（sink 为空时静默）。
+func EmitMessageAppended(sink event.Sink, sessionID string, m *schema.Message) {
+	sink.Emit(event.Event{
+		Kind:    event.KindMessageAppended,
+		Message: &event.MessageAppendedEvent{SessionID: sessionID, Message: m},
+	})
+}

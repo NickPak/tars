@@ -72,10 +72,10 @@ type Limits struct {
 // 工具执行（查找/权限门/并行/事件）由 tools.Registry 负责；
 // 消息聚合/持久化由 Session 负责。
 type ReActAgent struct {
-	system   func() []*schema.Message // system prompt + 技能索引（每轮动态读取）
-	registry *tools.Registry
-	session  Session
-	sink     event.Sink
+	system  func() []*schema.Message // system prompt + 技能索引（每轮动态读取）
+	toolReg *tools.Registry
+	session Session
+	sink    event.Sink
 	// limits 每轮解析循环约束（配置热更新经此生效）。
 	limits    func() Limits
 	sessionID string
@@ -88,14 +88,12 @@ type Options struct {
 	// System 返回 system 消息列表（静态提示词 + 动态技能索引），
 	// 每轮迭代前调用——装/卸技能对下一轮立即生效。
 	System func() []*schema.Message
-	// Registry 会话级工具执行器（含执行环境 Env 与权限门 Gate）。
-	Registry *tools.Registry
+	// ToolRegistry 会话级工具执行器（含执行环境 Env 与权限门 Gate）。
+	ToolRegistry *tools.Registry
 	// Session 会话（消息历史的单一事实来源）。
 	Session Session
 	// Sink 事件出口；nil 时静默。
 	Sink event.Sink
-	// SessionID 所属会话的 ID（事件的 SessionID 与之对应）。
-	SessionID string
 	// Limits 每轮解析循环约束（maxIterations/iterationTimeout），
 	// 配置热更新经此生效；nil 时取默认（单次调用、不限时）。
 	Limits func() Limits
@@ -110,12 +108,11 @@ func NewReAct(opts Options) *ReActAgent {
 		opts.Limits = func() Limits { return Limits{MaxIterations: 1} }
 	}
 	return &ReActAgent{
-		system:    opts.System,
-		registry:  opts.Registry,
-		session:   opts.Session,
-		sink:      opts.Sink,
-		limits:    opts.Limits,
-		sessionID: opts.SessionID,
+		system:  opts.System,
+		toolReg: opts.ToolRegistry,
+		session: opts.Session,
+		sink:    opts.Sink,
+		limits:  opts.Limits,
 	}
 }
 
@@ -143,7 +140,7 @@ func (a *ReActAgent) Run(ctx context.Context, userMsg, assistantID string, provi
 		msgs := make([]*schema.Message, 0, len(sys)+len(history)+1)
 		msgs = append(msgs, sys...)
 		msgs = append(msgs, history...)
-		envCtx := tools.WithEnv(ctx, a.registry.Env())
+		envCtx := tools.WithEnv(ctx, a.toolReg.Env())
 		msgs = append(msgs, statusBar.Render(envCtx, iter))
 
 		a.emit(event.Event{Kind: event.KindIterationStart, Iteration: &event.IterationEvent{
@@ -183,7 +180,7 @@ func (a *ReActAgent) Run(ctx context.Context, userMsg, assistantID string, provi
 				ToolCallID: tc.ID, ToolName: tc.Name, Args: tc.Args,
 			}})
 		}
-		results := a.registry.Execute(ctx, msg.ToolCalls, func(tr tools.ToolResult) {
+		results := a.toolReg.Execute(ctx, msg.ToolCalls, func(tr tools.ToolResult) {
 			// 并发回调（每个工具完成时）：只发射事件，sink 链路需并发安全。
 			a.emit(event.Event{Kind: event.KindToolResult, ToolResult: &event.ToolResultEvent{
 				SessionID: sessionID, MessageID: assistantID,
@@ -222,7 +219,7 @@ func (a *ReActAgent) callModel(ctx context.Context, provider llm.Provider, timeo
 
 	stream, err := provider.Stream(callCtx, &llm.ChatRequest{
 		Messages: msgs,
-		Tools:    a.registry.Schemas(),
+		Tools:    a.toolReg.Schemas(),
 	})
 	if err != nil {
 		return nil, normalizeErr(callCtx, ctx, timeout, iter, fmt.Errorf("model stream failed at iteration %d: %w", iter, err))

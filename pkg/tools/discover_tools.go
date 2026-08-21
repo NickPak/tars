@@ -6,34 +6,36 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"tars/pkg/mcp"
+	skills2 "tars/pkg/skills"
 )
 
-// ============================================================================
-// discover_tools 工具（plan 3.1 发现元工具）
+// DiscoverTools 返回 discover_tools 工具（plan 3.1 发现元工具）。
 //
-// 按自然语言能力需求检索可用能力，返回少量候选（数量由 skills 配置的
-// discoverResultLimit 决定）。当前只对 Skills 检索（MCP 未接入；接入后
-// 同一通道扩展 source 级→item 级两级路由）。
-// 命中返回候选的 name + description，提示用 load_skill 加载；
+// 按自然语言能力需求检索全部能力源，返回少量候选（数量由 skills 配置的
+// discoverResultLimit 决定，技能与 MCP 工具各取该上限）：
+//   - Skills（本地技能库）：命中后 load_skill(name) 注入完整操作手册；
+//   - MCP 工具（外部服务器）：命中即注册进本会话工具集（Materialize，
+//     懒启动进程），下一轮起模型可直接按其全名调用（完整 schema 随工具
+//     定义一次性下发，防"工具未被定义"的幻觉调用）。
+//
 // 无命中明确返回"未找到"，触发兜底链路（改需求重试 / 核心工具自行实现）。
-// ============================================================================
-
-// DiscoverTools 返回 discover_tools 工具。
 func DiscoverTools() *Definition {
 	return &Definition{
 		Name: "discover_tools",
-		Description: "Search installed skills by natural-language need. Returns the top candidate skills " +
-			"(name + description + category) matching the query. Use when you face a task that the core " +
-			"tools and already-loaded skills don't cover — describe the capability you need and this will " +
-			"find relevant skills. After finding one, call load_skill(name) to get its full instructions. " +
-			"Boundary: if it returns \"no match\", rewrite the query once; if still nothing, implement the " +
-			"capability yourself with the core tools or by writing code.",
+		Description: "Search available capabilities by natural-language need: installed skills and external " +
+			"MCP tool servers. Returns the top candidates matching the query. For a skill, call load_skill(name) " +
+			"to load its playbook; for an MCP tool, it is registered for this conversation immediately and can be " +
+			"called directly. Use when you face a task that the core tools cannot handle, or you are unsure whether " +
+			"a suitable skill or tool exists. Pass a short capability description such as '查询股价' or " +
+			"'edit Word documents'. If there is no match, rephrase with different words (implementation-focused " +
+			"or user-goal-focused); if there is still no match, implement with the core tools or write code on the fly.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query": map[string]any{
 					"type":        "string",
-					"description": "Natural-language description of the capability you need, e.g. \"create a PowerPoint\"",
+					"description": "capability need in natural language, e.g. '查询股价', 'edit Word documents'",
 				},
 			},
 			"required": []string{"query"},
@@ -47,34 +49,72 @@ func DiscoverTools() *Definition {
 			}
 			query := strings.TrimSpace(args.Query)
 			if query == "" {
-				return "", errors.New("query is required")
+				return "", errors.New("discover_tools: query is required")
 			}
 
 			env := EnvFromCtx(ctx)
-			if env == nil || env.Skills == nil {
-				return "", errors.New("discover_tools requires a skill runtime; none available")
+			if env == nil {
+				return "", errors.New("discover_tools: execution environment not initialized")
 			}
-			rt := env.Skills
 
-			hits, err := rt.Search(query, rt.SearchLimit())
-			if err != nil {
-				return "", err
+			limit := 5
+			if env.Skills != nil {
+				limit = env.Skills.SearchLimit()
 			}
-			if len(hits) == 0 {
-				return "No matching skills found. Rephrase the query and retry; if there is still no match, implement it with the core tools or write code on the fly.", nil
+
+			var skills []skills2.SkillSummary
+			if env.Skills != nil {
+				hits, err := env.Skills.Search(query, limit)
+				if err != nil {
+					return "", fmt.Errorf("discover_tools: %w", err)
+				}
+				skills = hits
+			}
+
+			var mcpHits []mcp.ToolHit
+			if env.MCP != nil {
+				hits, err := env.MCP.Search(query, limit)
+				if err != nil {
+					return "", fmt.Errorf("discover_tools: %w", err)
+				}
+				mcpHits = hits
+			}
+
+			if len(skills) == 0 && len(mcpHits) == 0 {
+				return "No matching capabilities found (skills or MCP tools). Rephrase the query and retry; " +
+					"if there is still no match, implement it with the core tools or write code on the fly.", nil
 			}
 
 			var b strings.Builder
-			b.WriteString(fmt.Sprintf("Found %d candidate skills:\n", len(hits)))
-			for i, h := range hits {
-				fmt.Fprintf(&b, "%d. %s — %s", i+1, h.Name, h.Description)
-				if h.Category != "" {
-					fmt.Fprintf(&b, " [%s]", h.Category)
+			if len(skills) > 0 {
+				fmt.Fprintf(&b, "Found %d candidate skills:\n", len(skills))
+				for i, h := range skills {
+					fmt.Fprintf(&b, "%d. %s — %s", i+1, h.Name, h.Description)
+					if h.Category != "" {
+						fmt.Fprintf(&b, " [%s]", h.Category)
+					}
+					b.WriteString("\n")
 				}
-				b.WriteString("\n")
+				b.WriteString("→ Call load_skill(name) on the skill you need to get its full playbook.\n")
 			}
-			b.WriteString("\nCall load_skill(name) on the skill you need to get its full playbook.")
-			return b.String(), nil
+			if len(mcpHits) > 0 {
+				if b.Len() > 0 {
+					b.WriteString("\n")
+				}
+				fmt.Fprintf(&b, "Found %d MCP tools (now registered for this conversation — call them directly):\n", len(mcpHits))
+				for i, h := range mcpHits {
+					if err := env.MCP.Materialize(h); err != nil {
+						fmt.Fprintf(&b, "%d. %s — %s [registration failed: %v]\n", i+1, h.FullName, h.Description, err)
+						continue
+					}
+					fmt.Fprintf(&b, "%d. %s — %s", i+1, h.FullName, h.Description)
+					if h.SourceType != "" {
+						fmt.Fprintf(&b, " [%s]", h.SourceType)
+					}
+					b.WriteString("\n")
+				}
+			}
+			return strings.TrimRight(b.String(), "\n"), nil
 		},
 	}
 }

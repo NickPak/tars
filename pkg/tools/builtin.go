@@ -33,11 +33,11 @@ import (
 // maxOutputBytes caps a single tool output to avoid blowing up the context.
 const maxOutputBytes = 64 * 1024
 
-// resolveWorkDir 从 ctx 中的会话级执行环境（Env）取工作目录；
+// resolveWorkspaceDir 从 ctx 中的会话级执行环境（Env）取工作目录；
 // 无 Env（如测试直调 Handler）返回空串——调用方须容忍（拼装路径前校验）。
-func resolveWorkDir(ctx context.Context) string {
+func resolveWorkspaceDir(ctx context.Context) string {
 	if env := EnvFromCtx(ctx); env != nil {
-		return env.WorkDir
+		return env.WorkspaceDir
 	}
 	return ""
 }

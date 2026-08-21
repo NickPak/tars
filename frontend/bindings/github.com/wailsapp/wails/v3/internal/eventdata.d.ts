@@ -24,7 +24,7 @@ declare module "@wailsio/runtime" {
             "agent:tool_result": event$0.ToolResultEvent | null;
             "model:changed": main$0.ModelChangedEvent | null;
             "session:renamed": event$0.SessionRenamedEvent | null;
-            "workspace:changed": main$0.WorkspaceChangedEvent | null;
+            "workspace:changed": event$0.WorkspaceChangedEvent | null;
         }
     }
 }

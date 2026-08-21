@@ -39,31 +39,38 @@ type Todo struct {
 	Status  string `json:"status"`
 }
 
-// TodoStore 是 per-session 的 TODO 状态机。
+type TodoProvider interface {
+	Load() error
+	Replace(todos []Todo) error
+	Save() error
+	Snapshot() ([]Todo, int64)
+}
+
+// Manager 是 per-session 的 TODO 状态机。
 // 设计文档 2.10：模型调 todo_write → 框架校验并更新状态机（持久化到
 // workspace 文件，跨会话存活）→ 返回确认 → StatusBar 渲染 todo 区。
 //
 // 线程安全：工具可能并行执行（虽然 todo_write 通常独占一轮），用 RWMutex 保护。
-type TodoStore struct {
+type Manager struct {
 	mu       sync.RWMutex
 	todos    []Todo
 	filePath string
 	version  int64 // 每次 Replace 自增，供 StatusBar 检测变更与"未更新轮数"
 }
 
-// NewTodoStore 创建一个以 baseDir 为会话目录的 TodoStore。
+// NewManager 创建一个以 baseDir 为会话目录的 TodoStore。
 // todo.json 持久化文件在 baseDir 下。传空串则纯内存模式（不持久化）。
 // 调用方应在会话恢复时调用 Load() 读回磁盘状态。
-func NewTodoStore(baseDir string) *TodoStore {
+func NewManager(baseDir string) *Manager {
 	filePath := ""
 	if baseDir != "" {
 		filePath = filepath.Join(baseDir, todoFile)
 	}
-	return &TodoStore{filePath: filePath}
+	return &Manager{filePath: filePath}
 }
 
 // Load 从磁盘读取 TODO 状态。文件不存在时静默返回 nil（新会话）。
-func (s *TodoStore) Load() error {
+func (s *Manager) Load() error {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -72,7 +79,8 @@ func (s *TodoStore) Load() error {
 		return fmt.Errorf("todo: load: %w", err)
 	}
 	var todos []Todo
-	if err := json.Unmarshal(data, &todos); err != nil {
+	err = json.Unmarshal(data, &todos)
+	if err != nil {
 		return fmt.Errorf("todo: parse: %w", err)
 	}
 	s.mu.Lock()
@@ -84,16 +92,16 @@ func (s *TodoStore) Load() error {
 
 // Replace 全量覆写 TODO 列表（todo_write 的语义：原子、无部分更新 bug），
 // 并立即持久化到磁盘。
-func (s *TodoStore) Replace(todos []Todo) error {
+func (s *Manager) Replace(todos []Todo) error {
 	s.mu.Lock()
 	s.todos = todos
 	s.version++
 	s.mu.Unlock()
 
-	return s.save()
+	return s.Save()
 }
 
-func (s *TodoStore) save() error {
+func (s *Manager) Save() error {
 	if s.filePath == "" {
 		return nil // 纯内存模式（测试用）
 	}
@@ -110,7 +118,7 @@ func (s *TodoStore) save() error {
 
 // Snapshot 返回当前 TODO 列表的副本和版本号。
 // StatusBar 在 Render 时调用此方法渲染 todo 区并检测"未更新轮数"。
-func (s *TodoStore) Snapshot() ([]Todo, int64) {
+func (s *Manager) Snapshot() ([]Todo, int64) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]Todo, len(s.todos))

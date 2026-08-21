@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"tars/pkg/skills"
 	"testing"
 )
 
@@ -31,12 +32,12 @@ func (m *mockSkillRuntime) Loaded() []string {
 	}
 	return m.loadedNames
 }
-func (m *mockSkillRuntime) Search(query string, limit int) ([]SkillSummary, error) {
-	return []SkillSummary{{Name: "pptx", Description: "slides", Category: "docs"}}, nil
+func (m *mockSkillRuntime) Search(query string, limit int) ([]skills.SkillSummary, error) {
+	return []skills.SkillSummary{{Name: "pptx", Description: "slides", Category: "docs"}}, nil
 }
 func (m *mockSkillRuntime) SearchLimit() int { return 5 }
 
-func callLoadSkill(t *testing.T, rt SkillRuntime, name string) string {
+func callLoadSkill(t *testing.T, rt skills.SkillRuntime, name string) string {
 	t.Helper()
 	ctx := WithEnv(context.Background(), &Env{Skills: rt})
 	args, _ := json.Marshal(map[string]string{"name": name})

@@ -14,6 +14,14 @@ type Config struct {
 	DiscoverResultLimit int `yaml:"discoverResultLimit,omitempty" json:"discoverResultLimit,omitempty"`
 }
 
+func NewConfig() *Config {
+	return &Config{
+		TierFullMax:         DefaultTierFullMax,
+		TierResidentMax:     DefaultTierResidentMax,
+		DiscoverResultLimit: DefaultDiscoverResultLimit,
+	}
+}
+
 // Validate 修正非法字段为默认值。
 func (c *Config) Validate() {
 	if c.TierFullMax <= 0 {

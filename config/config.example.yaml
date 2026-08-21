@@ -29,6 +29,28 @@ agent:
   # 上下文压缩阈值（0-1）：使用占比超过该值时应触发历史压缩（功能待实现，先在状态栏展示）
   compressionThreshold: 0.8
 
+# Skills 配置（技能安装于 <workDir>/skills/，索引档位说明见设计文档 2.5）
+# skills:
+#   tierFullMax: 50       # ≤此数量时全部条目常驻系统消息
+#   tierResidentMax: 500  # 超过则只留"用 discover_tools 检索"提示
+#   discoverResultLimit: 5 # 模糊检索候选数上限：discover_tools 与设置页搜索共用
+
+# MCP 服务器配置（外部工具供给渠道，全部可选）
+# 设计要点（plan 3.6）：服务器默认关闭（enabled 缺省 false，显式启用）；
+# 会话启动不拉起进程——discover_tools 命中后才懒启动；名字会编入工具名
+# mcp__<server>__<tool>，须为小写字母/数字/连字符。
+# mcp:
+#   servers:
+#     yahoo-finance:                  # 服务器名（编入工具名）
+#       command: npx                  # 可执行文件或启动器（npx/uvx/…）
+#       args: ["-y", "yahoo-finance-mcp"]
+#       env:                          # 最小权限凭证；支持 ${VAR} 引用
+#         API_KEY: ${YF_API_KEY}
+#       description: "stock quotes and financial data"  # 一句话能力描述（模型可见，用英文）
+#       sourceType: query             # 信息源类型：search/read/parse/query
+#       enabled: false                # 默认关闭，显式启用
+#       risk: medium                  # 工具默认风险级别：low/medium/high（默认 medium，走审批）
+
 # 追踪配置（OpenTelemetry）：仅导出到 OTLP 收集器，不写本地文件
 trace:
   # 总开关：缺省/false = 停用（即使配置了端点也不产生 span）

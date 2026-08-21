@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-
 	"tars/pkg/schema"
 	"tars/pkg/zcopy"
 )
@@ -29,7 +28,24 @@ type Definition struct {
 	Parameters map[string]any
 	// Handler 本地执行体。
 	Handler Handler
+	// Risk 是工具的风险声明（纯声明的一部分，见 risk.go）：
+	// 非空时每次调用前走审批（声明优先于 classifyRisk 的规则匹配）；
+	// 空值回落到规则分类（内置工具的 mode 匹配逻辑不变）。
+	// 目前仅 MCP 动态注册使用（第三方工具危险不可枚举，按服务器配置声明）。
+	Risk RiskLevel
 }
+
+// RiskLevel 是工具调用的风险声明级别。
+type RiskLevel string
+
+const (
+	// RiskLevelLow 只读查询，不触发审批（与空值行为一致，仅作显式标注）。
+	RiskLevelLow RiskLevel = "low"
+	// RiskLevelMedium 执行前需用户审批（MCP 工具默认）。
+	RiskLevelMedium RiskLevel = "medium"
+	// RiskLevelHigh 需用户审批，GUI 中醒目标注。
+	RiskLevelHigh RiskLevel = "high"
+)
 
 // ToolResult 记录一次工具调用的执行结果。
 type ToolResult struct {
@@ -57,9 +73,8 @@ type Registry struct {
 	mu    sync.RWMutex
 	tools map[string]*Definition
 	order []string
-
-	env  *Env
-	gate *Gate
+	env   *Env
+	gate  *Gate
 }
 
 // NewRegistry 创建会话级工具注册表：包级内置目录（纯声明的 Definition，
@@ -78,12 +93,21 @@ func NewRegistry(env *Env, gate *Gate) *Registry {
 	return r
 }
 
+// Env 返回会话级环境。
+func (r *Registry) Env() *Env {
+	return r.env
+}
+
 // Register 在会话视图中注册一个工具，重名会覆盖旧定义。
 // 会话级调整不影响其他会话，也不影响包级内置目录。
+// 未声明 Risk 时归一为 low（不审批），保持内置工具现状语义。
 func (r *Registry) Register(def *Definition) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if def.Risk == "" {
+		def.Risk = RiskLevelLow
+	}
 	if _, exists := r.tools[def.Name]; !exists {
 		r.order = append(r.order, def.Name)
 	}
@@ -160,9 +184,6 @@ func (r *Registry) ToolSchemasJSON() []string {
 	return out
 }
 
-// Env 返回执行环境（宿主可按轮刷新 WorkDir 等字段）。
-func (r *Registry) Env() *Env { return r.env }
-
 // Execute executes tool calls in parallel and returns the full
 // results (including tool name and arguments). An optional onComplete callback
 // is invoked the moment each individual tool finishes — in that tool's
@@ -220,10 +241,10 @@ func (r *Registry) executeOne(ctx context.Context, def *Definition, call schema.
 	ctx = WithEnv(ctx, r.env)
 
 	// 危险调用审批门：handler 执行前拦截，由框架（而非模型）发起用户审批。
-	if req := classifyRisk(call); req != nil {
-		ans, aerr := r.gate.Check(ctx, req)
-		if aerr != nil {
-			return aerr.Error(), fmt.Errorf("tool %s: %w", call.Name, aerr)
+	if r.gate != nil {
+		ans, aErr := r.gate.Check(ctx, r.env, def, call)
+		if aErr != nil {
+			return aErr.Error(), fmt.Errorf("tool %s: %w", call.Name, aErr)
 		}
 		if ans.Value != "allow" {
 			// 拒绝作为正常工具结果返回（理由回模型，据此调整方案）。
@@ -246,4 +267,18 @@ func (r *Registry) executeOne(ctx context.Context, def *Definition, call schema.
 		return e.Error(), fmt.Errorf("tool %s: %w", call.Name, e)
 	}
 	return out, nil
+}
+
+type toolCallIDCtxKey struct{}
+
+// WithToolCallID 把当前工具调用 ID 放入 ctx（执行器调用），
+// 交互工具/审批门用它作为答复的关联键。
+func WithToolCallID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, toolCallIDCtxKey{}, id)
+}
+
+// ToolCallIDFromCtx 取出当前工具调用 ID；不存在返回 ""。
+func ToolCallIDFromCtx(ctx context.Context) string {
+	id, _ := ctx.Value(toolCallIDCtxKey{}).(string)
+	return id
 }

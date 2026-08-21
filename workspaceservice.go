@@ -52,26 +52,16 @@ func isDialogCancelled(err error) bool {
 // All subsequent agent file operations will operate within this directory.
 // Pass an empty string to reset to the default isolated workspace.
 func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
-	if !s.app.HasSession(sessionID) {
+	ctrl, ok := s.app.FindController(sessionID)
+	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
 	// Persist to meta.json
-	meta, err := s.app.SessionStore().LoadMeta(sessionID)
-	if err != nil || meta == nil {
-		return fmt.Errorf("load meta for %s: %w", sessionID, err)
+	err := ctrl.GetSessionMgr().SetWorkspaceDir(dir)
+	if err != nil {
+		return fmt.Errorf("set workspace dir: %w", err)
 	}
-	meta.CustomWorkDir = dir
-	if err := s.app.SessionStore().SaveMeta(sessionID, meta); err != nil {
-		return fmt.Errorf("save meta: %w", err)
-	}
-
-	// Emit event so frontend updates（工作区路径按需从 meta 读取，内存无需同步）
-	application.Get().Event.Emit("workspace:changed", &WorkspaceChangedEvent{
-		SessionID: sessionID,
-		Path:      dir,
-		IsCustom:  dir != "",
-	})
 
 	slog.Info("Workspace changed", "session", sessionID, "dir", dir, "custom", dir != "")
 	return nil
@@ -79,32 +69,16 @@ func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
 
 // GetWorkspaceInfo returns the current workspace info for a session.
 func (s *AgentService) GetWorkspaceInfo(sessionID string) (*WorkspaceInfo, error) {
-	if !s.app.HasSession(sessionID) {
+	ctrl, ok := s.app.FindController(sessionID)
+	if !ok {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	meta, err := s.app.SessionStore().LoadMeta(sessionID)
-	if err != nil || meta == nil {
-		return nil, fmt.Errorf("load meta: %w", err)
-	}
-
-	path := s.app.SessionStore().WorkspaceDir(sessionID)
-	isCustom := false
-	if meta.CustomWorkDir != "" {
-		path = meta.CustomWorkDir
-		isCustom = true
-	}
+	workspaceDir := ctrl.GetSessionMgr().GetWorkspaceDir()
 
 	return &WorkspaceInfo{
-		Path:     path,
-		IsCustom: isCustom,
-		Name:     filepath.Base(path),
+		Path:     workspaceDir,
+		IsCustom: true,
+		Name:     filepath.Base(workspaceDir),
 	}, nil
-}
-
-// WorkspaceChangedEvent is the payload of the "workspace:changed" event.
-type WorkspaceChangedEvent struct {
-	SessionID string `json:"sessionId"`
-	Path      string `json:"path"`
-	IsCustom  bool   `json:"isCustom"`
 }

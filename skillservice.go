@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"strings"
-
 	"tars/pkg/skills"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -11,7 +10,7 @@ import (
 
 // ListSkills returns all installed skills (frontmatter + registry metadata).
 func (s *AgentService) ListSkills() ([]*skills.SkillMeta, error) {
-	st := s.app.Skills()
+	st := s.app.GetSkillMgr()
 	if st == nil {
 		return nil, fmt.Errorf("skills store not initialized")
 	}
@@ -21,7 +20,7 @@ func (s *AgentService) ListSkills() ([]*skills.SkillMeta, error) {
 // SkillCategories returns the distinct categories seen in the registry,
 // for the install dialog's category dropdown.
 func (s *AgentService) SkillCategories() ([]string, error) {
-	st := s.app.Skills()
+	st := s.app.GetSkillMgr()
 	if st == nil {
 		return nil, fmt.Errorf("skills store not initialized")
 	}
@@ -31,7 +30,7 @@ func (s *AgentService) SkillCategories() ([]string, error) {
 // InstallSkill installs a skill from a local artifact (SKILL.md file,
 // directory, or .zip/.tar.gz archive). Returns the installed skill name.
 func (s *AgentService) InstallSkill(srcPath, category string, overwrite bool) (string, error) {
-	st := s.app.Skills()
+	st := s.app.GetSkillMgr()
 	if st == nil {
 		return "", fmt.Errorf("skills store not initialized")
 	}
@@ -44,7 +43,7 @@ func (s *AgentService) InstallSkill(srcPath, category string, overwrite bool) (s
 // UninstallSkill removes an installed skill (directory + registry entry)
 // and regenerates the index.
 func (s *AgentService) UninstallSkill(name string) error {
-	st := s.app.Skills()
+	st := s.app.GetSkillMgr()
 	if st == nil {
 		return fmt.Errorf("skills store not initialized")
 	}
@@ -54,7 +53,7 @@ func (s *AgentService) UninstallSkill(name string) error {
 // SetSkillCategory updates an installed skill's category (registry + index
 // regeneration; takes effect in the next conversation turn).
 func (s *AgentService) SetSkillCategory(name, category string) error {
-	st := s.app.Skills()
+	st := s.app.GetSkillMgr()
 	if st == nil {
 		return fmt.Errorf("skills store not initialized")
 	}
@@ -65,7 +64,7 @@ func (s *AgentService) SetSkillCategory(name, category string) error {
 // regeneration; a disabled skill is invisible to the agent: excluded from
 // the index, discovery search and load_skill).
 func (s *AgentService) SetSkillEnabled(name string, enabled bool) error {
-	st := s.app.Skills()
+	st := s.app.GetSkillMgr()
 	if st == nil {
 		return fmt.Errorf("skills store not initialized")
 	}
@@ -77,7 +76,7 @@ func (s *AgentService) SetSkillEnabled(name string, enabled bool) error {
 // so the settings page shows exactly what the model would get. An empty query
 // returns the full list.
 func (s *AgentService) SearchSkills(query string) ([]*skills.SkillMeta, error) {
-	st := s.app.Skills()
+	st := s.app.GetSkillMgr()
 	if st == nil {
 		return nil, fmt.Errorf("skills store not initialized")
 	}

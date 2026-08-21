@@ -13,6 +13,9 @@ import * as config$0 from "./internal/config/models.js";
 import * as session$0 from "./internal/session/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as mcp$0 from "./pkg/mcp/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as skills$0 from "./pkg/skills/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -36,7 +39,7 @@ export function CancelMessage(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(813006285, sessionID);
 }
 
-export function CreateSession(): $CancellablePromise<session$0.Info | null> {
+export function CreateSession(): $CancellablePromise<session$0.Data | null> {
     return $Call.ByID(98051076).then(($result: any) => {
         return $$createType1($result);
     });
@@ -90,7 +93,7 @@ export function GetModelInfo(): $CancellablePromise<$models.ModelInfo | null> {
     });
 }
 
-export function GetSession(id: string): $CancellablePromise<session$0.Info | null> {
+export function GetSession(id: string): $CancellablePromise<session$0.Data | null> {
     return $Call.ByID(2463902692, id).then(($result: any) => {
         return $$createType1($result);
     });
@@ -123,18 +126,36 @@ export function InstallSkill(srcPath: string, category: string, overwrite: boole
 }
 
 /**
+ * ListMCPServers 返回全部已配置 MCP 服务器（含禁用项与工具计数）。
+ */
+export function ListMCPServers(): $CancellablePromise<(mcp$0.ServerInfo | null)[]> {
+    return $Call.ByID(2900398080).then(($result: any) => {
+        return $$createType12($result);
+    });
+}
+
+/**
+ * ListMCPTools 返回一个服务器的缓存工具清单（未探测返回空）。
+ */
+export function ListMCPTools(server: string): $CancellablePromise<(mcp$0.ToolInfo | null)[]> {
+    return $Call.ByID(1929838067, server).then(($result: any) => {
+        return $$createType15($result);
+    });
+}
+
+/**
  * ListModels returns all configured model entries（TopicBar 切换下拉用）。
  * 按条目 ID 排序返回（map 无序，下拉列表需要确定性顺序）。
  */
 export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
     return $Call.ByID(425219254).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType16($result);
     });
 }
 
-export function ListSessions(): $CancellablePromise<(session$0.Info | null)[]> {
+export function ListSessions(): $CancellablePromise<(session$0.Data | null)[]> {
     return $Call.ByID(3651696153).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType17($result);
     });
 }
 
@@ -143,7 +164,7 @@ export function ListSessions(): $CancellablePromise<(session$0.Info | null)[]> {
  */
 export function ListSkills(): $CancellablePromise<(skills$0.SkillMeta | null)[]> {
     return $Call.ByID(2331056158).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType20($result);
     });
 }
 
@@ -154,7 +175,7 @@ export function ListSkills(): $CancellablePromise<(skills$0.SkillMeta | null)[]>
  */
 export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(2376334908, sessionID).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType22($result);
     });
 }
 
@@ -190,6 +211,23 @@ export function OpenSkillDirDialog(): $CancellablePromise<string> {
  */
 export function OpenSkillFileDialog(): $CancellablePromise<string> {
     return $Call.ByID(3156687267);
+}
+
+/**
+ * ProbeMCPServer 探测一个已启用服务器：拉起进程抓取工具清单并缓存
+ * （此后会话启动零进程，discover_tools 用缓存检索）。
+ * 服务器须已配置且启用；60s 超时（npx 类启动器首次下载可能较慢）。
+ */
+export function ProbeMCPServer(name: string): $CancellablePromise<void> {
+    return $Call.ByID(872187245, name);
+}
+
+/**
+ * RemoveMCPServer 移除一个 MCP 服务器（立即落盘生效；连接即回收，
+ * 探测缓存同步清理）。
+ */
+export function RemoveMCPServer(name: string): $CancellablePromise<void> {
+    return $Call.ByID(695157915, name);
 }
 
 export function RenameSession(id: string, title: string): $CancellablePromise<void> {
@@ -240,7 +278,7 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
  */
 export function SearchSkills(query: string): $CancellablePromise<(skills$0.SkillMeta | null)[]> {
     return $Call.ByID(1567288730, query).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType20($result);
     });
 }
 
@@ -250,6 +288,14 @@ export function SearchSkills(query: string): $CancellablePromise<(skills$0.Skill
  */
 export function SetActiveModel(id: string): $CancellablePromise<void> {
     return $Call.ByID(1916297203, id);
+}
+
+/**
+ * SetMCPServerEnabled 启用/禁用服务器（立即落盘生效；禁用后对 Agent
+ * 不可见——索引/检索/连接排除，连接即回收，配置与探测缓存保留）。
+ */
+export function SetMCPServerEnabled(name: string, enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2496346776, name, enabled);
 }
 
 /**
@@ -284,7 +330,7 @@ export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePro
  */
 export function SkillCategories(): $CancellablePromise<string[]> {
     return $Call.ByID(692754289).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType23($result);
     });
 }
 
@@ -293,7 +339,7 @@ export function SkillCategories(): $CancellablePromise<string[]> {
  */
 export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<$models.SubmitResult | null> {
     return $Call.ByID(382211931, sessionID, content).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType25($result);
     });
 }
 
@@ -305,8 +351,16 @@ export function UninstallSkill(name: string): $CancellablePromise<void> {
     return $Call.ByID(3606209071, name);
 }
 
+/**
+ * UpsertMCPServer 登记/覆盖一个 MCP 服务器（立即落盘生效；
+ * 覆盖既有服务器时其运行中连接即回收，下次调用按新配置懒重启）。
+ */
+export function UpsertMCPServer(name: string, cfg: mcp$0.ServerConfig | null): $CancellablePromise<void> {
+    return $Call.ByID(351656858, name, cfg);
+}
+
 // Private type creation functions
-const $$createType0 = session$0.Info.createFrom;
+const $$createType0 = session$0.Data.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = config$0.AppConfig.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
@@ -316,13 +370,19 @@ const $$createType6 = $models.SessionStats.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $models.WorkspaceInfo.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $Create.Array($$createType4);
-const $$createType11 = $Create.Array($$createType1);
-const $$createType12 = skills$0.SkillMeta.createFrom;
-const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = $models.FileEntry.createFrom;
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = $Create.Array($Create.Any);
-const $$createType18 = $models.SubmitResult.createFrom;
+const $$createType10 = mcp$0.ServerInfo.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = mcp$0.ToolInfo.createFrom;
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = $Create.Array($$createType4);
+const $$createType17 = $Create.Array($$createType1);
+const $$createType18 = skills$0.SkillMeta.createFrom;
 const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = $Create.Array($$createType19);
+const $$createType21 = $models.FileEntry.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = $Create.Array($Create.Any);
+const $$createType24 = $models.SubmitResult.createFrom;
+const $$createType25 = $Create.Nullable($$createType24);

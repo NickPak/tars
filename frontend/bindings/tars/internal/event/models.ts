@@ -301,6 +301,38 @@ export class ToolResultEvent {
     }
 }
 
+/**
+ * WorkspaceChangedEvent is the payload of the "workspace:changed" event.
+ */
+export class WorkspaceChangedEvent {
+    "sessionId": string;
+    "path": string;
+    "isCustom": boolean;
+
+    /** Creates a new WorkspaceChangedEvent instance. */
+    constructor($$source: Partial<WorkspaceChangedEvent> = {}) {
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("isCustom" in $$source)) {
+            this["isCustom"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkspaceChangedEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkspaceChangedEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkspaceChangedEvent($$parsedSource as Partial<WorkspaceChangedEvent>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = schema$0.UsageInfo.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);

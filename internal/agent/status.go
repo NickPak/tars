@@ -48,6 +48,10 @@ type StatusBar struct {
 	// 已加载技能名列表，每轮 Render 时从 ctx 刷新（会话级幂等状态）。
 	loadedSkills []string
 
+	// ---- MCP 工具（从 ctx 中的 MCPRuntime 读取，设计文档 3.1）----
+	// 本会话已注册的 MCP 工具名（discover_tools 命中即注册的幂等集合）。
+	loadedTools []string
+
 	// ---- counters（由循环本身维护）----
 	calls             map[string]int
 	callNames         []string // 复用的排序缓冲区，避免每轮 alloc
@@ -100,9 +104,9 @@ func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message 
 	sb.iteration = iteration
 	sb.time = nowFormatted()
 	if env := tools.EnvFromCtx(ctx); env != nil {
-		if env.WorkDir != "" {
-			sb.cwd = env.WorkDir
-			sb.git = gitStatus(ctx, env.WorkDir)
+		if env.WorkspaceDir != "" {
+			sb.cwd = env.WorkspaceDir
+			sb.git = gitStatus(ctx, env.WorkspaceDir)
 		}
 		// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
 		if env.Todo != nil {
@@ -116,6 +120,10 @@ func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message 
 		// 已加载技能：会话级幂等状态
 		if env.Skills != nil {
 			sb.loadedSkills = env.Skills.Loaded()
+		}
+		// 已注册 MCP 工具：会话级幂等集合（discover_tools 命中即注册）
+		if env.MCP != nil {
+			sb.loadedTools = env.MCP.MaterializedNames()
 		}
 	}
 	return sb.render()
@@ -180,11 +188,18 @@ func (sb *StatusBar) render() *schema.Message {
 		b.WriteString("  </todo>\n")
 	}
 
-	// ---- skills ----
+	// ---- loaded 区（设计文档 2.10：skills 与 discovered_tools 两个幂等集合）----
 	// 已加载技能（load_skill 幂等集合）：让模型明确知道哪些手册已在轨迹中。
 	if len(sb.loadedSkills) > 0 {
 		b.WriteString("  <skills loaded=\"")
 		b.WriteString(strings.Join(sb.loadedSkills, ", "))
+		b.WriteString("\"/>\n")
+	}
+	// 已注册 MCP 工具（discover_tools 命中即注册的幂等集合）：让模型明确
+	// 知道哪些外部工具已可直接调用，避免重复发现/重复注册。
+	if len(sb.loadedTools) > 0 {
+		b.WriteString("  <tools registered=\"")
+		b.WriteString(strings.Join(sb.loadedTools, ", "))
 		b.WriteString("\"/>\n")
 	}
 

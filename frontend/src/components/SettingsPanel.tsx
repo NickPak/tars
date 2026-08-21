@@ -22,6 +22,7 @@ import type { SettingsTab } from "../store/settingsStore";
 import type { AppConfig, LLMConfig, ModelConfig, ProviderConfig } from "../types";
 import { ConfirmDialog } from "./Dialog";
 import SkillsPage from "./SkillsPage";
+import MCPPage from "./MCPPage";
 
 interface NavItem {
   tab: SettingsTab;
@@ -37,13 +38,15 @@ const NAV_ITEMS: NavItem[] = [
   { tab: "agent", label: "Agent", icon: <Bot size={15} /> },
   { tab: "trace", label: "追踪", icon: <Activity size={15} /> },
   { tab: "skills", label: "技能", icon: <Sparkles size={15} /> },
-  { tab: "mcp", label: "MCP 与工具", icon: <Plug size={15} />, planned: true },
+  { tab: "mcp", label: "MCP 与工具", icon: <Plug size={15} /> },
   { tab: "appearance", label: "外观", icon: <Palette size={15} />, planned: true },
   { tab: "about", label: "关于", icon: <Info size={15} /> },
 ];
 
-/** 有真实配置读写能力的页签（其余为占位） */
-const REAL_TABS: SettingsTab[] = ["general", "model", "agent", "trace", "skills"];
+/** 有真实内容、显示底部保存条的页签（其余为占位）。
+ *  保存条是面板级的：MCP/技能列表的变更即改即存不进 draft，
+ *  但底栏在各页签间保持一致的呈现（按钮仅在有 draft 改动时可用）。 */
+const REAL_TABS: SettingsTab[] = ["general", "model", "agent", "trace", "skills", "mcp"];
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -197,18 +200,7 @@ export default function SettingsPanel() {
                 {tab === "skills" && (
                   <SkillsPage draft={draft} update={update} />
                 )}
-                {tab === "mcp" && (
-                  <PlaceholderPage
-                    icon={<Plug size={28} />}
-                    title="MCP 与工具"
-                    desc="通过 MCP 协议接入外部系统（日历、数据库、第三方 API）。"
-                    items={[
-                      "discover_tools 工具：语义检索可用工具",
-                      "服务器级索引常驻，schema 按需加载",
-                      "进程延迟启动 + 安全审查清单",
-                    ]}
-                  />
-                )}
+                {tab === "mcp" && <MCPPage />}
                 {tab === "appearance" && (
                   <PlaceholderPage
                     icon={<Palette size={28} />}

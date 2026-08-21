@@ -9,5 +9,6 @@ export {
     StreamDone,
     StreamError,
     ToolEvent,
-    ToolResultEvent
+    ToolResultEvent,
+    WorkspaceChangedEvent
 } from "./models.js";

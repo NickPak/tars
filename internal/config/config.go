@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"tars/internal/agent"
-	"tars/pkg/skills"
 	"tars/pkg/llm"
+	"tars/pkg/skills"
 	"tars/pkg/trace"
 
 	"gopkg.in/yaml.v3"
@@ -29,6 +29,9 @@ func DefaultDataDir() string {
 	return "."
 }
 
+// AppConfig 是用户应用配置（config.yaml）。
+// 注意：MCP 服务器配置不属于本结构——它与技能一样由 pkg/mcp.Manager
+// 在工作目录（<workDir>/mcp/servers.yaml）下自管读写、即改即存。
 type AppConfig struct {
 	LLM     *llm.Config    `yaml:"llm,omitempty" json:"llm,omitempty"`
 	WorkDir string         `yaml:"workDir,omitempty" json:"workDir,omitempty"`

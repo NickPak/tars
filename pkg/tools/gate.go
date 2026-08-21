@@ -2,51 +2,20 @@ package tools
 
 import (
 	"context"
-	"sync"
+	"tars/pkg/ask"
+	"tars/pkg/schema"
 )
-
-// Approver 征询用户是否放行一次危险调用。由宿主（GUI/CLI）实现；
-// nil 表示非交互（危险调用一律拒绝，安全默认）。
-type Approver interface {
-	Approve(ctx context.Context, r *ApprovalRequest) (*Answer, error)
-}
-
-// RiskTable 记录"本会话常允许"的危险操作类别（内存态，重启清空）。
-// 键形如 "run_command:rm-recursive"。并发安全。
-type RiskTable struct {
-	mu      sync.Mutex
-	allowed map[string]bool
-}
-
-// NewRiskTable 创建空的常允许表。
-func NewRiskTable() *RiskTable {
-	return &RiskTable{allowed: make(map[string]bool)}
-}
-
-// Allow 把某类危险操作记入常允许表（"本会话常允许此类"）。
-func (t *RiskTable) Allow(key string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.allowed[key] = true
-}
-
-// Allowed 报告某类危险操作是否已被用户常允许。
-func (t *RiskTable) Allowed(key string) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.allowed[key]
-}
 
 // Gate 是工具执行的权限决策门（会话级）：把"该不该执行"从"怎么执行"分离。
 // 危险分类规则见 risk.go（classifyRisk）；Gate 持有策略状态（常允许表）
 // 与用户通道（Approver）。
 type Gate struct {
-	approver Approver
+	approver ask.ApproverProvider
 	risks    *RiskTable
 }
 
 // NewGate 创建权限门。risks 为 nil 时内部自建（不跨轮共享）。
-func NewGate(approver Approver, risks *RiskTable) *Gate {
+func NewGate(approver ask.ApproverProvider, risks *RiskTable) *Gate {
 	if risks == nil {
 		risks = NewRiskTable()
 	}
@@ -57,17 +26,26 @@ func NewGate(approver Approver, risks *RiskTable) *Gate {
 // 常允许命中直接放行；无用户通道（非交互）默认拒绝；
 // 用户答复 "allow_always" 记入常允许表并视为放行。
 // 返回的 Answer 语义与历史行为一致（拒绝理由经 Reason 反馈给模型）。
-func (g *Gate) Check(ctx context.Context, req *ApprovalRequest) (*Answer, error) {
-	if g == nil || req == nil {
-		return &Answer{Value: "allow", Source: "rule"}, nil
+func (g *Gate) Check(ctx context.Context, env *Env, def *Definition, call schema.ToolCall) (*ask.Answer, error) {
+	// 声明优先：Definition.Risk 为 medium/high 时按声明拦截（MCP 工具）；
+	// 否则回落到 classifyRisk 的规则匹配（内置工具的 mode 分类不变）。
+	var req *ask.ApprovalRequest
+	if def.Risk != "" && def.Risk != RiskLevelLow {
+		req = classifyRiskWithLevel(call, def.Risk)
+	} else {
+		req = classifyRisk(call)
+	}
+
+	if req == nil {
+		return &ask.Answer{Value: "allow", Source: "rule"}, nil
 	}
 	if g.risks.Allowed(req.RiskKey) {
-		return &Answer{Value: "allow", Source: "rule"}, nil
+		return &ask.Answer{Value: "allow", Source: "rule"}, nil
 	}
 	if g.approver == nil {
-		return &Answer{Value: "deny", Reason: "no interactive session available", Source: "timeout_default"}, nil
+		return &ask.Answer{Value: "deny", Reason: "no interactive session available", Source: "timeout_default"}, nil
 	}
-	ans, err := g.approver.Approve(ctx, req)
+	ans, err := g.approver.Approve(ctx, env.Sink, env.SessionID, req)
 	if err != nil {
 		return nil, err
 	}

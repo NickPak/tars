@@ -26,8 +26,9 @@ type todoWriteArgs struct {
 // "复述计划"本身刷新注意力（Manus 的"通过复述操纵注意力"）。
 //
 // 数据流：模型调 todo_write([...]) → 框架校验并更新 TODO 状态机
-//   → 持久化到 workspace 文件（跨会话存活）
-//   → 返回确认 → 下一次注入状态栏时渲染 todo 区
+//
+//	→ 持久化到 workspace 文件（跨会话存活）
+//	→ 返回确认 → 下一次注入状态栏时渲染 todo 区
 //
 // 状态由本工具显式推进，框架不替模型改 TODO。状态栏 todo 区只是其投影。
 func TodoWrite() *Definition {
@@ -44,7 +45,7 @@ func TodoWrite() *Definition {
 			"type": "object",
 			"properties": map[string]any{
 				"todos": map[string]any{
-					"type": "array",
+					"type":        "array",
 					"description": "Complete TODO list. Every call replaces the entire list.",
 					"items": map[string]any{
 						"type": "object",
@@ -69,7 +70,7 @@ func TodoWrite() *Definition {
 			if env == nil || env.Todo == nil {
 				return "", fmt.Errorf("todo_write: no TodoStore in execution env")
 			}
-			todoStore := env.Todo
+			todoProvider := env.Todo
 
 			// 校验并转换
 			todos := make([]todo.Todo, len(args.Todos))
@@ -90,7 +91,8 @@ func TodoWrite() *Definition {
 				}
 			}
 
-			if err := todoStore.Replace(todos); err != nil {
+			err = todoProvider.Replace(todos)
+			if err != nil {
 				return "", fmt.Errorf("todo_write: persist failed: %w", err)
 			}
 

@@ -81,6 +81,8 @@ func (r *Registry) UpdateConfig(cfg *Config) error {
 	if m := cfg.ActiveModel(); m != nil && active != nil {
 		r.models[m.EntryID] = active
 	}
+	// 配置可能修复了密钥/端点：清空健康记录，给新配置一次全新尝试
+	r.ResetHealth()
 	return nil
 }
 

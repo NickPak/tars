@@ -3,6 +3,10 @@ package tools
 import (
 	"context"
 	"sync"
+	"tars/internal/event"
+	"tars/pkg/ask"
+	"tars/pkg/mcp"
+	"tars/pkg/skills"
 
 	"tars/pkg/todo"
 )
@@ -12,14 +16,24 @@ import (
 // （工作目录 / 各工具的会话级状态 / 交互通道），handler 经 EnvFromCtx
 // 一处读取；Definition 因此保持纯声明（schema + handler），可全局共享。
 type Env struct {
-	// WorkDir 工具的工作目录（文件/命令工具的路径根）。
-	WorkDir string
+	// WorkspaceDir 工具的工作目录（文件/命令工具的路径根）。
+	WorkspaceDir string
+
+	// SessionData 会话数据
+	SessionID string
+
+	// Sink 是事件的 sink，用于记录事件。
+	// 会话级状态：跨轮共享（持久终端语义），零值可用。
+	Sink event.Sink
 	// Todo 是 todo_write 的会话级状态机；nil 时 todo_write 报错。
-	Todo *todo.TodoStore
+	Todo todo.TodoProvider
 	// Asker 是 ask_user 的交互通道；nil 表示非交互（ask_user 报错）。
-	Asker Asker
+	Ask ask.AskProvider
 	// Skills 是 load_skill / discover_tools 的技能运行时；nil 时报错。
-	Skills SkillRuntime
+	Skills skills.SkillProvider
+	// MCP 是 discover_tools 的 MCP 工具通道（检索 + 命中即注册到本会话）；
+	// nil 时 discover_tools 只检索技能。
+	MCP mcp.MCPProvider
 	// TermSessions 是 run_command 的持久终端会话表（按工作目录键控）。
 	// 会话级状态：跨轮共享（持久终端语义），零值可用。
 	TermSessions sync.Map

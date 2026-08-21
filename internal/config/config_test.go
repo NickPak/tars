@@ -120,3 +120,4 @@ func TestSaveAppConfigFileMerge(t *testing.T) {
 		t.Errorf("agent/trace mismatch: %+v %+v", loaded.Agent, loaded.Trace)
 	}
 }
+

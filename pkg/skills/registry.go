@@ -81,13 +81,14 @@ func (r *Registry) Load() error {
 		r.Skills = make(map[string]*SkillMeta)
 	}
 
+	var desc string
 	for name, info := range r.Skills {
 		info.Name = name
-		raw, err := os.ReadFile(filepath.Join(r.SkillDir(name), skillFile))
+		raw, err = os.ReadFile(filepath.Join(r.SkillDir(name), skillFile))
 		if err != nil {
 			continue
 		}
-		_, desc, err := ParseFrontmatter(raw)
+		_, desc, err = ParseFrontmatter(raw)
 		if err != nil {
 			continue
 		}

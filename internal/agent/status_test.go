@@ -217,3 +217,37 @@ func TestStatusBar_TodoStalenessSkipsWhenAllDone(t *testing.T) {
 		t.Errorf("no staleness when all done/cancelled: %q", msg.Content)
 	}
 }
+
+// mockMCPRuntime 提供 MaterializedNames 数据（状态栏 tools 区测试）。
+type mockMCPRuntime struct {
+	names []string
+}
+
+func (m *mockMCPRuntime) Search(query string, limit int) ([]tools.MCPToolHit, error) {
+	return nil, nil
+}
+func (m *mockMCPRuntime) Materialize(hit tools.MCPToolHit) error { return nil }
+func (m *mockMCPRuntime) MaterializedNames() []string            { return m.names }
+
+func TestStatusBar_ToolsZone(t *testing.T) {
+	sb := NewStatusBar()
+	env := &tools.Env{MCP: &mockMCPRuntime{names: []string{"mcp__yahoo-finance__get_stock_price"}}}
+	msg := sb.Render(tools.WithEnv(context.Background(), env), 1)
+	if !strings.Contains(msg.Content, `<tools registered="mcp__yahoo-finance__get_stock_price"/>`) {
+		t.Errorf("expected <tools registered> zone: %q", msg.Content)
+	}
+}
+
+func TestStatusBar_ToolsZoneOmittedWhenEmpty(t *testing.T) {
+	sb := NewStatusBar()
+	env := &tools.Env{MCP: &mockMCPRuntime{}}
+	msg := sb.Render(tools.WithEnv(context.Background(), env), 1)
+	if strings.Contains(msg.Content, "<tools registered") {
+		t.Errorf("empty set should not render tools zone: %q", msg.Content)
+	}
+	// Env.MCP 为 nil 时同样不渲染
+	msg = sb.Render(context.Background(), 1)
+	if strings.Contains(msg.Content, "<tools registered") {
+		t.Errorf("nil MCP runtime should not render tools zone: %q", msg.Content)
+	}
+}

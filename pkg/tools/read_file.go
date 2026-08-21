@@ -39,7 +39,7 @@ func ReadFile() *Definition {
 			if err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
-			abs, err := resolveInWorkspace(args.Path, resolveWorkDir(ctx))
+			abs, err := resolveInWorkspace(args.Path, resolveWorkspaceDir(ctx))
 			if err != nil {
 				return "", err
 			}
