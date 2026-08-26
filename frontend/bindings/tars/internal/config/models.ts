@@ -13,7 +13,7 @@ import * as agent$0 from "../agent/models.js";
 import * as llm$0 from "../../pkg/llm/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as skills$0 from "../../pkg/skills/models.js";
+import * as skill$0 from "../../pkg/skill/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as trace$0 from "../../pkg/trace/models.js";
@@ -28,7 +28,7 @@ export class AppConfig {
     "workDir"?: string;
     "trace"?: trace$0.Config | null;
     "agent"?: agent$0.Config | null;
-    "skills"?: skills$0.Config | null;
+    "skills"?: skill$0.Config | null;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -68,5 +68,5 @@ const $$createType2 = trace$0.Config.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = agent$0.Config.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = skills$0.Config.createFrom;
+const $$createType6 = skill$0.Config.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);

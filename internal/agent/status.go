@@ -9,8 +9,20 @@ import (
 
 	"tars/pkg/schema"
 	"tars/pkg/todo"
-	"tars/pkg/tools"
+	"tars/pkg/tool/toolkit"
 )
+
+type SkillStatus interface {
+	Loaded() []string
+}
+
+type MCPStatus interface {
+	Loaded() []string
+}
+
+type TodoStatus interface {
+	Snapshot() ([]todo.Todo, int64)
+}
 
 // StatusBar 是 Agent 循环的状态栏：在每轮迭代前渲染一条 <agent_status>
 // 消息追加到上下文，让模型看到准确的运行时事实与执行计数。
@@ -26,31 +38,22 @@ import (
 // git 采集带 5 秒 TTL 缓存（fork 两个 git 进程太贵，不能每轮都跑）。
 //
 // 当前实现 env + todo + counters 三区；loaded/events 两区待对应功能落地后扩展。
+//
+// 会话级数据源经 StatusDeps 构造注入（消费侧窄接口：只读快照，不需要
+// 完整 Provider 契约）；nil 字段对应区块渲染为空。
 type StatusBar struct {
+	session     Session
+	todoStatus  TodoStatus
+	skillStatus SkillStatus
+	mcpStatus   MCPStatus
 	// ---- 静态字段（进程内不变，New 时初始化）----
 	// envStatic 是 env 区静态行（os/shell/python），预拼接好，
 	// render 时直接写入，不重复拼接。不含 <env></env> 标签。
 	envStatic string
 
-	// ---- 动态字段（每次 Render 时刷新）----
-	time string
-	cwd  string
-	git  string
-
-	// ---- todo（从 ctx 中的 TodoStore 读取，设计文档 2.10 数据流）----
-	// TodoStore 由宿主（turn 脚手架）组合并经 ctx 注入，与 todo_write
-	// 工具同一条链路；ctx 中没有时跳过 todo 区。
 	todos           []todo.Todo
-	todoVersion     int64 // 上次看到的 TodoStore 版本号
-	todoChangedIter int   // 版本号变化时的迭代号，用于"未更新轮数"提醒
-
-	// ---- skills（从 ctx 中的 SkillRuntime 读取，设计文档 2.6）----
-	// 已加载技能名列表，每轮 Render 时从 ctx 刷新（会话级幂等状态）。
-	loadedSkills []string
-
-	// ---- MCP 工具（从 ctx 中的 MCPRuntime 读取，设计文档 3.1）----
-	// 本会话已注册的 MCP 工具名（discover_tools 命中即注册的幂等集合）。
-	loadedTools []string
+	todoVersion     int64
+	todoChangedIter int
 
 	// ---- counters（由循环本身维护）----
 	calls             map[string]int
@@ -58,75 +61,83 @@ type StatusBar struct {
 	consecutiveErrors int
 	lastError         string
 	startTime         time.Time
-	iteration         int
 
 	// 复用的 Builder，避免每轮迭代分配
 	b strings.Builder
 }
 
 // NewStatusBar 创建状态栏：静态环境信息在此一次性采集并预拼接。
-func NewStatusBar() *StatusBar {
+func NewStatusBar(session Session, todoStatus TodoStatus, skillStatus SkillStatus, mcpStatus MCPStatus) *StatusBar {
 	sb := &StatusBar{
-		calls:     make(map[string]int),
-		callNames: make([]string, 0, 8),
-		startTime: time.Now(),
+		session:     session,
+		todoStatus:  todoStatus,
+		skillStatus: skillStatus,
+		mcpStatus:   mcpStatus,
 	}
-
-	// 预拼接 env 区静态行（os/shell/python）——这三行进程内不变
-	var sb2 strings.Builder
-	if os := tools.OSInfo(); os != "" {
-		sb2.WriteString("    os: ")
-		sb2.WriteString(os)
-		sb2.WriteByte('\n')
-	}
-	if shell := tools.ShellInfo(); shell != "" {
-		sb2.WriteString("    shell: ")
-		sb2.WriteString(shell)
-		sb2.WriteByte('\n')
-	}
-	if py := tools.PythonVersion(); py != "" {
-		sb2.WriteString("    python: ")
-		sb2.WriteString(py)
-		sb2.WriteByte('\n')
-	}
-	sb.envStatic = sb2.String()
-
-	// 预分配 Builder 容量（状态栏通常 300-500 字节）
-	sb.b.Grow(512)
 
 	return sb
 }
 
-// Render 渲染当前迭代的状态栏消息，追加到上下文尾部。
-// 动态字段（time/cwd/git）每次调用实时采集；todo/skills 数据从 ctx
-// 中的会话级执行环境（tools.Env）读取。
-func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message {
-	sb.iteration = iteration
-	sb.time = nowFormatted()
-	if env := tools.EnvFromCtx(ctx); env != nil {
-		if env.WorkspaceDir != "" {
-			sb.cwd = env.WorkspaceDir
-			sb.git = gitStatus(ctx, env.WorkspaceDir)
-		}
-		// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
-		if env.Todo != nil {
-			todos, version := env.Todo.Snapshot()
-			if version != sb.todoVersion {
-				sb.todoVersion = version
-				sb.todoChangedIter = iteration
-			}
-			sb.todos = todos
-		}
-		// 已加载技能：会话级幂等状态
-		if env.Skills != nil {
-			sb.loadedSkills = env.Skills.Loaded()
-		}
-		// 已注册 MCP 工具：会话级幂等集合（discover_tools 命中即注册）
-		if env.MCP != nil {
-			sb.loadedTools = env.MCP.MaterializedNames()
-		}
+func (sb *StatusBar) Start() {
+	sb.b.Grow(512)
+
+	// 预拼接 env 区静态行（os/shell/python）——这三行进程内不变
+	if os := toolkit.OSInfo(); os != "" {
+		sb.b.WriteString("    os: ")
+		sb.b.WriteString(os)
+		sb.b.WriteByte('\n')
 	}
-	return sb.render()
+	if shell := toolkit.ShellInfo(); shell != "" {
+		sb.b.WriteString("    shell: ")
+		sb.b.WriteString(shell)
+		sb.b.WriteByte('\n')
+	}
+	if py := toolkit.PythonVersion(); py != "" {
+		sb.b.WriteString("    python: ")
+		sb.b.WriteString(py)
+		sb.b.WriteByte('\n')
+	}
+	sb.envStatic = sb.b.String()
+	sb.b.Reset()
+
+	sb.todos = nil
+	sb.todoVersion = 0
+	sb.todoChangedIter = 0
+
+	sb.calls = make(map[string]int)
+	sb.callNames = make([]string, 0, 8)
+	sb.consecutiveErrors = 0
+	sb.lastError = ""
+	sb.startTime = time.Now()
+}
+
+func (sb *StatusBar) Stop() {
+	sb.todos = nil
+	sb.todoVersion = 0
+	sb.todoChangedIter = 0
+
+	sb.calls = nil
+	sb.callNames = nil
+	sb.consecutiveErrors = 0
+	sb.lastError = ""
+	sb.startTime = time.Time{}
+	sb.b.Reset()
+}
+
+// Render 渲染当前迭代的状态栏消息，追加到上下文尾部。
+// 动态字段（time/cwd/git）每次调用实时采集；todo/skills/tools 数据
+// 从构造注入的 StatusDeps 读取。ctx 仅用于 git 探针的超时控制。
+func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message {
+	// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
+	if sb.todoStatus != nil {
+		todos, version := sb.todoStatus.Snapshot()
+		if version != sb.todoVersion {
+			sb.todoVersion = version
+			sb.todoChangedIter = iteration
+		}
+		sb.todos = todos
+	}
+	return sb.render(ctx, iteration)
 }
 
 // RecordToolCall 在工具执行完成后更新计数器。
@@ -142,31 +153,34 @@ func (sb *StatusBar) RecordToolCall(toolName string, err error) {
 
 // render 拼装 <agent_status> 消息。直接写入复用的 Builder，
 // 不产生中间 []string 切片。
-func (sb *StatusBar) render() *schema.Message {
+func (sb *StatusBar) render(ctx context.Context, iteration int) *schema.Message {
 	b := &sb.b
 	b.Reset()
 
 	// 头部
 	b.WriteString(`<agent_status seq="`)
-	b.WriteString(strconv.Itoa(sb.iteration))
+	b.WriteString(strconv.Itoa(iteration))
 	b.WriteString(`">\n`)
 
 	// ---- env ----
 	// 统一写 <env></env> 标签，内部先动态行后静态行（预拼接）
 	b.WriteString("  <env>\n")
-	if sb.time != "" {
+	timeNow := nowFormatted()
+	if timeNow != "" {
 		b.WriteString("    time: ")
-		b.WriteString(sb.time)
+		b.WriteString(timeNow)
 		b.WriteByte('\n')
 	}
-	if sb.cwd != "" {
+	cwd := sb.session.GetWorkspaceDir()
+	if cwd != "" {
 		b.WriteString("    cwd: ")
-		b.WriteString(sb.cwd)
+		b.WriteString(cwd)
 		b.WriteByte('\n')
 	}
-	if sb.git != "" {
+	git := gitStatus(ctx, cwd)
+	if git != "" {
 		b.WriteString("    git: ")
-		b.WriteString(sb.git)
+		b.WriteString(git)
 		b.WriteByte('\n')
 	}
 	b.WriteString(sb.envStatic) // 预拼接的 os/shell/python 行
@@ -190,22 +204,24 @@ func (sb *StatusBar) render() *schema.Message {
 
 	// ---- loaded 区（设计文档 2.10：skills 与 discovered_tools 两个幂等集合）----
 	// 已加载技能（load_skill 幂等集合）：让模型明确知道哪些手册已在轨迹中。
-	if len(sb.loadedSkills) > 0 {
+	loadedSkills := sb.skillStatus.Loaded()
+	if len(loadedSkills) > 0 {
 		b.WriteString("  <skills loaded=\"")
-		b.WriteString(strings.Join(sb.loadedSkills, ", "))
+		b.WriteString(strings.Join(loadedSkills, ", "))
 		b.WriteString("\"/>\n")
 	}
 	// 已注册 MCP 工具（discover_tools 命中即注册的幂等集合）：让模型明确
 	// 知道哪些外部工具已可直接调用，避免重复发现/重复注册。
-	if len(sb.loadedTools) > 0 {
+	loadedTools := sb.mcpStatus.Loaded()
+	if len(loadedTools) > 0 {
 		b.WriteString("  <tools registered=\"")
-		b.WriteString(strings.Join(sb.loadedTools, ", "))
+		b.WriteString(strings.Join(loadedTools, ", "))
 		b.WriteString("\"/>\n")
 	}
 
 	// ---- counters ----
 	b.WriteString("  <counters>\n    iteration: ")
-	b.WriteString(strconv.Itoa(sb.iteration))
+	b.WriteString(strconv.Itoa(iteration))
 	b.WriteString(" · elapsed: ")
 	b.WriteString(formatElapsed(time.Since(sb.startTime).Round(time.Second)))
 	b.WriteByte('\n')
@@ -249,7 +265,7 @@ func (sb *StatusBar) render() *schema.Message {
 				pending++
 			}
 		}
-		stale := sb.iteration - sb.todoChangedIter
+		stale := iteration - sb.todoChangedIter
 		if stale >= 3 && pending > 0 {
 			b.WriteString("    todo: unchanged for ")
 			b.WriteString(strconv.Itoa(stale))
@@ -303,20 +319,9 @@ func countLines(data []byte) int {
 	return count
 }
 
-// nowFormatted 返回当前时间的格式化字符串。
-// 用 strconv 拼接而非 time.Format 减少反射开销。
+// nowFormatted 返回当前时间的格式化字符串（含 ISO8601 时区偏移）。
 func nowFormatted() string {
-	t := time.Now()
-	_, offset := t.Zone()
-	sign := "+"
-	if offset < 0 {
-		sign = "-"
-		offset = -offset
-	}
-	h := offset / 3600
-	m := (offset % 3600) / 60
-	return t.Format("2006-01-02 15:04:05 ") + sign +
-		pad2(h) + ":" + pad2(m)
+	return time.Now().Format("2006-01-02 15:04:05 -07:00")
 }
 
 // pad2 补零到两位。

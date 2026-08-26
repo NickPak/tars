@@ -50,8 +50,8 @@ func TestRegistry_SaveLoadRoundTrip(t *testing.T) {
 func TestProbe_EndToEnd(t *testing.T) {
 	workDir := t.TempDir()
 
-	m, err := NewManager(workDir)
-	if err != nil {
+	m := NewManager(workDir)
+	if err := m.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.UpsertServer("spike", &ServerConfig{
@@ -92,8 +92,8 @@ func TestProbe_EndToEnd(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(m.RootDir(), registryFile)); err != nil {
 		t.Fatalf("registry file not written: %v", err)
 	}
-	m2, err := NewManager(workDir)
-	if err != nil {
+	m2 := NewManager(workDir)
+	if err := m2.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	if got := m2.Tools("spike"); len(got) != 2 {

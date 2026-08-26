@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"tars/internal/event"
+	"tars/pkg/event"
 	"tars/pkg/trace"
 
 	oteltrace "go.opentelemetry.io/otel/trace"

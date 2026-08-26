@@ -1,8 +1,7 @@
 // Package mcp 是 MCP（Model Context Protocol）能力供给渠道：
 // 服务器配置、探测缓存（工具清单注册表）、懒启动连接池与工具检索。
-// 工具被实例化（包装 tools.Definition、注册进会话 Registry）后即为普通
-// 工具，审批/并发/执行复用 tools 包机制——tools 是 sink 不是 source，
-// 本包单向依赖 pkg/tools，不被其反向依赖。
+// 命中工具由装配层（internal/boot）包装为 tool.Definition 并注册进
+// 会话 Registry——本包不认识工具系统（零工具依赖的能力源）。
 package mcp
 
 import (

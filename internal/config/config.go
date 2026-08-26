@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"tars/internal/agent"
 	"tars/pkg/llm"
-	"tars/pkg/skills"
+	"tars/pkg/skill"
 	"tars/pkg/trace"
 
 	"gopkg.in/yaml.v3"
@@ -33,11 +33,11 @@ func DefaultDataDir() string {
 // 注意：MCP 服务器配置不属于本结构——它与技能一样由 pkg/mcp.Manager
 // 在工作目录（<workDir>/mcp/servers.yaml）下自管读写、即改即存。
 type AppConfig struct {
-	LLM     *llm.Config    `yaml:"llm,omitempty" json:"llm,omitempty"`
-	WorkDir string         `yaml:"workDir,omitempty" json:"workDir,omitempty"`
-	Trace   *trace.Config  `yaml:"trace,omitempty" json:"trace,omitempty"`
-	Agent   *agent.Config  `yaml:"agent,omitempty" json:"agent,omitempty"`
-	Skills  *skills.Config `yaml:"skills,omitempty" json:"skills,omitempty"`
+	LLM     *llm.Config   `yaml:"llm,omitempty" json:"llm,omitempty"`
+	WorkDir string        `yaml:"workDir,omitempty" json:"workDir,omitempty"`
+	Trace   *trace.Config `yaml:"trace,omitempty" json:"trace,omitempty"`
+	Agent   *agent.Config `yaml:"agent,omitempty" json:"agent,omitempty"`
+	Skills  *skill.Config `yaml:"skills,omitempty" json:"skills,omitempty"`
 }
 
 func Get() *AppConfig {
@@ -79,7 +79,7 @@ func (c *AppConfig) Validate() error {
 		c.WorkDir = DefaultDataDir()
 	}
 	if c.Skills == nil {
-		c.Skills = &skills.Config{}
+		c.Skills = &skill.Config{}
 	}
 	c.Skills.Validate()
 	if c.LLM != nil {

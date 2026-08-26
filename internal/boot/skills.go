@@ -2,37 +2,53 @@ package boot
 
 import (
 	"tars/internal/session"
-	"tars/pkg/skills"
+	"tars/pkg/schema"
+	"tars/pkg/skill"
 )
 
-// skillRuntime 实现 tools.SkillRuntime：读 SKILL.md 走 skills.Manager，
+// SkillProvider 实现 skills.SkillProvider：读 SKILL.md 走 skills.Manager，
 // "已加载"幂等状态走会话级 Info.LoadedSkills。
-type skillRuntime struct {
-	mgr  *skills.Manager
+type SkillProvider struct {
+	mgr  *skill.Manager
 	sess *session.Manager
 }
 
-func newSkillRuntime(mgr *skills.Manager, sess *session.Manager) *skillRuntime {
-	return &skillRuntime{mgr: mgr, sess: sess}
+func NewSkillProvider(mgr *skill.Manager, sess *session.Manager) *SkillProvider {
+	return &SkillProvider{mgr: mgr, sess: sess}
 }
 
-func (r *skillRuntime) Load(name string) (string, error) {
+func (r *SkillProvider) Startup() error {
+	return nil
+}
+
+func (r *SkillProvider) Shutdown() error {
+	return nil
+}
+
+func (r *SkillProvider) GetSystemMessage() *schema.Message {
+	return &schema.Message{
+		Role:    schema.RoleSystem,
+		Content: r.mgr.RenderIndex(),
+	}
+}
+
+func (r *SkillProvider) Load(name string) (string, error) {
 	return r.mgr.LoadSkill(name)
 }
 
-func (r *skillRuntime) IsLoaded(name string) bool {
+func (r *SkillProvider) IsLoaded(name string) bool {
 	return r.sess.IsSkillLoaded(name)
 }
 
-func (r *skillRuntime) MarkLoaded(name string) {
+func (r *SkillProvider) MarkLoaded(name string) {
 	r.sess.MarkSkillLoaded(name)
 }
 
-func (r *skillRuntime) Loaded() []string {
+func (r *SkillProvider) Loaded() []string {
 	return r.sess.LoadedSkillNames()
 }
 
-func (r *skillRuntime) Search(query string, limit int) ([]skills.SkillSummary, error) {
+func (r *SkillProvider) Search(query string, limit int) ([]skill.SkillSummary, error) {
 	if r.mgr == nil {
 		return nil, nil
 	}
@@ -40,18 +56,18 @@ func (r *skillRuntime) Search(query string, limit int) ([]skills.SkillSummary, e
 	if err != nil {
 		return nil, err
 	}
-	out := make([]skills.SkillSummary, len(hits))
+	out := make([]skill.SkillSummary, len(hits))
 	for i, h := range hits {
-		out[i] = skills.SkillSummary{Name: h.Name, Description: h.Description, Category: h.Category}
+		out[i] = skill.SkillSummary{Name: h.Name, Description: h.Description, Category: h.Category}
 	}
 	return out, nil
 }
 
-func (r *skillRuntime) SearchLimit() int {
+func (r *SkillProvider) SearchLimit() int {
 	if r.mgr == nil || r.mgr.GetConfig() == nil {
-		return skills.DefaultDiscoverResultLimit
+		return skill.DefaultDiscoverResultLimit
 	}
 	return r.mgr.GetConfig().DiscoverResultLimit
 }
 
-var _ skills.SkillProvider = (*skillRuntime)(nil)
+var _ skill.SkillProvider = (*SkillProvider)(nil)

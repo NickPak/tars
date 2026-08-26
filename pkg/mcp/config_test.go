@@ -11,8 +11,8 @@ import (
 // 与运行期同一写入路径）。
 func newTestManager(t *testing.T, servers map[string]*ServerConfig) *Manager {
 	t.Helper()
-	m, err := NewManager(t.TempDir())
-	if err != nil {
+	m := NewManager(t.TempDir())
+	if err := m.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	for name, srv := range servers {
@@ -80,8 +80,8 @@ func TestManagerListEnabled(t *testing.T) {
 // （不在加载/保存层展开，写回不泄露密钥）。
 func TestServersFile_Persistence(t *testing.T) {
 	workDir := t.TempDir()
-	m, err := NewManager(workDir)
-	if err != nil {
+	m := NewManager(workDir)
+	if err := m.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.CloseAll)
@@ -106,8 +106,8 @@ func TestServersFile_Persistence(t *testing.T) {
 	}
 
 	// 重开 Manager：配置回来（模拟重启）
-	m2, err := NewManager(workDir)
-	if err != nil {
+	m2 := NewManager(workDir)
+	if err := m2.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m2.CloseAll)
@@ -124,8 +124,8 @@ func TestServersFile_Persistence(t *testing.T) {
 }
 
 func TestUpsertServer(t *testing.T) {
-	m, err := NewManager(t.TempDir())
-	if err != nil {
+	m := NewManager(t.TempDir())
+	if err := m.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.CloseAll)
@@ -168,8 +168,8 @@ func TestUpsertServer(t *testing.T) {
 
 func TestSetEnabled(t *testing.T) {
 	workDir := t.TempDir()
-	m, err := NewManager(workDir)
-	if err != nil {
+	m := NewManager(workDir)
+	if err := m.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.CloseAll)
@@ -192,8 +192,8 @@ func TestSetEnabled(t *testing.T) {
 	}
 
 	// 磁盘同步：重开后仍禁用
-	m2, err := NewManager(workDir)
-	if err != nil {
+	m2 := NewManager(workDir)
+	if err := m2.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m2.CloseAll)
@@ -204,8 +204,8 @@ func TestSetEnabled(t *testing.T) {
 
 func TestRemoveServer(t *testing.T) {
 	workDir := t.TempDir()
-	m, err := NewManager(workDir)
-	if err != nil {
+	m := NewManager(workDir)
+	if err := m.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.CloseAll)
@@ -230,8 +230,8 @@ func TestRemoveServer(t *testing.T) {
 	}
 
 	// 磁盘同步：重开后 drop 不在、keep 仍在
-	m2, err := NewManager(workDir)
-	if err != nil {
+	m2 := NewManager(workDir)
+	if err := m2.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m2.CloseAll)

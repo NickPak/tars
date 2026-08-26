@@ -3,11 +3,11 @@ package session
 import (
 	"log/slog"
 	"slices"
-	"tars/pkg/tools"
 	"time"
 
-	"tars/internal/event"
+	"tars/pkg/event"
 	"tars/pkg/schema"
+	"tars/pkg/tool/guard"
 
 	"github.com/google/uuid"
 )
@@ -21,8 +21,8 @@ type Manager struct {
 	data *Data
 
 	// risks 是"本会话常允许"的危险操作常允许表（内存态，重启清空），
-	// 由 tools.Gate 消费；会话级载体，跨轮共享。
-	risks *tools.RiskTable
+	// 由 guard.Gate 消费；会话级载体，跨轮共享。
+	risks *guard.RiskTable
 	// LoadedSkills 记录本会话已 load_skill 的技能（内存态，跨轮幂等，
 	// 重启清空）。状态栏据此展示"已加载技能"。
 	LoadedSkills map[string]bool
@@ -36,10 +36,18 @@ type Manager struct {
 func NewManager(data *Data, sink event.Sink) *Manager {
 	return &Manager{
 		data:         data,
-		risks:        tools.NewRiskTable(),
+		risks:        guard.NewRiskTable(),
 		LoadedSkills: make(map[string]bool),
 		sink:         sink,
 	}
+}
+
+func (s *Manager) Startup() error {
+	return nil
+}
+
+func (s *Manager) Shutdown() error {
+	return nil
 }
 
 func (s *Manager) GetID() string {
@@ -87,8 +95,8 @@ func (s *Manager) SetWorkspaceDir(dir string) error {
 }
 
 // RiskTable 返回会话级常允许表（惰性创建；重启清空）。
-// 装配工具权限门（tools.NewGate）时注入。
-func (s *Manager) RiskTable() *tools.RiskTable {
+// 装配工具权限门（guard.NewGate）时注入。
+func (s *Manager) RiskTable() *guard.RiskTable {
 	return s.risks
 }
 

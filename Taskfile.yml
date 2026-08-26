@@ -19,6 +19,16 @@ includes:
   android: ./build/android/Taskfile.yml
 
 tasks:
+  test:
+    summary: Runs all Go tests, including architecture guards (internal/arch)
+    cmds:
+      - go test ./...
+
+  vet:
+    summary: Runs go vet over all packages
+    cmds:
+      - go vet ./...
+
   build:
     summary: Builds the application
     cmds:

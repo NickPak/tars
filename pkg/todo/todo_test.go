@@ -7,7 +7,7 @@ import (
 )
 
 func TestTodoStore_LoadMissingFile(t *testing.T) {
-	s := NewTodoStore("/nonexistent")
+	s := NewManager("/nonexistent")
 	if err := s.Load(); err != nil {
 		t.Fatalf("Load on missing file should not error: %v", err)
 	}
@@ -20,7 +20,7 @@ func TestTodoStore_LoadMissingFile(t *testing.T) {
 func TestTodoStore_PersistAndReload(t *testing.T) {
 	dir := t.TempDir()
 
-	s1 := NewTodoStore(dir)
+	s1 := NewManager(dir)
 	todos := []Todo{
 		{ID: "1", Content: "Step one", Status: TodoCompleted},
 		{ID: "2", Content: "Step two", Status: TodoInProgress},
@@ -36,7 +36,7 @@ func TestTodoStore_PersistAndReload(t *testing.T) {
 	}
 
 	// 新实例加载
-	s2 := NewTodoStore(dir)
+	s2 := NewManager(dir)
 	if err := s2.Load(); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestTodoStore_PersistAndReload(t *testing.T) {
 }
 
 func TestTodoStore_VersionIncrementsOnReplace(t *testing.T) {
-	s := NewTodoStore("")
+	s := NewManager("")
 	_, v0 := s.Snapshot()
 
 	s.Replace([]Todo{{ID: "1", Content: "A", Status: TodoPending}})
@@ -67,7 +67,7 @@ func TestTodoStore_VersionIncrementsOnReplace(t *testing.T) {
 }
 
 func TestTodoStore_SnapshotIsCopy(t *testing.T) {
-	s := NewTodoStore("")
+	s := NewManager("")
 	s.Replace([]Todo{{ID: "1", Content: "A", Status: TodoPending}})
 
 	snap, _ := s.Snapshot()
@@ -81,7 +81,7 @@ func TestTodoStore_SnapshotIsCopy(t *testing.T) {
 }
 
 func TestTodoStore_EmptyFilePathSkipsPersist(t *testing.T) {
-	s := NewTodoStore("")
+	s := NewManager("")
 	if err := s.Replace([]Todo{{ID: "1", Content: "A", Status: TodoPending}}); err != nil {
 		t.Fatalf("Replace with empty path should not error: %v", err)
 	}

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"tars/internal/event"
+	"tars/pkg/event"
 
 	"github.com/baidubce/bce-sdk-go/util/log"
 	"github.com/wailsapp/wails/v3/pkg/application"

@@ -6,13 +6,13 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"tars/pkg/tool/kernel"
 	"testing"
 	"time"
 
-	"tars/internal/event"
+	"tars/pkg/event"
 	"tars/pkg/llm"
 	"tars/pkg/schema"
-	"tars/pkg/tools"
 )
 
 // stubProvider streams canned responses, one per call (cycled). If errs[i] is
@@ -71,6 +71,9 @@ type fakeSession struct {
 	msgs []*schema.Message
 }
 
+func (s *fakeSession) GetID() string           { return "test-session" }
+func (s *fakeSession) GetWorkspaceDir() string { return "" }
+
 func (s *fakeSession) History() []*schema.Message {
 	out := make([]*schema.Message, len(s.msgs))
 	copy(out, s.msgs)
@@ -104,18 +107,26 @@ func (s *fakeSession) byRole(r schema.Role) []*schema.Message {
 	return out
 }
 
-// newTestRegistry builds a real tools.Registry (builtins + the given custom
-// handlers registered into the session view). Registry.Execute already provides
+// testCarrier 是测试用的实名载体：持有一组 handler 映射产出的 Definition。
+type testCarrier struct {
+	defs []*kernel.Definition
+}
+
+func (c *testCarrier) Definitions() []*kernel.Definition { return c.defs }
+func (c *testCarrier) Close() error                      { return nil }
+
+// newTestRegistry builds a real tool.Registry (the given custom handlers
+// registered into an empty kernel registry). Registry.Execute already provides
 // parallel execution, panic recovery, and unknown-tool handling — so tests
 // exercise the production path.
-func newTestRegistry(handlers map[string]tools.Handler) *tools.Registry {
-	r := tools.NewRegistry(nil, nil)
+func newTestRegistry(handlers map[string]kernel.Handler) *kernel.Registry {
+	r := kernel.NewRegistry(nil)
 	for name, h := range handlers {
-		r.Register(&tools.Definition{
+		r.Register(&testCarrier{defs: []*kernel.Definition{{
 			Name:       name,
 			Parameters: map[string]any{"type": "object"},
-			Handler:   h,
-		})
+			Handler:    h,
+		}}})
 	}
 	return r
 }
@@ -147,15 +158,24 @@ func (s *recordingSink) toolResults() []string {
 	return out
 }
 
-func newTestAgent(reg *tools.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
-	return NewReAct(Options{
-		System:    func() []*schema.Message { return nil },
-		Registry:  reg,
-		Session:   sess,
-		Sink:      sink,
-		SessionID: "test-session",
-		Limits:    func() Limits { return Limits{MaxIterations: maxIter} },
-	})
+// fakeComposer 是 prompt.Composer 的测试实现（空 system 消息）。
+type fakeComposer struct{}
+
+func (fakeComposer) GetSystemMessage() []*schema.Message { return nil }
+
+// fakeSkillStatus 是 SkillStatus 的测试实现（无已加载技能）。
+type fakeSkillStatus struct{}
+
+func (fakeSkillStatus) Loaded() []string { return nil }
+
+func newTestAgent(reg *kernel.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
+	cfg := &Config{MaxIterations: maxIter}
+	cfg.Validate()
+	a := NewReAct(cfg, fakeComposer{}, sess, sink, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{})
+	if err := a.Startup(); err != nil {
+		panic(err)
+	}
+	return a
 }
 
 // runTurn 以固定 assistantID 跑一轮（provider 作为轮级输入）。
@@ -199,7 +219,7 @@ func TestRun_OneToolRound(t *testing.T) {
 		}},
 		{Role: schema.RoleAssistant, Content: "done"},
 	}}
-	reg := newTestRegistry(map[string]tools.Handler{
+	reg := newTestRegistry(map[string]kernel.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "abc", nil },
 	})
 	sess := &fakeSession{}
@@ -259,7 +279,7 @@ func TestRun_ToolPanicRecovered(t *testing.T) {
 		}},
 		{Role: schema.RoleAssistant, Content: "ok"},
 	}}
-	reg := newTestRegistry(map[string]tools.Handler{
+	reg := newTestRegistry(map[string]kernel.Handler{
 		"boom": func(ctx context.Context, args json.RawMessage) (string, error) { panic("exploded") },
 	})
 	sess := &fakeSession{}
@@ -281,7 +301,7 @@ func TestRun_MaxIterationsExceeded(t *testing.T) {
 		{ID: "call_1", Name: "echo", Args: "{}"},
 	}}
 	m := &stubProvider{responses: []*schema.Message{tcMsg}}
-	reg := newTestRegistry(map[string]tools.Handler{
+	reg := newTestRegistry(map[string]kernel.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "x", nil },
 	})
 	a := newTestAgent(reg, &fakeSession{}, &recordingSink{}, 2)
@@ -332,16 +352,13 @@ func TestRun_ProviderErrorFailsFast(t *testing.T) {
 }
 
 func TestRun_IterationTimeout(t *testing.T) {
-	a := NewReAct(Options{
-		System:    func() []*schema.Message { return nil },
-		Registry:  newTestRegistry(nil),
-		Session:   &fakeSession{},
-		Sink:      &recordingSink{},
-		SessionID: "test-session",
-		Limits: func() Limits {
-			return Limits{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
-		},
-	})
+	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
+	cfg.Validate()
+	a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, &recordingSink{},
+		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
+	if err := a.Startup(); err != nil {
+		t.Fatal(err)
+	}
 
 	start := time.Now()
 	_, err := runTurn(a, context.Background(), "go", &stuckProvider{})

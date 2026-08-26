@@ -69,6 +69,14 @@ func NewManager(baseDir string) *Manager {
 	return &Manager{filePath: filePath}
 }
 
+func (s *Manager) Startup() error {
+	return s.Load()
+}
+
+func (s *Manager) Shutdown() error {
+	return s.Save()
+}
+
 // Load 从磁盘读取 TODO 状态。文件不存在时静默返回 nil（新会话）。
 func (s *Manager) Load() error {
 	data, err := os.ReadFile(s.filePath)

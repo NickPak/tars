@@ -7,24 +7,27 @@ import (
 	"log/slog"
 	"sync"
 	"tars/pkg/ask"
+	"tars/pkg/skill"
+	"tars/pkg/tool/kernel"
+	"tars/pkg/tool/toolkit"
 	"time"
 
 	"tars/internal/agent"
 	"tars/internal/config"
-	"tars/internal/event"
 	"tars/internal/session"
+	"tars/pkg/event"
 	"tars/pkg/llm"
 	"tars/pkg/mcp"
+	"tars/pkg/sandbox"
 	"tars/pkg/schema"
-	"tars/pkg/skills"
 	"tars/pkg/todo"
-	"tars/pkg/tools"
+	"tars/pkg/tool/guard"
 
 	"github.com/google/uuid"
 )
 
-// Controller 是一个会话的完整封装：会话级组件（执行环境 Env/工具执行器/
-// 权限门/交互通道）在此组装并跨轮复用；对外只做一件事——跑一轮。
+// Controller 是一个会话的完整封装：会话级组件（工具执行器/权限门/
+// 交互通道）在此组装并跨轮复用；对外只做一件事——跑一轮。
 // 轮的运行态（cancel 标记）也由 Controller 持有：goroutine 在此创建，
 // Info 只是数据。
 //
@@ -34,90 +37,167 @@ import (
 // 事件出口：Controller 只认一个 sink（deps.NewSink 装配好的会话级出口），
 // 有多少订阅者（UI/trace/…）、如何组合，由外部决定。
 type Controller struct {
+	cfg        *config.AppConfig
+	sink       event.Sink
+	llmMgr     *llm.Manager
+	mu         sync.Mutex
+	cancel     context.CancelFunc
 	sessionMgr *session.Manager
-	sink       event.Sink // 会话级事件出口（装配层组合，含 UI/trace 等订阅者）
-	// cancel 非 nil 表示有运行中的轮（运行标记 + 取消通道）。
-	mu      sync.Mutex
-	cancel  context.CancelFunc
-	toolReg *tools.Registry
-	env     *tools.Env
-	// agent 会话级 ReAct 循环（跨轮复用）。
-	agent agent.Agent
-	// LLM 模型注册表（Active/SetHealthy）。
-	llmReg *llm.Registry
-	// SysMsg 静态系统提示词。
-	sysMsg *schema.Message
-	// Skills 技能管理器（技能索引与运行时委托）。
-	skillMgr *skills.Manager
-	// MCP 服务器管理器（服务器级索引与懒连接）。
-	mcpMgr *mcp.Manager
-	// Asks 答复通道注册表（跨会话共享）。
-	askReg *ask.Registry
+	todoMgr    *todo.Manager
+	skillPv    *SkillProvider
+	sandbox    *sandbox.NativeFs
+	prompt     *PromptCompose
+	gate       *guard.Gate
+	toolReg    *kernel.Registry
+	mcpPv      *McpProvider
+	agent      agent.Agent
 }
 
 // NewController 组装会话级组件：事件出口、TODO 状态机、交互通道、
-// 工具执行器（进程级目录 + 会话级 Env + 权限门 Gate）。
-func NewController(data *session.Data, sink event.Sink, llmReg *llm.Registry, sysMsg *schema.Message, skillMgr *skills.Manager, mcpMgr *mcp.Manager, askReg *ask.Registry) *Controller {
-	sessionMgr := session.NewManager(data, sink)
-
-	// 会话级 TODO 状态机：todo_write 工具与 agent 状态栏经 Env 读取。
-	todoMgr := todo.NewManager(sessionMgr.GetSessionDir())
-	if err := todoMgr.Load(); err != nil {
-		slog.Warn("failed to load todo store", "session", data.ID, "error", err)
-	}
-
-	skillRuntime := newSkillRuntime(skillMgr, sessionMgr)
-
-	// 每会话工具执行器：进程级目录 + 会话级执行环境（Env）+ 权限门（Gate）。
-	env := &tools.Env{
-		WorkspaceDir: sessionMgr.GetWorkspaceDir(),
-		Todo:         todoMgr,
-		Ask:          askReg,
-		Skills:       skillRuntime,
-	}
-
-	toolReg := tools.NewRegistry(env, tools.NewGate(askReg, sessionMgr.RiskTable()))
-
-	// MCP 通道：闭包捕获会话 Registry（动态注册归宿）；无 MCP 时为 nil。
-	env.MCP = newMCPRuntime(mcpMgr, toolReg)
-
+// 工具执行器（构造器注入依赖 + 权限门 Gate）。
+func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, llmMgr *llm.Manager, skillMgr *skill.Manager, mcpMgr *mcp.Manager, askMgr *ask.Manager) *Controller {
 	c := &Controller{
-		sessionMgr: sessionMgr,
+		cfg:        cfg,
 		sink:       sink,
+		llmMgr:     llmMgr,
 		mu:         sync.Mutex{},
 		cancel:     nil,
-		toolReg:    toolReg,
-		env:        env,
+		sessionMgr: nil,
+		todoMgr:    nil,
+		gate:       nil,
+		toolReg:    nil,
+		sandbox:    nil,
+		prompt:     nil,
+		skillPv:    nil,
+		mcpPv:      nil,
 		agent:      nil,
-		llmReg:     llmReg,
-		sysMsg:     sysMsg,
-		skillMgr:   skillMgr,
-		mcpMgr:     mcpMgr,
-		askReg:     askReg,
 	}
+
+	c.sessionMgr = session.NewManager(data, sink)
+
+	c.todoMgr = todo.NewManager(c.sessionMgr.GetSessionDir())
+
+	c.gate = guard.NewGate(askMgr, c.sessionMgr.RiskTable(), sink, c.sessionMgr.GetID())
+
+	c.toolReg = kernel.NewRegistry(c.gate)
+
+	c.sandbox = sandbox.NewNativeFs(c.sessionMgr)
+
+	c.skillPv = NewSkillProvider(skillMgr, c.sessionMgr)
+
+	// MCP 通道：闭包捕获会话 Registry（动态注册归宿）；无 MCP 时为 nil。
+	c.mcpPv = NewMCPProvider(mcpMgr, c.toolReg)
+
+	toolkit.RegisterBuiltinTools(c.toolReg, c.sandbox, c.todoMgr, askMgr, c.skillPv, c.mcpPv)
+
+	c.prompt = NewPromptCompose(c.toolReg, c.skillPv, c.mcpPv)
+
 	// 会话级 agent：跨轮复用（会话级依赖构造注入；模型/消息 ID 等轮级
 	// 输入经 Run 参数传入；配置热更新经 Limits 每轮解析）。
-	c.agent = agent.NewReAct(agent.Options{
-		System:       c.systemMessages,
-		ToolRegistry: c.toolReg,
-		Session:      sessionMgr,
-		Sink:         sink,
-		Limits: func() agent.Limits {
-			cfg := config.Get()
-			return agent.Limits{
-				MaxIterations:    cfg.Agent.MaxIterations,
-				IterationTimeout: cfg.Agent.IterationTimeout,
-			}
-		},
-	})
+	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, c.todoMgr, c.skillPv, c.mcpPv)
 	return c
 }
 
 func (c *Controller) Startup() error {
+	err := c.sessionMgr.Startup()
+	if err != nil {
+		slog.Warn("failed to startup session manager", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.todoMgr.Startup()
+	if err != nil {
+		slog.Warn("failed to startup todo manager", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.gate.Startup()
+	if err != nil {
+		slog.Error("failed to startup gate", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.sandbox.Startup()
+	if err != nil {
+		slog.Error("failed to start up sandbox", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.prompt.Startup()
+	if err != nil {
+		slog.Error("failed to start up prompt compose", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.skillPv.Startup()
+	if err != nil {
+		slog.Error("failed to start up skill provider", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.mcpPv.Startup()
+	if err != nil {
+		slog.Error("failed to start up mcp provider", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.agent.Startup()
+	if err != nil {
+		slog.Error("failed to start up agent", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
 	return nil
 }
 
 func (c *Controller) Shutdown() error {
+	err := c.agent.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown agent", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.mcpPv.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown mcp provider", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.skillPv.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown skill provider", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.prompt.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown prompt compose", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.sandbox.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown sandbox", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.gate.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown gate", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.todoMgr.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown todo manager", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
+
+	err = c.sessionMgr.Shutdown()
+	if err != nil {
+		slog.Error("failed to shutdown session manager", "session", c.sessionMgr.GetID(), "error", err)
+		return err
+	}
 	return nil
 }
 
@@ -199,7 +279,7 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 
 	sink := c.sink
 
-	chatModel, modelCfg, err := c.llmReg.Active()
+	chatModel, modelCfg, err := c.llmMgr.Active()
 	if err != nil {
 		EmitError(sink, c.sessionMgr.GetID(), assistantID, err, "", 0)
 		return
@@ -212,18 +292,21 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 		return
 	}
 
-	// 每轮刷新工作目录（会话运行期间用户可能改了自定义 workDir）。
-	c.env.WorkspaceDir = c.sessionMgr.GetWorkspaceDir()
-
 	// 轮开始事件：轮级元信息经载荷传给 trace 等订阅者（它们据此建立
 	// 轮级状态）。Controller 不关心外部有哪些订阅者。
-	sink.Emit(event.Event{Kind: event.KindTurnStarted, Turn: &event.TurnEvent{
-		SessionID: c.sessionMgr.GetID(), MessageID: assistantID, UserText: userText,
-		ModelID: modelCfg.ModelId, System: c.sysContent(),
-		ToolSchemas: c.toolReg.ToolSchemasJSON(),
-	}})
+	sink.Emit(event.Event{
+		Kind: event.KindTurnStarted,
+		Turn: &event.TurnEvent{
+			SessionID:   c.sessionMgr.GetID(),
+			MessageID:   assistantID,
+			UserText:    userText,
+			ModelID:     modelCfg.ModelId,
+			System:      c.prompt.GetBaseMessage().Content,
+			ToolSchemas: c.toolReg.ToolSchemasJSON(),
+		},
+	})
 
-	result, err := c.agent.Run(ctx, userText, assistantID, provider)
+	result, err := c.agent.Run(ctx, assistantID, provider)
 	elapsedMs := elapsed()
 
 	var finalOutput string
@@ -241,7 +324,7 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 				ElapsedMs: elapsedMs, FinalOutput: finalOutput,
 			}})
 		} else {
-			c.llmReg.SetHealthy(modelCfg.EntryID, false)
+			c.llmMgr.SetHealthy(modelCfg.EntryID, false)
 			// 迭代超时单独分类，前端据此给出针对性提示（"provider 拥塞，重试？"）。
 			kind := "error"
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -250,7 +333,7 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 			EmitError(sink, c.sessionMgr.GetID(), assistantID, err, kind, elapsedMs)
 		}
 	} else {
-		c.llmReg.SetHealthy(modelCfg.EntryID, true)
+		c.llmMgr.SetHealthy(modelCfg.EntryID, true)
 		sink.Emit(event.Event{Kind: event.KindDone, Done: &event.StreamDone{
 			SessionID: c.sessionMgr.GetID(), MessageID: assistantID, Usage: usage,
 			ElapsedMs: elapsedMs, FinalOutput: finalOutput,
@@ -269,33 +352,4 @@ func EmitError(sink event.Sink, sessionID, messageID string, err error, kind str
 		SessionID: sessionID, MessageID: messageID, Error: err.Error(), Kind: kind,
 		ElapsedMs: elapsedMs,
 	}})
-}
-
-// systemMessages 构建本轮的 system 消息列表：静态提示词 + 技能索引 +
-// MCP 服务器索引（后两者动态）。
-// 纯函数、每轮重建，无缓存即无失效同步问题；装/卸技能、启停 MCP 服务器
-// 对下一轮立即生效。顺序即缓存前缀顺序：静态提示词 → skills 索引 → MCP 索引
-// （最稳定的排最前）。
-func (c *Controller) systemMessages() []*schema.Message {
-	var sys []*schema.Message
-	if sm := c.sysMsg; sm != nil {
-		sys = append(sys, sm)
-	}
-	if idx := c.skillMgr.RenderIndex(); idx != "" {
-		sys = append(sys, &schema.Message{Role: schema.RoleSystem, Content: idx})
-	}
-	if c.mcpMgr != nil {
-		if idx := c.mcpMgr.RenderIndex(); idx != "" {
-			sys = append(sys, &schema.Message{Role: schema.RoleSystem, Content: idx})
-		}
-	}
-	return sys
-}
-
-// sysContent 返回静态系统提示词全文（trace 展示用）。
-func (c *Controller) sysContent() string {
-	if sm := c.sysMsg; sm != nil {
-		return sm.Content
-	}
-	return ""
 }

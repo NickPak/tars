@@ -4,7 +4,7 @@ import (
 	"embed"
 	"log"
 
-	"tars/internal/event"
+	"tars/pkg/event"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )

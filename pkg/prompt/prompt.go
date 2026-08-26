@@ -16,6 +16,7 @@ package prompt
 import (
 	"embed"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"tars/pkg/schema"
@@ -24,14 +25,8 @@ import (
 //go:embed system.md
 var basePromptFS embed.FS
 
-// EnvironmentContext holds the static environment context injected into the
-// system prompt. Working directory is intentionally excluded — it varies per
-// session (UUID-based path) and would break prefix caching. The StatusBar
-// delivers it per-iteration via its cwd field instead.
-type EnvironmentContext struct {
-	OS       string   // operating system
-	Platform string   // GOOS / GOARCH
-	Tools    []string // names of registered tools
+type Composer interface {
+	GetSystemMessage() []*schema.Message
 }
 
 // BasePrompt returns the stable base prompt (without environment context).
@@ -46,14 +41,14 @@ func BasePrompt() string {
 
 // RenderEnvContext builds the static environment context section.
 // Working directory is NOT included — see EnvironmentContext doc.
-func RenderEnvContext(env EnvironmentContext) string {
+func RenderEnvContext(toolNames []string) string {
 	var b strings.Builder
 	b.WriteString("\n\n## Environment Context\n\n")
-	fmt.Fprintf(&b, "- Operating system: %s\n", env.OS)
-	fmt.Fprintf(&b, "- Platform: %s/%s\n", env.OS, env.Platform)
-	if len(env.Tools) > 0 {
+	_, _ = fmt.Fprintf(&b, "- Operating system: %s\n", runtime.GOOS)
+	_, _ = fmt.Fprintf(&b, "- Platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	if len(toolNames) > 0 {
 		b.WriteString("- Available tools: ")
-		b.WriteString(strings.Join(env.Tools, ", "))
+		b.WriteString(strings.Join(toolNames, ", "))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -61,24 +56,24 @@ func RenderEnvContext(env EnvironmentContext) string {
 
 // BuildSystemPrompt assembles the base prompt from the embedded markdown file
 // and appends the static environment context section.
-func BuildSystemPrompt(env EnvironmentContext) string {
+func BuildSystemPrompt(toolNames []string) string {
 	base := BasePrompt()
 	if base == "" {
-		return fallbackPrompt(env)
+		return fallbackPrompt()
 	}
-	return base + RenderEnvContext(env)
+	return base + RenderEnvContext(toolNames)
 }
 
 // BuildSystemMessage 构建系统提示词消息（含工具列表等静态环境上下文）。
 // 返回 *schema.Message 供 agent 直接拼接到消息列表；纯函数，无全局状态。
-func BuildSystemMessage(env EnvironmentContext) *schema.Message {
-	return &schema.Message{Role: schema.RoleSystem, Content: BuildSystemPrompt(env)}
+func BuildSystemMessage(toolNames []string) *schema.Message {
+	return &schema.Message{Role: schema.RoleSystem, Content: BuildSystemPrompt(toolNames)}
 }
 
 // fallbackPrompt is used only if the embedded file cannot be read (should
 // never happen with go:embed). It provides a minimal inline prompt so the
 // agent can still operate.
-func fallbackPrompt(env EnvironmentContext) string {
+func fallbackPrompt() string {
 	return fmt.Sprintf(`You are a helpful AI assistant running inside a user's desktop application.
-Operating system: %s`, env.OS)
+Operating system: %s`, runtime.GOOS)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"tars/pkg/tool/kernel"
 	"testing"
 	"time"
 
@@ -12,15 +13,14 @@ import (
 
 	"tars/pkg/mcp"
 	"tars/pkg/schema"
-	"tars/pkg/tools"
 )
 
 // TestMCPRuntime_EndToEnd 覆盖 #7 核心闭环：
 // 检索命中 → Materialize（懒启动进程）→ Definition 注册进会话 Registry →
 // 经 Registry 按全名真实调用 → 结果回传 → 幂等 → MaterializedNames。
 func TestMCPRuntime_EndToEnd(t *testing.T) {
-	mgr, err := mcp.NewManager(t.TempDir())
-	if err != nil {
+	mgr := mcp.NewManager(t.TempDir())
+	if err := mgr.Startup(); err != nil {
 		t.Fatal(err)
 	}
 	if err := mgr.UpsertServer("spike", &mcp.ServerConfig{
@@ -42,8 +42,8 @@ func TestMCPRuntime_EndToEnd(t *testing.T) {
 		t.Fatalf("Probe: %v", err)
 	}
 
-	reg := tools.NewRegistry(&tools.Env{}, nil)
-	rt := newMCPRuntime(mgr, reg)
+	reg := kernel.NewRegistry(nil)
+	rt := NewMCPProvider(mgr, reg)
 
 	// 检索命中
 	hits, err := rt.Search("echo", 5)
@@ -94,11 +94,11 @@ func TestMCPRuntime_EndToEnd(t *testing.T) {
 	if err := rt.Materialize(hit); err != nil {
 		t.Fatalf("idempotent Materialize: %v", err)
 	}
-	if got := rt.MaterializedNames(); len(got) != 1 || got[0] != "mcp__spike__echo" {
-		t.Errorf("MaterializedNames = %v", got)
+	if got := rt.Loaded(); len(got) != 1 || got[0] != "mcp__spike__echo" {
+		t.Errorf("Loaded = %v", got)
 	}
-	if names := rt.MaterializedNames(); !sort.StringsAreSorted(names) {
-		t.Errorf("MaterializedNames should be sorted: %v", names)
+	if names := rt.Loaded(); !sort.StringsAreSorted(names) {
+		t.Errorf("Loaded should be sorted: %v", names)
 	}
 }
 

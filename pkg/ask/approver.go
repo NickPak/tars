@@ -2,7 +2,7 @@ package ask
 
 import (
 	"context"
-	"tars/internal/event"
+	"tars/pkg/event"
 )
 
 // ApproverProvider 征询用户是否放行一次危险调用。由宿主（GUI/CLI）实现；

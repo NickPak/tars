@@ -8,19 +8,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"runtime"
 	"sync"
 	"tars/internal/config"
-	"tars/pkg/ask"
-
-	"tars/internal/event"
 	"tars/internal/session"
+	"tars/pkg/ask"
+	"tars/pkg/event"
 	"tars/pkg/llm"
 	"tars/pkg/mcp"
-	"tars/pkg/prompt"
-	"tars/pkg/schema"
-	"tars/pkg/skills"
-	"tars/pkg/tools"
+	"tars/pkg/skill"
 	"tars/pkg/trace"
 )
 
@@ -40,12 +35,11 @@ import (
 // 普通对象（非单例），由服务层创建并注入。
 type App struct {
 	cfg      *config.AppConfig
-	skillMgr *skills.Manager
+	skillMgr *skill.Manager
 	mcpMgr   *mcp.Manager
-	llmReg   *llm.Registry
-	sysMsg   *schema.Message
+	llmMgr   *llm.Manager
 	sink     event.Sink
-	askReg   *ask.Registry
+	askMgr   *ask.Manager
 	mu       sync.RWMutex
 	ctrls    map[string]*Controller
 }
@@ -55,18 +49,13 @@ type App struct {
 func NewApp(cfg *config.AppConfig, sink event.Sink) *App {
 	return &App{
 		cfg:      cfg,
-		skillMgr: skills.NewManager(cfg.WorkDir, cfg.Skills),
+		skillMgr: skill.NewManager(cfg.WorkDir, cfg.Skills),
 		mcpMgr:   mcp.NewManager(cfg.WorkDir),
-		llmReg:   llm.NewRegistry(cfg.LLM),
-		sysMsg: prompt.BuildSystemMessage(prompt.EnvironmentContext{
-			OS:       runtime.GOOS,
-			Platform: runtime.GOARCH,
-			Tools:    tools.BuiltinNames(),
-		}),
-		sink:   event.NewFanOut(sink, NewTraceSink()),
-		askReg: ask.NewRegistry(),
-		mu:     sync.RWMutex{},
-		ctrls:  make(map[string]*Controller),
+		llmMgr:   llm.NewManager(cfg.LLM),
+		askMgr:   ask.NewManager(),
+		sink:     event.NewFanOut(sink, NewTraceSink()),
+		mu:       sync.RWMutex{},
+		ctrls:    make(map[string]*Controller),
 	}
 }
 
@@ -92,6 +81,17 @@ func (a *App) Startup() error {
 	if err != nil {
 		return fmt.Errorf("boot: mcp manager: %w", err)
 	}
+	a.mcpMgr.RenderIndex()
+
+	err = a.llmMgr.Startup()
+	if err != nil {
+		return fmt.Errorf("boot: llm registry: %w", err)
+	}
+
+	err = a.askMgr.Startup()
+	if err != nil {
+		return fmt.Errorf("boot: ask registry: %w", err)
+	}
 
 	// 追踪器（进程级基础设施，OTLP 连接池 + 批量导出器）
 	trace.InitTrace(a.cfg.Trace)
@@ -107,9 +107,28 @@ func (a *App) Startup() error {
 func (a *App) Shutdown() error {
 	a.CancelAll() // 先取消所有运行中的会话
 
-	err := a.mcpMgr.Shutdown()
+	err := a.askMgr.Shutdown()
+	if err != nil {
+		slog.Error("Failed to shutdown ask manager", "error", err)
+		return err
+	}
+
+	err = a.llmMgr.Shutdown()
+	if err != nil {
+		slog.Error("Failed to shutdown llm manager", "error", err)
+		return err
+	}
+
+	err = a.mcpMgr.Shutdown()
 	if err != nil {
 		slog.Error("Failed to shutdown MCP manager", "error", err)
+		return err
+	}
+
+	err = a.skillMgr.Shutdown()
+	if err != nil {
+		slog.Error("Failed to shutdown skill manager", "error", err)
+		return err
 	}
 
 	trace.Shutdown() // 关闭全局 OTLP 导出器
@@ -118,11 +137,11 @@ func (a *App) Shutdown() error {
 
 // --- 依赖访问器（服务层使用） ---
 
-// GetLLMReg 返回模型注册表。
-func (a *App) GetLLMReg() *llm.Registry { return a.llmReg }
+// GetLLMMgr 返回模型注册表。
+func (a *App) GetLLMMgr() *llm.Manager { return a.llmMgr }
 
 // GetSkillMgr 返回技能管理器。
-func (a *App) GetSkillMgr() *skills.Manager { return a.skillMgr }
+func (a *App) GetSkillMgr() *skill.Manager { return a.skillMgr }
 
 // GetMCPMgr 返回 MCP 管理器。
 func (a *App) GetMCPMgr() *mcp.Manager { return a.mcpMgr }
@@ -139,7 +158,7 @@ func (a *App) CreateSession() (*session.Data, error) {
 	trace.LogSessionCreated(sess.ID, sess.Title) // todo sink
 
 	a.mu.Lock()
-	a.ctrls[sess.ID] = NewController(sess, a.sink, a.llmReg, a.sysMsg, a.skillMgr, a.mcpMgr, a.askReg)
+	a.ctrls[sess.ID] = NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
 	a.mu.Unlock()
 	return sess, nil
 }
@@ -197,7 +216,7 @@ func (a *App) RestoreSessions() error {
 	}
 	a.mu.Lock()
 	for _, sess := range infos {
-		a.ctrls[sess.ID] = NewController(sess, a.sink, a.llmReg, a.sysMsg, a.skillMgr, a.mcpMgr, a.askReg)
+		a.ctrls[sess.ID] = NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
 	}
 	a.mu.Unlock()
 	return nil
@@ -277,7 +296,7 @@ func (a *App) RetryMessage(sessionID, messageID string) (string, error) {
 // 审批为 "allow"/"allow_always"/"deny"。reason 为可选拒绝理由。
 func (a *App) AnswerAskUser(requestID, value, reason string) error {
 	answer := &ask.Answer{Value: value, Reason: reason, Source: "user"}
-	if !a.askReg.Resolve(requestID, answer) {
+	if !a.askMgr.Resolve(requestID, answer) {
 		return fmt.Errorf("question not found or already resolved: %s", requestID)
 	}
 	return nil
@@ -312,7 +331,7 @@ func (a *App) SaveAppConfig(v *config.AppConfig) error {
 
 	// 先热更新注册表：UpdateConfig 会预构建激活模型，配置无效则
 	// 整体不落盘、不生效，保持现状。
-	err = a.llmReg.UpdateConfig(v.LLM)
+	err = a.llmMgr.UpdateConfig(v.LLM)
 	if err != nil {
 		slog.Warn("Failed to update llm config", "error", err)
 		return err

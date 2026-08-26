@@ -10,7 +10,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 事件载荷类型统一定义在 internal/event 包。
+// 事件载荷类型统一定义在 pkg/event 包。
 
 // ============================================================================
 // AgentService —— 对前端暴露的 API 层，同时是应用运行态的持有者。

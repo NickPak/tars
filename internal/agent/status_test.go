@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"tars/pkg/tool/kernel"
 	"testing"
 
-	"tars/internal/event"
+	"tars/pkg/event"
+	"tars/pkg/mcp"
 	"tars/pkg/schema"
 	"tars/pkg/todo"
-	"tars/pkg/tools"
 )
 
 func TestRun_StatusBarInjectedAndNotPersisted(t *testing.T) {
@@ -44,7 +45,7 @@ func TestRun_StatusBarInjectedAndNotPersisted(t *testing.T) {
 }
 
 func TestStatusBar_CountersTrackToolCalls(t *testing.T) {
-	sb := NewStatusBar()
+	sb := newTestStatusBar(nil, nil)
 
 	// 空计数器不渲染 calls 行
 	msg := sb.Render(context.Background(), 1)
@@ -65,7 +66,7 @@ func TestStatusBar_CountersTrackToolCalls(t *testing.T) {
 }
 
 func TestStatusBar_ConsecutiveErrorsProduceHint(t *testing.T) {
-	sb := NewStatusBar()
+	sb := newTestStatusBar(nil, nil)
 	sb.RecordToolCall("fail", fmt.Errorf("boom"))
 
 	msg := sb.Render(context.Background(), 2)
@@ -86,7 +87,7 @@ func TestStatusBar_ConsecutiveErrorsProduceHint(t *testing.T) {
 
 func TestStatusBar_StaticEnvInInit(t *testing.T) {
 	// 静态字段（os/shell）在 New 时初始化，Render 后应出现
-	sb := NewStatusBar()
+	sb := newTestStatusBar(nil, nil)
 	msg := sb.Render(context.Background(), 1)
 	if !strings.Contains(msg.Content, "os: ") {
 		t.Errorf("os should appear in env zone: %q", msg.Content)
@@ -97,7 +98,7 @@ func TestStatusBar_StaticEnvInInit(t *testing.T) {
 }
 
 func TestStatusBar_SeqIncrementsWithIteration(t *testing.T) {
-	sb := NewStatusBar()
+	sb := newTestStatusBar(nil, nil)
 	for _, iter := range []int{1, 5, 100} {
 		msg := sb.Render(context.Background(), iter)
 		want := fmt.Sprintf(`seq="%d"`, iter)
@@ -114,7 +115,7 @@ func TestRun_ToolErrorOutputNoPanic(t *testing.T) {
 		}},
 		{Role: schema.RoleAssistant, Content: "recovered"},
 	}}
-	reg := newTestRegistry(map[string]tools.Handler{
+	reg := newTestRegistry(map[string]kernel.Handler{
 		"broken": func(_ context.Context, _ json.RawMessage) (string, error) {
 			return "permission denied", fmt.Errorf("permission denied")
 		},
@@ -130,14 +131,14 @@ func TestRun_ToolErrorOutputNoPanic(t *testing.T) {
 // --- TODO zone tests ---
 
 func TestStatusBar_TodoZoneRendersFromStore(t *testing.T) {
-	sb := NewStatusBar()
-	todoStore := todo.NewTodoStore("") // 无文件路径，纯内存
+	todoStore := todo.NewManager("") // 无文件路径，纯内存
 	todoStore.Replace([]todo.Todo{
 		{ID: "1", Content: "搭建 MCP 服务器", Status: todo.TodoInProgress},
 		{ID: "2", Content: "编写测试", Status: todo.TodoPending},
 	})
+	sb := newTestStatusBar(todoStore, nil)
 
-	msg := sb.Render(tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore}), 1)
+	msg := sb.Render(context.Background(), 1)
 
 	if !strings.Contains(msg.Content, "<todo>") {
 		t.Errorf("expected <todo> zone: %q", msg.Content)
@@ -154,10 +155,10 @@ func TestStatusBar_TodoZoneRendersFromStore(t *testing.T) {
 }
 
 func TestStatusBar_TodoZoneOmittedWhenEmpty(t *testing.T) {
-	sb := NewStatusBar()
-	todoStore := todo.NewTodoStore("")
+	todoStore := todo.NewManager("")
+	sb := newTestStatusBar(todoStore, nil)
 
-	msg := sb.Render(tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore}), 1)
+	msg := sb.Render(context.Background(), 1)
 
 	if strings.Contains(msg.Content, "<todo>") {
 		t.Errorf("empty todo should not render <todo> zone: %q", msg.Content)
@@ -165,7 +166,7 @@ func TestStatusBar_TodoZoneOmittedWhenEmpty(t *testing.T) {
 }
 
 func TestStatusBar_TodoZoneOmittedWhenNoStore(t *testing.T) {
-	sb := NewStatusBar()
+	sb := newTestStatusBar(nil, nil)
 	// ctx 中不注入 TodoStore
 	msg := sb.Render(context.Background(), 1)
 	if strings.Contains(msg.Content, "<todo>") {
@@ -174,12 +175,12 @@ func TestStatusBar_TodoZoneOmittedWhenNoStore(t *testing.T) {
 }
 
 func TestStatusBar_TodoStalenessReminder(t *testing.T) {
-	sb := NewStatusBar()
-	todoStore := todo.NewTodoStore("")
+	todoStore := todo.NewManager("")
 	todoStore.Replace([]todo.Todo{
 		{ID: "1", Content: "任务A", Status: todo.TodoPending},
 	})
-	ctx := tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore})
+	sb := newTestStatusBar(todoStore, nil)
+	ctx := context.Background()
 
 	// 第 1 轮：刚创建，不提示
 	msg := sb.Render(ctx, 1)
@@ -204,48 +205,60 @@ func TestStatusBar_TodoStalenessReminder(t *testing.T) {
 }
 
 func TestStatusBar_TodoStalenessSkipsWhenAllDone(t *testing.T) {
-	sb := NewStatusBar()
-	todoStore := todo.NewTodoStore("")
+	todoStore := todo.NewManager("")
 	todoStore.Replace([]todo.Todo{
 		{ID: "1", Content: "任务A", Status: todo.TodoCompleted},
 		{ID: "2", Content: "任务B", Status: todo.TodoCancelled},
 	})
+	sb := newTestStatusBar(todoStore, nil)
 
 	// 即使多轮未更新，全完成/取消时不提示
-	msg := sb.Render(tools.WithEnv(context.Background(), &tools.Env{Todo: todoStore}), 5)
+	msg := sb.Render(context.Background(), 5)
 	if strings.Contains(msg.Content, "未更新") {
 		t.Errorf("no staleness when all done/cancelled: %q", msg.Content)
 	}
 }
 
-// mockMCPRuntime 提供 MaterializedNames 数据（状态栏 tools 区测试）。
+// newTestStatusBar 以测试数据源构造状态栏（session 为内存实现）。
+// nil 的状态源以空 stub 兜底（StatusBar 对 skillStatus/mcpStatus 无 nil 防护）。
+func newTestStatusBar(todoStatus TodoStatus, mcpStatus MCPStatus) *StatusBar {
+	if mcpStatus == nil {
+		mcpStatus = &mockMCPRuntime{}
+	}
+	sb := NewStatusBar(&fakeSession{}, todoStatus, fakeSkillStatus{}, mcpStatus)
+	if err := sb.Startup(); err != nil {
+		panic(err)
+	}
+	return sb
+}
+
+// mockMCPRuntime 提供 Loaded 数据（状态栏 tools 区测试）。
 type mockMCPRuntime struct {
 	names []string
 }
 
-func (m *mockMCPRuntime) Search(query string, limit int) ([]tools.MCPToolHit, error) {
+func (m *mockMCPRuntime) Search(query string, limit int) ([]mcp.ToolHit, error) {
 	return nil, nil
 }
-func (m *mockMCPRuntime) Materialize(hit tools.MCPToolHit) error { return nil }
-func (m *mockMCPRuntime) MaterializedNames() []string            { return m.names }
+func (m *mockMCPRuntime) Materialize(hit mcp.ToolHit) error { return nil }
+func (m *mockMCPRuntime) Loaded() []string                  { return m.names }
 
 func TestStatusBar_ToolsZone(t *testing.T) {
-	sb := NewStatusBar()
-	env := &tools.Env{MCP: &mockMCPRuntime{names: []string{"mcp__yahoo-finance__get_stock_price"}}}
-	msg := sb.Render(tools.WithEnv(context.Background(), env), 1)
+	sb := newTestStatusBar(nil, &mockMCPRuntime{names: []string{"mcp__yahoo-finance__get_stock_price"}})
+	msg := sb.Render(context.Background(), 1)
 	if !strings.Contains(msg.Content, `<tools registered="mcp__yahoo-finance__get_stock_price"/>`) {
 		t.Errorf("expected <tools registered> zone: %q", msg.Content)
 	}
 }
 
 func TestStatusBar_ToolsZoneOmittedWhenEmpty(t *testing.T) {
-	sb := NewStatusBar()
-	env := &tools.Env{MCP: &mockMCPRuntime{}}
-	msg := sb.Render(tools.WithEnv(context.Background(), env), 1)
+	sb := newTestStatusBar(nil, &mockMCPRuntime{})
+	msg := sb.Render(context.Background(), 1)
 	if strings.Contains(msg.Content, "<tools registered") {
 		t.Errorf("empty set should not render tools zone: %q", msg.Content)
 	}
-	// Env.MCP 为 nil 时同样不渲染
+	// MCP 数据源为 nil 时同样不渲染
+	sb = newTestStatusBar(nil, nil)
 	msg = sb.Render(context.Background(), 1)
 	if strings.Contains(msg.Content, "<tools registered") {
 		t.Errorf("nil MCP runtime should not render tools zone: %q", msg.Content)

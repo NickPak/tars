@@ -58,7 +58,7 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 	if cfg != nil && cfg.LLM != nil {
 		if active := cfg.LLM.ActiveModel(); active != nil {
 			// 健康状态跟随当前激活的模型条目（per-model 记录在 Registry）
-			stats.ModelHealthy = s.app.GetLLMReg().IsHealthy(active.EntryID)
+			stats.ModelHealthy = s.app.GetLLMMgr().IsHealthy(active.EntryID)
 			stats.ModelID = active.ModelId
 			stats.ContextWindow = active.ContextWindow
 			activeIn, activeOut = active.InputPricePerMillion, active.OutputPricePerMillion

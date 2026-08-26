@@ -11,7 +11,7 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as main$0 from "../../../../../tars/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as event$0 from "../../../../../tars/internal/event/models.js";
+import * as event$0 from "../../../../../tars/pkg/event/models.js";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {

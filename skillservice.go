@@ -3,13 +3,13 @@ package main
 import (
 	"fmt"
 	"strings"
-	"tars/pkg/skills"
+	"tars/pkg/skill"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // ListSkills returns all installed skills (frontmatter + registry metadata).
-func (s *AgentService) ListSkills() ([]*skills.SkillMeta, error) {
+func (s *AgentService) ListSkills() ([]*skill.SkillMeta, error) {
 	st := s.app.GetSkillMgr()
 	if st == nil {
 		return nil, fmt.Errorf("skills store not initialized")
@@ -75,7 +75,7 @@ func (s *AgentService) SetSkillEnabled(name string, enabled bool) error {
 // BM25 retrieval and result limit as the agent-facing discover_tools tool,
 // so the settings page shows exactly what the model would get. An empty query
 // returns the full list.
-func (s *AgentService) SearchSkills(query string) ([]*skills.SkillMeta, error) {
+func (s *AgentService) SearchSkills(query string) ([]*skill.SkillMeta, error) {
 	st := s.app.GetSkillMgr()
 	if st == nil {
 		return nil, fmt.Errorf("skills store not initialized")

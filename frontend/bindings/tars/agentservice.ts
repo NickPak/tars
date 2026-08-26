@@ -16,7 +16,7 @@ import * as session$0 from "./internal/session/models.js";
 import * as mcp$0 from "./pkg/mcp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as skills$0 from "./pkg/skills/models.js";
+import * as skill$0 from "./pkg/skill/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -162,7 +162,7 @@ export function ListSessions(): $CancellablePromise<(session$0.Data | null)[]> {
 /**
  * ListSkills returns all installed skills (frontmatter + registry metadata).
  */
-export function ListSkills(): $CancellablePromise<(skills$0.SkillMeta | null)[]> {
+export function ListSkills(): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(2331056158).then(($result: any) => {
         return $$createType20($result);
     });
@@ -276,7 +276,7 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
  * so the settings page shows exactly what the model would get. An empty query
  * returns the full list.
  */
-export function SearchSkills(query: string): $CancellablePromise<(skills$0.SkillMeta | null)[]> {
+export function SearchSkills(query: string): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(1567288730, query).then(($result: any) => {
         return $$createType20($result);
     });
@@ -378,7 +378,7 @@ const $$createType14 = $Create.Nullable($$createType13);
 const $$createType15 = $Create.Array($$createType14);
 const $$createType16 = $Create.Array($$createType4);
 const $$createType17 = $Create.Array($$createType1);
-const $$createType18 = skills$0.SkillMeta.createFrom;
+const $$createType18 = skill$0.SkillMeta.createFrom;
 const $$createType19 = $Create.Nullable($$createType18);
 const $$createType20 = $Create.Array($$createType19);
 const $$createType21 = $models.FileEntry.createFrom;
