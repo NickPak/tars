@@ -226,9 +226,7 @@ func newTestStatusBar(todoStatus TodoStatus, mcpStatus MCPStatus) *StatusBar {
 		mcpStatus = &mockMCPRuntime{}
 	}
 	sb := NewStatusBar(&fakeSession{}, todoStatus, fakeSkillStatus{}, mcpStatus)
-	if err := sb.Startup(); err != nil {
-		panic(err)
-	}
+	sb.Start()
 	return sb
 }
 
@@ -241,7 +239,7 @@ func (m *mockMCPRuntime) Search(query string, limit int) ([]mcp.ToolHit, error) 
 	return nil, nil
 }
 func (m *mockMCPRuntime) Materialize(hit mcp.ToolHit) error { return nil }
-func (m *mockMCPRuntime) Loaded() []string                  { return m.names }
+func (m *mockMCPRuntime) GetLoadedTools() []string          { return m.names }
 
 func TestStatusBar_ToolsZone(t *testing.T) {
 	sb := newTestStatusBar(nil, &mockMCPRuntime{names: []string{"mcp__yahoo-finance__get_stock_price"}})

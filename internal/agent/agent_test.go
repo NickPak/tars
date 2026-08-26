@@ -166,7 +166,7 @@ func (fakeComposer) GetSystemMessage() []*schema.Message { return nil }
 // fakeSkillStatus 是 SkillStatus 的测试实现（无已加载技能）。
 type fakeSkillStatus struct{}
 
-func (fakeSkillStatus) Loaded() []string { return nil }
+func (fakeSkillStatus) GetLoadedSkills() []string { return nil }
 
 func newTestAgent(reg *kernel.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
 	cfg := &Config{MaxIterations: maxIter}
@@ -180,7 +180,7 @@ func newTestAgent(reg *kernel.Registry, sess *fakeSession, sink event.Sink, maxI
 
 // runTurn 以固定 assistantID 跑一轮（provider 作为轮级输入）。
 func runTurn(a *ReActAgent, ctx context.Context, userMsg string, p llm.Provider) (*Result, error) {
-	return a.Run(ctx, userMsg, "test-assistant", p)
+	return a.Run(ctx, "test-assistant", p)
 }
 
 func TestRun_PlainTextAnswer(t *testing.T) {

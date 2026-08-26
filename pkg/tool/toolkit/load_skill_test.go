@@ -23,9 +23,9 @@ func (m *mockSkillRuntime) Load(name string) (string, error) {
 	return "# SKILL " + name + "\n\nbody\n", nil
 }
 
-func (m *mockSkillRuntime) IsLoaded(name string) bool { return m.loaded[name] }
-func (m *mockSkillRuntime) MarkLoaded(name string)    { m.loaded[name] = true }
-func (m *mockSkillRuntime) Loaded() []string {
+func (m *mockSkillRuntime) IsSkillLoaded(name string) bool { return m.loaded[name] }
+func (m *mockSkillRuntime) MarkSkillLoaded(name string)    { m.loaded[name] = true }
+func (m *mockSkillRuntime) GetLoadedSkills() []string {
 	m.loadedNames = m.loadedNames[:0]
 	for n := range m.loaded {
 		m.loadedNames = append(m.loadedNames, n)
@@ -54,7 +54,7 @@ func TestLoadSkill_Idempotent(t *testing.T) {
 	if rt.loadCount != 1 {
 		t.Fatalf("first load should read file once, got %d", rt.loadCount)
 	}
-	if !rt.IsLoaded("pptx") {
+	if !rt.IsSkillLoaded("pptx") {
 		t.Error("pptx should be marked loaded")
 	}
 

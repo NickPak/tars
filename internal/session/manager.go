@@ -2,7 +2,6 @@ package session
 
 import (
 	"log/slog"
-	"slices"
 	"time"
 
 	"tars/pkg/event"
@@ -23,10 +22,6 @@ type Manager struct {
 	// risks 是"本会话常允许"的危险操作常允许表（内存态，重启清空），
 	// 由 guard.Gate 消费；会话级载体，跨轮共享。
 	risks *guard.RiskTable
-	// LoadedSkills 记录本会话已 load_skill 的技能（内存态，跨轮幂等，
-	// 重启清空）。状态栏据此展示"已加载技能"。
-	LoadedSkills map[string]bool
-	// store 会话持久化后端，由 Store 创建/恢复会话时注入（非序列化）。
 	// sink 事件出口：消息追加/聚合更新时发射 KindMessageAppended（非序列化）。
 	sink event.Sink
 }
@@ -35,10 +30,9 @@ type Manager struct {
 // 创建/恢复出的会话（消息追加时发射事件），nil 时静默。
 func NewManager(data *Data, sink event.Sink) *Manager {
 	return &Manager{
-		data:         data,
-		risks:        guard.NewRiskTable(),
-		LoadedSkills: make(map[string]bool),
-		sink:         sink,
+		data:  data,
+		risks: guard.NewRiskTable(),
+		sink:  sink,
 	}
 }
 
@@ -98,26 +92,6 @@ func (s *Manager) SetWorkspaceDir(dir string) error {
 // 装配工具权限门（guard.NewGate）时注入。
 func (s *Manager) RiskTable() *guard.RiskTable {
 	return s.risks
-}
-
-// IsSkillLoaded 报告技能是否已在本会话加载。
-func (s *Manager) IsSkillLoaded(name string) bool {
-	return s.LoadedSkills[name]
-}
-
-// MarkSkillLoaded 标记技能已在本会话加载（幂等）。
-func (s *Manager) MarkSkillLoaded(name string) {
-	s.LoadedSkills[name] = true
-}
-
-// LoadedSkillNames 返回已加载技能名（排序后），供状态栏展示。
-func (s *Manager) LoadedSkillNames() []string {
-	names := make([]string, 0, len(s.LoadedSkills))
-	for n := range s.LoadedSkills {
-		names = append(names, n)
-	}
-	slices.Sort(names)
-	return names
 }
 
 func (s *Manager) RenameSession(title string) error {
@@ -261,4 +235,49 @@ func EmitMessageAppended(sink event.Sink, sessionID string, m *schema.Message) {
 		Kind:    event.KindMessageAppended,
 		Message: &event.MessageAppendedEvent{SessionID: sessionID, Message: m},
 	})
+}
+
+func (s *Manager) MarkSkillLoaded(name string) {
+	s.data.MarkSkillLoaded(name)
+
+	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	if err != nil {
+		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+	}
+}
+
+func (s *Manager) IsSkillLoaded(name string) bool {
+	return s.data.IsSkillLoaded(name)
+}
+
+func (s *Manager) GetLoadedSkills() []string {
+	return s.data.GetLoadedSkills()
+}
+
+func (s *Manager) MarkToolLoaded(name string) {
+	s.data.MarkToolLoaded(name)
+
+	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	if err != nil {
+		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+	}
+}
+
+func (s *Manager) IsToolLoaded(name string) bool {
+	return s.data.IsToolLoaded(name)
+}
+
+// UnmarkToolLoaded 从已加载集合移除并写穿 meta.json
+// （MCP 恢复时剔除失效条目用）。
+func (s *Manager) UnmarkToolLoaded(name string) {
+	s.data.UnmarkToolLoaded(name)
+
+	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	if err != nil {
+		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+	}
+}
+
+func (s *Manager) GetLoadedTools() []string {
+	return s.data.GetLoadedTools()
 }

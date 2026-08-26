@@ -66,7 +66,7 @@ func (t *SkillTool) definition() *kernel.Definition {
 				return "", errors.New("load_skill requires a skill runtime; none available")
 			}
 
-			if t.rt.IsLoaded(name) {
+			if t.rt.IsSkillLoaded(name) {
 				return fmt.Sprintf("skill %q is already loaded; its instructions are still in effect", name), nil
 			}
 
@@ -74,7 +74,7 @@ func (t *SkillTool) definition() *kernel.Definition {
 			if err != nil {
 				return "", err
 			}
-			t.rt.MarkLoaded(name)
+			t.rt.MarkSkillLoaded(name)
 			return content, nil
 		},
 	}

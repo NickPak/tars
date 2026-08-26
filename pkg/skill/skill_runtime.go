@@ -11,11 +11,11 @@ type SkillSummary struct {
 type SkillProvider interface {
 	// Load 返回指定 Skill 的 SKILL.md 全文。
 	Load(name string) (string, error)
-	// IsLoaded / MarkLoaded 管理会话级"已加载"幂等状态。
-	IsLoaded(name string) bool
-	MarkLoaded(name string)
-	// Loaded 返回已加载技能名（排序后），供状态栏展示。
-	Loaded() []string
+	// IsSkillLoaded / MarkSkillLoaded 管理会话级"已加载"幂等状态。
+	IsSkillLoaded(name string) bool
+	MarkSkillLoaded(name string)
+	// GetLoadedSkills 返回已加载技能名（排序后），供状态栏展示。
+	GetLoadedSkills() []string
 	// Search 按自然语言需求检索技能（BM25），返回候选；无命中返回空。
 	Search(query string, limit int) ([]SkillSummary, error)
 	// SearchLimit 是检索返回的候选数上限（配置驱动；discover_tools 与

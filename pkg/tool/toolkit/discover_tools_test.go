@@ -86,7 +86,16 @@ func (m *mockMCPRuntime) Materialize(hit mcp.ToolHit) error {
 	m.materialized = append(m.materialized, hit.FullName)
 	return nil
 }
-func (m *mockMCPRuntime) Loaded() []string { return m.materialized }
+func (m *mockMCPRuntime) IsToolLoaded(name string) bool {
+	for _, n := range m.materialized {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+func (m *mockMCPRuntime) MarkToolLoaded(name string) { m.materialized = append(m.materialized, name) }
+func (m *mockMCPRuntime) GetLoadedTools() []string   { return m.materialized }
 
 func TestDiscoverTools_RequiresQuery(t *testing.T) {
 	rt := newMockSkillRuntime()

@@ -21,6 +21,8 @@ type McpProvider interface {
 	// 进程、包装 Definition、会话 Registry 注册）；此后模型可直接按
 	// FullName 调用。内部幂等：重复调用立即返回，无副作用。
 	Materialize(hit ToolHit) error
-	// Loaded 返回本会话已注册的 MCP 工具名（状态栏 loaded 区 tools: 集合的数据源）。
-	Loaded() []string
+
+	IsToolLoaded(fullName string) bool
+	MarkToolLoaded(fullName string)
+	GetLoadedTools() []string
 }

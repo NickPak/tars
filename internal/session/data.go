@@ -21,11 +21,13 @@ const (
 
 // Metadata 是磁盘上的会话摘要。
 type Metadata struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	CreatedAt    int64  `json:"createdAt"`
-	UpdatedAt    int64  `json:"updatedAt"`
-	WorkspaceDir string `json:"workspaceDir"`
+	ID           string              `json:"id"`
+	Title        string              `json:"title"`
+	CreatedAt    int64               `json:"createdAt"`
+	UpdatedAt    int64               `json:"updatedAt"`
+	WorkspaceDir string              `json:"workspaceDir"`
+	LoadedSkills map[string]struct{} `json:"loadedSkills"`
+	LoadedTools  map[string]struct{} `json:"loadedTools"`
 }
 
 func NewMetadata(id string) *Metadata {
@@ -37,6 +39,8 @@ func NewMetadata(id string) *Metadata {
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		WorkspaceDir: GetWorkspaceDir(instance.GetWorkDir(), id),
+		LoadedSkills: make(map[string]struct{}),
+		LoadedTools:  make(map[string]struct{}),
 	}
 }
 
@@ -50,7 +54,6 @@ type Data struct {
 // NewData 创建新会话的内存态；store/sink 由 Store.Create 注入。
 // 恢复路径不经此函数（Store.RestoreAll 直接字面量构造）。
 func NewData(id string) *Data {
-
 	return &Data{
 		Metadata: NewMetadata(id),
 		Messages: make([]*schema.Message, 0, 16),
@@ -227,4 +230,50 @@ func (i *Data) FindMessage(messageID string) (int, *schema.Message) {
 		}
 	}
 	return index, message
+}
+
+func (i *Data) MarkSkillLoaded(name string) {
+	if i.LoadedSkills == nil {
+		i.LoadedSkills = make(map[string]struct{})
+	}
+	i.LoadedSkills[name] = struct{}{}
+}
+
+func (i *Data) IsSkillLoaded(name string) bool {
+	_, ok := i.LoadedSkills[name]
+	return ok
+}
+
+func (i *Data) GetLoadedSkills() []string {
+	skills := make([]string, 0, len(i.LoadedSkills))
+	for name := range i.LoadedSkills {
+		skills = append(skills, name)
+	}
+	slices.Sort(skills)
+	return skills
+}
+
+func (i *Data) MarkToolLoaded(name string) {
+	if i.LoadedTools == nil {
+		i.LoadedTools = make(map[string]struct{})
+	}
+	i.LoadedTools[name] = struct{}{}
+}
+
+func (i *Data) IsToolLoaded(name string) bool {
+	_, ok := i.LoadedTools[name]
+	return ok
+}
+
+func (i *Data) UnmarkToolLoaded(name string) {
+	delete(i.LoadedTools, name)
+}
+
+func (i *Data) GetLoadedTools() []string {
+	tools := make([]string, 0, len(i.LoadedTools))
+	for name := range i.LoadedTools {
+		tools = append(tools, name)
+	}
+	slices.Sort(tools)
+	return tools
 }

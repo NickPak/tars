@@ -19,6 +19,8 @@ export class Data {
     "createdAt": number;
     "updatedAt": number;
     "workspaceDir": string;
+    "loadedSkills": { [_ in string]?: {} };
+    "loadedTools": { [_ in string]?: {} };
     "messages": (schema$0.Message | null)[];
 
     /** Creates a new Data instance. */
@@ -38,6 +40,12 @@ export class Data {
         if (!("workspaceDir" in $$source)) {
             this["workspaceDir"] = "";
         }
+        if (!("loadedSkills" in $$source)) {
+            this["loadedSkills"] = {};
+        }
+        if (!("loadedTools" in $$source)) {
+            this["loadedTools"] = {};
+        }
         if (!("messages" in $$source)) {
             this["messages"] = [];
         }
@@ -49,16 +57,25 @@ export class Data {
      * Creates a new Data instance from a string or object.
      */
     static createFrom($$source: any = {}): Data {
-        const $$createField5_0 = $$createType2;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("loadedSkills" in $$parsedSource) {
+            $$parsedSource["loadedSkills"] = $$createField5_0($$parsedSource["loadedSkills"]);
+        }
+        if ("loadedTools" in $$parsedSource) {
+            $$parsedSource["loadedTools"] = $$createField6_0($$parsedSource["loadedTools"]);
+        }
         if ("messages" in $$parsedSource) {
-            $$parsedSource["messages"] = $$createField5_0($$parsedSource["messages"]);
+            $$parsedSource["messages"] = $$createField7_0($$parsedSource["messages"]);
         }
         return new Data($$parsedSource as Partial<Data>);
     }
 }
 
 // Private type creation functions
-const $$createType0 = schema$0.Message.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $Create.Array($$createType1);
+const $$createType0 = $Create.Map($Create.Any, $Create.Any);
+const $$createType1 = schema$0.Message.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = $Create.Array($$createType2);

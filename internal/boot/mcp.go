@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
-	"sync"
 	"tars/pkg/schema"
 	"tars/pkg/tool/kernel"
 	"time"
@@ -16,17 +14,22 @@ import (
 	"tars/pkg/mcp"
 )
 
+// LoadedToolState 是"已加载"幂等集合的会话级读写面。
+type LoadedToolState interface {
+	IsToolLoaded(fullName string) bool
+	MarkToolLoaded(fullName string)
+	UnmarkToolLoaded(fullName string)
+	GetLoadedTools() []string
+}
+
 // McpProvider 是 mcp.MCPProvider 的实现（装配层桥接）：闭包捕获会话级
 // tool.Registry，把命中的 MCP 工具包装为 Definition 动态注册进本会话
 // （plan 3.6 D1 动态注册决策）。与 skillRuntime 同模式：接口在能力源
 // 包定义，实现在装配层。
 type McpProvider struct {
-	mgr     *mcp.Manager
-	toolReg *kernel.Registry // 会话级注册表（动态注册的归宿）
-
-	// mu 保护 materialized（本会话已注册的 MCP 工具名集合，幂等与状态栏 loaded 区 tools: 集合的数据源）。
-	mu     sync.Mutex
-	loaded map[string]bool
+	mgr       *mcp.Manager
+	toolReg   *kernel.Registry // 会话级注册表（动态注册的归宿）
+	toolState LoadedToolState
 }
 
 var _ mcp.McpProvider = (*McpProvider)(nil)
@@ -37,19 +40,59 @@ const mcpConnectTimeout = 60 * time.Second
 
 // NewMCPProvider 创建会话级 MCP 通道；mgr 为 nil 时返回 nil（MCP 是可选能力，
 // discover_tools 只检索技能）。
-func NewMCPProvider(mgr *mcp.Manager, toolReg *kernel.Registry) *McpProvider {
+func NewMCPProvider(mgr *mcp.Manager, toolReg *kernel.Registry, toolState LoadedToolState) *McpProvider {
 	if mgr == nil {
 		return nil
 	}
 	return &McpProvider{
-		mgr:     mgr,
-		toolReg: toolReg,
-		loaded:  make(map[string]bool),
+		mgr:       mgr,
+		toolReg:   toolReg,
+		toolState: toolState,
 	}
 }
 
+// Startup 恢复上次会话已物化的 MCP 工具：按全名从探测缓存反查并重新
+// 注册载体——只注册、不拉起进程（进程在首次真实调用时经 CallTool 内部
+// 的 EnsureClient 懒启动）。已失效的条目（服务器被删除/禁用、工具改名）
+// 从持久化集合剔除。
+//
+// 注意不能走 Materialize：它的幂等短路对已加载工具直接返回，且会
+// 拉起进程——两者都不是恢复语义。
 func (r *McpProvider) Startup() error {
+	for _, fullName := range r.toolState.GetLoadedTools() {
+		hit, ok := r.findHitByFullName(fullName)
+		if !ok {
+			r.toolState.UnmarkToolLoaded(fullName)
+			continue
+		}
+		r.toolReg.Register(newMCPToolCarrier(r.mgr, hit, r.serverRiskLevel(hit.Server)))
+	}
 	return nil
+}
+
+// findHitByFullName 按全名（mcp__<server>__<tool>）在启用服务器的探测
+// 缓存中反查 ToolHit；服务器未启用/不存在或工具已消失时返回 false。
+func (r *McpProvider) findHitByFullName(fullName string) (mcp.ToolHit, bool) {
+	for _, srv := range r.mgr.Enabled() {
+		prefix := "mcp__" + srv.Name + "__"
+		if !strings.HasPrefix(fullName, prefix) {
+			continue
+		}
+		toolName := strings.TrimPrefix(fullName, prefix)
+		for _, ti := range r.mgr.Tools(srv.Name) {
+			if ti.Name == toolName {
+				return mcp.ToolHit{
+					Server:      srv.Name,
+					Name:        ti.Name,
+					FullName:    fullName,
+					Description: ti.Description,
+					SourceType:  srv.SourceType,
+					InputSchema: ti.InputSchema,
+				}, true
+			}
+		}
+	}
+	return mcp.ToolHit{}, false
 }
 
 func (r *McpProvider) Shutdown() error {
@@ -82,12 +125,9 @@ func (r *McpProvider) Search(query string, limit int) ([]mcp.ToolHit, error) {
 // Materialize 命中即注册：幂等 → 懒启动进程 → 包装 Definition →
 // 会话 Registry 注册。此后下一轮 Schemas() 自动带上该工具，模型可直接调用。
 func (r *McpProvider) Materialize(hit mcp.ToolHit) error {
-	r.mu.Lock()
-	if r.loaded[hit.FullName] {
-		r.mu.Unlock()
+	if r.toolState.IsToolLoaded(hit.FullName) {
 		return nil
 	}
-	r.mu.Unlock()
 
 	// 懒启动服务器进程（D3 应用级池化：跨会话共享连接）。
 	// ctx：注册发生在 discover_tools 执行期间，用轮级 ctx 约束握手超时；
@@ -102,22 +142,20 @@ func (r *McpProvider) Materialize(hit mcp.ToolHit) error {
 	// 文本结果提取回传；风险级别按服务器配置声明（审批门按声明拦截）。
 	r.toolReg.Register(newMCPToolCarrier(r.mgr, hit, r.serverRiskLevel(hit.Server)))
 
-	r.mu.Lock()
-	r.loaded[hit.FullName] = true
-	r.mu.Unlock()
+	r.toolState.MarkToolLoaded(hit.FullName)
 	return nil
 }
 
-// Loaded 返回本会话已注册的 MCP 工具名（排序稳定）。
-func (r *McpProvider) Loaded() []string {
-	r.mu.Lock()
-	out := make([]string, 0, len(r.loaded))
-	for name := range r.loaded {
-		out = append(out, name)
-	}
-	r.mu.Unlock()
-	sort.Strings(out)
-	return out
+func (r *McpProvider) IsToolLoaded(fullName string) bool {
+	return r.toolState.IsToolLoaded(fullName)
+}
+
+func (r *McpProvider) MarkToolLoaded(fullName string) {
+	r.toolState.MarkToolLoaded(fullName)
+}
+
+func (r *McpProvider) GetLoadedTools() []string {
+	return r.toolState.GetLoadedTools()
 }
 
 // mcpToolCarrier 是 MCP 物化工具的载体（Carrier）：持有转发所需的

@@ -13,11 +13,11 @@ import (
 )
 
 type SkillStatus interface {
-	Loaded() []string
+	GetLoadedSkills() []string
 }
 
 type MCPStatus interface {
-	Loaded() []string
+	GetLoadedTools() []string
 }
 
 type TodoStatus interface {
@@ -204,7 +204,7 @@ func (sb *StatusBar) render(ctx context.Context, iteration int) *schema.Message 
 
 	// ---- loaded 区（设计文档 2.10：skills 与 discovered_tools 两个幂等集合）----
 	// 已加载技能（load_skill 幂等集合）：让模型明确知道哪些手册已在轨迹中。
-	loadedSkills := sb.skillStatus.Loaded()
+	loadedSkills := sb.skillStatus.GetLoadedSkills()
 	if len(loadedSkills) > 0 {
 		b.WriteString("  <skills loaded=\"")
 		b.WriteString(strings.Join(loadedSkills, ", "))
@@ -212,7 +212,7 @@ func (sb *StatusBar) render(ctx context.Context, iteration int) *schema.Message 
 	}
 	// 已注册 MCP 工具（discover_tools 命中即注册的幂等集合）：让模型明确
 	// 知道哪些外部工具已可直接调用，避免重复发现/重复注册。
-	loadedTools := sb.mcpStatus.Loaded()
+	loadedTools := sb.mcpStatus.GetLoadedTools()
 	if len(loadedTools) > 0 {
 		b.WriteString("  <tools registered=\"")
 		b.WriteString(strings.Join(loadedTools, ", "))

@@ -86,7 +86,7 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 	c.skillPv = NewSkillProvider(skillMgr, c.sessionMgr)
 
 	// MCP 通道：闭包捕获会话 Registry（动态注册归宿）；无 MCP 时为 nil。
-	c.mcpPv = NewMCPProvider(mcpMgr, c.toolReg)
+	c.mcpPv = NewMCPProvider(mcpMgr, c.toolReg, c.sessionMgr)
 
 	toolkit.RegisterBuiltinTools(c.toolReg, c.sandbox, c.todoMgr, askMgr, c.skillPv, c.mcpPv)
 
