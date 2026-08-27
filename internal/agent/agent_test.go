@@ -171,7 +171,7 @@ func (fakeSkillStatus) GetLoadedSkills() []string { return nil }
 func newTestAgent(reg *kernel.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
 	cfg := &Config{MaxIterations: maxIter}
 	cfg.Validate()
-	a := NewReAct(cfg, fakeComposer{}, sess, sink, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{})
+	a := NewReAct(cfg, fakeComposer{}, sess, sink, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{}, nil)
 	if err := a.Startup(); err != nil {
 		panic(err)
 	}
@@ -355,7 +355,7 @@ func TestRun_IterationTimeout(t *testing.T) {
 	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
 	cfg.Validate()
 	a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, &recordingSink{},
-		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
+		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{}, nil)
 	if err := a.Startup(); err != nil {
 		t.Fatal(err)
 	}

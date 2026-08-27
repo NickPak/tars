@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"tars/pkg/compaction"
 	"tars/pkg/schema"
 	"time"
 
@@ -84,9 +85,15 @@ func (s *StoreManager) LoadAllSessionData() ([]*Data, error) {
 			slog.Warn("Failed to load session messages", "id", sum.ID, "error", err)
 			continue
 		}
+		comp, err := s.LoadCompaction(sum.ID)
+		if err != nil {
+			// 压缩态损坏回退恒等投影（03 篇安全降级），不影响会话恢复。
+			slog.Warn("Failed to load compaction, fallback to identity projection", "id", sum.ID, "error", err)
+		}
 		infos = append(infos, &Data{
-			Metadata: sum,
-			Messages: msgs,
+			Metadata:   sum,
+			Messages:   msgs,
+			Compaction: comp,
 		})
 	}
 	slog.Info("Loaded sessions from store", "count", len(infos))
@@ -242,6 +249,69 @@ func (s *StoreManager) AppendSaveMessage(sessionID string, msg ...*schema.Messag
 		}
 	}
 	return nil
+}
+
+// --- 压缩态持久化（plan/context 03 篇：compaction.json + archive/） ---
+
+// SaveCompaction 原子写压缩态（tmp+rename，03 篇 §3：崩溃无中间态）。
+func (s *StoreManager) SaveCompaction(sessionID string, c *compaction.Compaction) error {
+	dataDir := GetDataDir(s.workDir, sessionID)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return fmt.Errorf("session store: create data dir for %s: %w", sessionID, err)
+	}
+	path := filepath.Join(dataDir, CompactionFile)
+	tmp := path + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return fmt.Errorf("session store: write compaction for %s: %w", sessionID, err)
+	}
+	enc := json.NewEncoder(f)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(c); err != nil {
+		f.Close()
+		return fmt.Errorf("session store: encode compaction for %s: %w", sessionID, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("session store: close compaction for %s: %w", sessionID, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("session store: rename compaction for %s: %w", sessionID, err)
+	}
+	return nil
+}
+
+// LoadCompaction 读取压缩态：文件不存在返回 (nil, nil)；
+// 损坏返回 (nil, error)——调用方回退恒等投影（03 篇安全降级）。
+func (s *StoreManager) LoadCompaction(sessionID string) (*compaction.Compaction, error) {
+	path := filepath.Join(GetDataDir(s.workDir, sessionID), CompactionFile)
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("session store: read compaction for %s: %w", sessionID, err)
+	}
+	defer f.Close()
+	c := &compaction.Compaction{}
+	if err := json.NewDecoder(f).Decode(c); err != nil {
+		return nil, fmt.Errorf("session store: decode compaction for %s: %w", sessionID, err)
+	}
+	return c, nil
+}
+
+// DeleteCompaction 删除压缩态（作废）；不存在视为已删除。
+func (s *StoreManager) DeleteCompaction(sessionID string) error {
+	err := os.Remove(filepath.Join(GetDataDir(s.workDir, sessionID), CompactionFile))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("session store: delete compaction for %s: %w", sessionID, err)
+	}
+	return nil
+}
+
+// ArchivePath 分配归档文件路径（data/archive/<rangeLabel>.md，03 篇 §2）。
+func (s *StoreManager) ArchivePath(sessionID, rangeLabel string) string {
+	return filepath.Join(GetDataDir(s.workDir, sessionID), ArchiveDir, rangeLabel+".md")
 }
 
 // RewriteMessages 全量覆写消息文件（重试/删除/编辑等截断操作后）。

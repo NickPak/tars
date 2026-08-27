@@ -3,11 +3,13 @@ package session
 import "path/filepath"
 
 const (
-	SessionDir   = "sessions"
-	DataDir      = ".data"
-	WorkspaceDir = "workspaces"
-	MetaFile     = "meta.json"
-	MessageFile  = "messages.jsonl"
+	SessionDir     = "sessions"
+	DataDir        = ".data"
+	WorkspaceDir   = "workspaces"
+	MetaFile       = "meta.json"
+	MessageFile    = "messages.jsonl"
+	CompactionFile = "compaction.json"
+	ArchiveDir     = "archive"
 )
 
 func GetBaseDir(workDir string) string {

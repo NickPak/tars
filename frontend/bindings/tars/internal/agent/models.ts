@@ -12,6 +12,8 @@ import * as time$0 from "../../../time/models.js";
 export class Config {
     "maxIterations"?: number;
     "compressionThreshold"?: number;
+    "compressionKeepTurns"?: number;
+    "compressionMinBatch"?: number;
     "iterationTimeout"?: time$0.Duration;
 
     /** Creates a new Config instance. */

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 	"tars/pkg/ask"
+	"tars/pkg/compaction"
 	"tars/pkg/skill"
 	"tars/pkg/tool/kernel"
 	"tars/pkg/tool/toolkit"
@@ -92,9 +93,25 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 
 	c.prompt = NewPromptCompose(c.toolReg, c.skillPv, c.mcpPv)
 
+	// 压缩器（plan/context 02 篇）：会话级长命对象，store 复用会话存储；
+	// 提取模型用当前轮 provider（Run 参数透传）；window 闭包每次调用解析
+	// 激活模型（模型热切换生效），未配置 ContextWindow 时 Compactor 回退默认值。
+	compactor := compaction.New(c.sessionMgr, nil, compaction.LLMExtractor{}, func() int {
+		if cur := config.Get(); cur != nil && cur.LLM != nil {
+			if m := cur.LLM.ActiveModel(); m != nil {
+				return m.ContextWindow
+			}
+		}
+		return 0
+	}, compaction.Config{
+		Threshold: cfg.Agent.CompressionThreshold,
+		KeepTurns: cfg.Agent.CompressionKeepTurns,
+		MinBatch:  cfg.Agent.CompressionMinBatch,
+	})
+
 	// 会话级 agent：跨轮复用（会话级依赖构造注入；模型/消息 ID 等轮级
 	// 输入经 Run 参数传入；配置热更新经 Limits 每轮解析）。
-	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, c.todoMgr, c.skillPv, c.mcpPv)
+	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, c.todoMgr, c.skillPv, c.mcpPv, compactor)
 	return c
 }
 

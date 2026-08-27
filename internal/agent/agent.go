@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"tars/pkg/compaction"
 	"tars/pkg/prompt"
 	"tars/pkg/tool/kernel"
 	"time"
@@ -83,13 +84,16 @@ type ReActAgent struct {
 	sink      event.Sink
 	toolExec  ToolExecutor
 	statusBar *StatusBar
+	// compactor 上下文压缩器（plan/context 02 篇）；nil 时跳过压缩（测试与降级路径）。
+	compactor *compaction.Compactor
 }
 
 var _ Agent = (*ReActAgent)(nil)
 
 // NewReAct 创建一个 ReAct 循环的 agent（会话级，由 Controller 持有复用）。
 // sink 为 nil 时静默（归一化为 event.Discard，emit 路径无需判空）。
-func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.Sink, toolExec ToolExecutor, todoPv TodoStatus, skillPv SkillStatus, mcpPv MCPStatus) *ReActAgent {
+// compactor 为 nil 时循环不执行压缩检查。
+func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.Sink, toolExec ToolExecutor, todoPv TodoStatus, skillPv SkillStatus, mcpPv MCPStatus, compactor *compaction.Compactor) *ReActAgent {
 	if sink == nil {
 		sink = event.Discard
 	}
@@ -100,6 +104,7 @@ func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.S
 		sink:      sink,
 		toolExec:  toolExec,
 		statusBar: NewStatusBar(session, todoPv, skillPv, mcpPv),
+		compactor: compactor,
 	}
 }
 
@@ -121,6 +126,12 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 	for iter := 1; iter <= a.cfg.MaxIterations; iter++ {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("context cancelled at iteration %d: %w", iter, err)
+		}
+
+		// 0. 压缩检查（plan/context 02 篇）：上一轮实测 token 超阈值则先压缩
+		//    再组装本轮输入。压缩只改投影规则，原始轨迹不动；失败不阻塞主循环。
+		if a.compactor != nil {
+			a.compactor.Maybe(ctx, provider)
 		}
 
 		// 1. 构建 LLM 输入：system（动态）+ 会话历史 + 状态栏。

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"time"
 
+	"tars/pkg/compaction"
 	"tars/pkg/event"
 	"tars/pkg/schema"
 	"tars/pkg/tool/guard"
@@ -166,6 +167,9 @@ func (s *Manager) FinalizeAssistant(id string, usage *schema.UsageInfo, elapsedM
 // 返回该轮的 user 消息内容（trace 展示用）。
 func (s *Manager) PrepareRetry(messageID string) (string, error) {
 	userText, err := s.data.PrepareRetry(messageID)
+	if err == nil {
+		s.invalidateCompactionIfCutoffLost("retry crosses cutoff")
+	}
 
 	wErr := instance.RewriteMessages(s.data.ID, s.data.Messages)
 	if wErr != nil {
@@ -182,11 +186,21 @@ func (s *Manager) DeleteFrom(messageID string) (int, error) {
 		return idx, err
 	}
 
+	s.invalidateCompactionIfCutoffLost("delete crosses cutoff")
 	return idx, instance.RewriteMessages(s.data.ID, s.data.Messages)
 }
 
 // EditUserMessage 就地编辑一条 user 消息的内容（不触发重新生成）。
 func (s *Manager) EditUserMessage(messageID, content string) error {
+	// 编辑压缩区内消息（原文已归档）→ 压缩态整体作废（03 篇 §4：保守一致）。
+	if c := s.data.Compaction; c != nil && c.CutoffMessageID != "" {
+		cutIdx, _ := s.data.FindMessage(c.CutoffMessageID)
+		editIdx, _ := s.data.FindMessage(messageID)
+		if cutIdx >= 0 && editIdx >= 0 && editIdx <= cutIdx {
+			s.invalidateCompaction("edit crosses cutoff")
+		}
+	}
+
 	err := s.data.EditUserMessage(messageID, content)
 	if err != nil {
 		return err
@@ -227,6 +241,66 @@ func (s *Manager) AppendMessage(updateAt int64, msg ...*schema.Message) {
 
 func (s *Manager) History() []*schema.Message {
 	return s.data.History()
+}
+
+// --- 压缩态（compaction，plan/context 02/03 篇：CompactStore 接口实现） ---
+
+// RawHistory 返回原始轨迹副本（不做压缩投影）——压缩器的选择/归档用。
+func (s *Manager) RawHistory() []*schema.Message {
+	return s.data.RawHistory()
+}
+
+// Compaction 返回当前压缩态（nil = 未压缩，恒等投影）。
+func (s *Manager) Compaction() *compaction.Compaction {
+	return s.data.Compaction
+}
+
+// ApplyCompaction 写回压缩态：先原子落盘再改内存（03 篇红线）。
+func (s *Manager) ApplyCompaction(c *compaction.Compaction) error {
+	if err := instance.SaveCompaction(s.data.ID, c); err != nil {
+		return err
+	}
+	s.data.Compaction = c
+	return nil
+}
+
+// ArchivePath 分配归档文件路径（目录布局由 StoreManager 持有）。
+func (s *Manager) ArchivePath(rangeLabel string) string {
+	return instance.ArchivePath(s.data.ID, rangeLabel)
+}
+
+// UnmarkSkillLoaded 从已加载技能集合移除并写穿 meta.json
+//（02 篇 §5.1 一致性红线：skill 正文被压缩后调用）。
+func (s *Manager) UnmarkSkillLoaded(name string) {
+	s.data.UnmarkSkillLoaded(name)
+	if err := instance.SaveMetadata(s.data.ID, s.data.Metadata); err != nil {
+		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+	}
+}
+
+// invalidateCompaction 作废压缩态：先删盘再清内存（03 篇红线）。
+// 归档文件保留（审计资产，不随作废删除）。
+func (s *Manager) invalidateCompaction(reason string) {
+	if s.data.Compaction == nil {
+		return
+	}
+	if err := instance.DeleteCompaction(s.data.ID); err != nil {
+		slog.Warn("Failed to delete compaction", "id", s.data.ID, "error", err)
+	}
+	s.data.Compaction = nil
+	slog.Info("Compaction invalidated", "id", s.data.ID, "reason", reason)
+}
+
+// invalidateCompactionIfCutoffLost 截断类操作后调用：cutoff 消息已不在
+// 轨迹中（截断进入压缩区）→ 压缩态整体作废（03 篇 §4 交互矩阵）。
+func (s *Manager) invalidateCompactionIfCutoffLost(reason string) {
+	c := s.data.Compaction
+	if c == nil || c.CutoffMessageID == "" {
+		return
+	}
+	if _, m := s.data.FindMessage(c.CutoffMessageID); m == nil {
+		s.invalidateCompaction(reason)
+	}
 }
 
 // EmitMessageAppended 发射消息追加/更新事件（sink 为空时静默）。

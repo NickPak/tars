@@ -234,6 +234,16 @@ export class SessionStats {
     "compressionThreshold": number;
 
     /**
+     * CompressionKeepTurns 压缩时保留的最近完整轮数。
+     */
+    "compressionKeepTurns": number;
+
+    /**
+     * CompressionMinBatch 最小压缩集消息数（低于则不压）。
+     */
+    "compressionMinBatch": number;
+
+    /**
      * 当前激活模型的价格表，透传给前端计算每条消息的"本次费用"。
      */
     "inputPricePerMillion": number;
@@ -278,6 +288,12 @@ export class SessionStats {
         if (!("compressionThreshold" in $$source)) {
             this["compressionThreshold"] = 0;
         }
+        if (!("compressionKeepTurns" in $$source)) {
+            this["compressionKeepTurns"] = 0;
+        }
+        if (!("compressionMinBatch" in $$source)) {
+            this["compressionMinBatch"] = 0;
+        }
         if (!("inputPricePerMillion" in $$source)) {
             this["inputPricePerMillion"] = 0;
         }
@@ -292,10 +308,10 @@ export class SessionStats {
      * Creates a new SessionStats instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionStats {
-        const $$createField12_0 = $$createType4;
+        const $$createField14_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("modelPrices" in $$parsedSource) {
-            $$parsedSource["modelPrices"] = $$createField12_0($$parsedSource["modelPrices"]);
+            $$parsedSource["modelPrices"] = $$createField14_0($$parsedSource["modelPrices"]);
         }
         return new SessionStats($$parsedSource as Partial<SessionStats>);
     }

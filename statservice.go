@@ -30,6 +30,10 @@ type SessionStats struct {
 	ContextWindow int `json:"contextWindow"`
 	// CompressionThreshold 压缩阈值配置（0-1）。
 	CompressionThreshold float64 `json:"compressionThreshold"`
+	// CompressionKeepTurns 压缩时保留的最近完整轮数。
+	CompressionKeepTurns int `json:"compressionKeepTurns"`
+	// CompressionMinBatch 最小压缩集消息数（低于则不压）。
+	CompressionMinBatch int `json:"compressionMinBatch"`
 	// 当前激活模型的价格表，透传给前端计算每条消息的"本次费用"。
 	InputPricePerMillion  float64 `json:"inputPricePerMillion"`
 	OutputPricePerMillion float64 `json:"outputPricePerMillion"`
@@ -65,6 +69,8 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 			contextWindow = active.ContextWindow
 		}
 		stats.CompressionThreshold = cfg.Agent.CompressionThreshold
+		stats.CompressionKeepTurns = cfg.Agent.CompressionKeepTurns
+		stats.CompressionMinBatch = cfg.Agent.CompressionMinBatch
 		stats.InputPricePerMillion = activeIn
 		stats.OutputPricePerMillion = activeOut
 		stats.ModelPrices = make(map[string]ModelPrice, len(cfg.LLM.Models))
