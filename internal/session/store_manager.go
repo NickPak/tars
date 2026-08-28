@@ -132,15 +132,12 @@ func (s *StoreManager) LoadMessages(sessionID string) ([]*schema.Message, error)
 	return msgs, nil
 }
 
-// CreateSession 创建新会话：生成 ID、磁盘 meta 落盘、返回就绪的 Data。
+// CreateSession 创建新会话：生成 ID、meta 落盘（存储目录随首次写入惰性
+// 创建），返回就绪的 Data。工作目录的创建在 session.Manager.Startup。
 func (s *StoreManager) CreateSession() (*Data, error) {
 	id := uuid.NewString()
 	data := NewData(id)
 
-	dir := GetDataDir(s.workDir, id)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("session store: create session %s: %w", id, err)
-	}
 	if err := s.SaveMetadata(id, data.Metadata); err != nil {
 		return nil, err
 	}
@@ -309,9 +306,19 @@ func (s *StoreManager) DeleteCompaction(sessionID string) error {
 	return nil
 }
 
-// ArchivePath 分配归档文件路径（data/archive/<rangeLabel>.md，03 篇 §2）。
-func (s *StoreManager) ArchivePath(sessionID, rangeLabel string) string {
-	return filepath.Join(GetDataDir(s.workDir, sessionID), ArchiveDir, rangeLabel+".md")
+// WriteArchive 惰性创建归档目录并写入归档文件（data/archive/<rangeLabel>.md，
+// 03 篇 §2），返回文件路径。存储类目录均由 StoreManager 写路径自闭合，
+// 外部调用者无需关心创建。
+func (s *StoreManager) WriteArchive(sessionID, rangeLabel string, content []byte) (string, error) {
+	dir := filepath.Join(GetDataDir(s.workDir, sessionID), ArchiveDir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("session store: create archive dir for %s: %w", sessionID, err)
+	}
+	path := filepath.Join(dir, rangeLabel+".md")
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		return "", fmt.Errorf("session store: write archive for %s: %w", sessionID, err)
+	}
+	return path, nil
 }
 
 // RewriteMessages 全量覆写消息文件（重试/删除/编辑等截断操作后）。

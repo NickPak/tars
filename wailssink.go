@@ -30,7 +30,7 @@ func (s *WailsSink) Emit(e event.Event) {
 		app.Event.Emit("agent:tool", e.Tool)
 	case event.KindToolResult:
 		app.Event.Emit("agent:tool_result", e.ToolResult)
-	case event.KindDone:
+	case event.KindTurnEnded:
 		app.Event.Emit("agent:done", e.Done)
 	case event.KindError:
 		app.Event.Emit("agent:error", e.Error)

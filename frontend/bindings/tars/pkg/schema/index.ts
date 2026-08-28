@@ -3,7 +3,6 @@
 
 export {
     Message,
-    MessagePart,
     Role,
     ToolCall,
     UsageInfo

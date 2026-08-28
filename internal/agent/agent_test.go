@@ -65,8 +65,7 @@ func (s *stuckStream) Recv() (*schema.Message, error) {
 func (s *stuckStream) Final() (*schema.Message, error) { return nil, nil }
 func (s *stuckStream) Close() error                    { return nil }
 
-// fakeSession 是 agent.Session 的内存实现：聚合语义对齐 session.Info
-// （assistant 按 ID 聚合，工具结果尾部追加）。
+// fakeSession 是 agent.Session 的内存实现（交错式：消息尾部追加，无聚合）。
 type fakeSession struct {
 	msgs []*schema.Message
 }
@@ -78,19 +77,6 @@ func (s *fakeSession) History() []*schema.Message {
 	out := make([]*schema.Message, len(s.msgs))
 	copy(out, s.msgs)
 	return out
-}
-
-func (s *fakeSession) UpsertAssistant(id string, delta *schema.Message) {
-	for _, m := range s.msgs {
-		if m.ID == id {
-			m.Content += delta.Content
-			m.ToolCalls = append(m.ToolCalls, delta.ToolCalls...)
-			return
-		}
-	}
-	s.msgs = append(s.msgs, &schema.Message{
-		ID: id, Role: schema.RoleAssistant, Content: delta.Content, ToolCalls: delta.ToolCalls,
-	})
 }
 
 func (s *fakeSession) AppendMessage(_ int64, msg ...*schema.Message) {
@@ -348,6 +334,74 @@ func TestRun_ProviderErrorFailsFast(t *testing.T) {
 	}
 	if m.calls != 1 {
 		t.Errorf("provider calls = %d, want 1 (fail fast, no retry)", m.calls)
+	}
+}
+
+// TestRun_InterleavedLayout 交错式验收（07 篇期 1）：一轮 3 迭代的会话消息
+// 呈标准交错序——每次迭代一条全新 assistant 消息，tool 结果紧随其后按 ID 配对；
+// 首轮消息 ID = 轮锚点，后续迭代分配新 ID；流式/工具事件携带当轮迭代 ID。
+func TestRun_InterleavedLayout(t *testing.T) {
+	m := &stubProvider{responses: []*schema.Message{
+		{Role: schema.RoleAssistant, Reasoning: "r1", ToolCalls: []schema.ToolCall{
+			{ID: "call_1", Name: "echo", Args: `{"text":"a"}`},
+		}},
+		{Role: schema.RoleAssistant, Reasoning: "r2", ToolCalls: []schema.ToolCall{
+			{ID: "call_2", Name: "echo", Args: `{"text":"b"}`},
+		}},
+		{Role: schema.RoleAssistant, Content: "final"},
+	}}
+	reg := newTestRegistry(map[string]kernel.Handler{
+		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "ok", nil },
+	})
+	sess := &fakeSession{}
+	sink := &recordingSink{}
+	a := newTestAgent(reg, sess, sink, 5)
+
+	res, err := runTurn(a, context.Background(), "go", m)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.Content != "final" || res.Iterations != 3 {
+		t.Fatalf("result = %+v, want final/3 iterations", res)
+	}
+
+	// 消息序列：assistant, tool, assistant, tool, assistant（标准交错序）
+	if len(sess.msgs) != 5 {
+		t.Fatalf("messages = %d, want 5", len(sess.msgs))
+	}
+	wantRoles := []schema.Role{schema.RoleAssistant, schema.RoleTool, schema.RoleAssistant, schema.RoleTool, schema.RoleAssistant}
+	for i, role := range wantRoles {
+		if sess.msgs[i].Role != role {
+			t.Fatalf("msgs[%d].Role = %s, want %s", i, sess.msgs[i].Role, role)
+		}
+	}
+	// 配对相邻：带调用的 assistant 紧随其后是配对的 tool 结果
+	if sess.msgs[1].ToolCallID != "call_1" || sess.msgs[3].ToolCallID != "call_2" {
+		t.Fatalf("tool pairing broken: %v / %v", sess.msgs[1].ToolCallID, sess.msgs[3].ToolCallID)
+	}
+	// ID 分配：首轮 = 轮锚点；迭代 2/3 = 新 ID 且互不相同
+	if sess.msgs[0].ID != "test-assistant" {
+		t.Fatalf("first iteration ID = %s, want turn anchor", sess.msgs[0].ID)
+	}
+	if sess.msgs[2].ID == "test-assistant" || sess.msgs[4].ID == "test-assistant" ||
+		sess.msgs[2].ID == sess.msgs[4].ID {
+		t.Fatalf("iteration IDs not distinct: %s / %s", sess.msgs[2].ID, sess.msgs[4].ID)
+	}
+	// 每迭代消息自带用量/耗时盖章字段（CreatedAt 非零）
+	for i, m := range sess.msgs {
+		if m.Role == schema.RoleAssistant && m.CreatedAt == 0 {
+			t.Fatalf("assistant msgs[%d] missing CreatedAt", i)
+		}
+	}
+	// 流式/工具事件归属当轮迭代 ID：call_1 的 dispatch 属于首轮（锚点），call_2 属于迭代 2
+	var dispatchMsgID []string
+	for _, e := range sink.events {
+		if e.Kind == event.KindToolDispatch {
+			dispatchMsgID = append(dispatchMsgID, e.Tool.MessageID)
+		}
+	}
+	if len(dispatchMsgID) != 2 || dispatchMsgID[0] != "test-assistant" || dispatchMsgID[1] != sess.msgs[2].ID {
+		t.Fatalf("tool dispatch message IDs = %v", dispatchMsgID)
 	}
 }
 

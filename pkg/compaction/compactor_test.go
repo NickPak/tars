@@ -18,11 +18,15 @@ type fakeStore struct {
 	unmarked   []string
 }
 
-func (f *fakeStore) RawHistory() []*schema.Message      { return f.raw }
-func (f *fakeStore) Compaction() *Compaction            { return f.comp }
+func (f *fakeStore) RawHistory() []*schema.Message       { return f.raw }
+func (f *fakeStore) Compaction() *Compaction             { return f.comp }
 func (f *fakeStore) ApplyCompaction(c *Compaction) error { f.comp = c; return nil }
-func (f *fakeStore) ArchivePath(label string) string {
-	return filepath.Join(f.archiveDir, label+".md")
+func (f *fakeStore) WriteArchive(label string, content []byte) (string, error) {
+	path := filepath.Join(f.archiveDir, label+".md")
+	if err := os.MkdirAll(f.archiveDir, 0o755); err != nil {
+		return "", err
+	}
+	return path, os.WriteFile(path, content, 0o644)
 }
 func (f *fakeStore) UnmarkSkillLoaded(name string) { f.unmarked = append(f.unmarked, name) }
 

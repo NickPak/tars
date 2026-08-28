@@ -336,7 +336,7 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 	if err != nil {
 		// 取消是干净停止，不算错误。
 		if ctx.Err() != nil {
-			sink.Emit(event.Event{Kind: event.KindDone, Done: &event.StreamDone{
+			sink.Emit(event.Event{Kind: event.KindTurnEnded, Done: &event.StreamDone{
 				SessionID: c.sessionMgr.GetID(), MessageID: assistantID,
 				ElapsedMs: elapsedMs, FinalOutput: finalOutput,
 			}})
@@ -351,16 +351,14 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 		}
 	} else {
 		c.llmMgr.SetHealthy(modelCfg.EntryID, true)
-		sink.Emit(event.Event{Kind: event.KindDone, Done: &event.StreamDone{
+		sink.Emit(event.Event{Kind: event.KindTurnEnded, Done: &event.StreamDone{
 			SessionID: c.sessionMgr.GetID(), MessageID: assistantID, Usage: usage,
 			ElapsedMs: elapsedMs, FinalOutput: finalOutput,
 		}})
 	}
 
-	// 把本轮的 token 统计与总耗时写入 assistant 消息并持久化快照，
-	// 历史会话重新打开后每条消息的用量信息才能恢复。
-	// 一轮未产出（首轮即失败）时无 assistant 消息，静默跳过。
-	c.sessionMgr.FinalizeAssistant(assistantID, usage, elapsedMs)
+	// 每迭代 assistant 消息自带用量（交错式存储）；轮级合计用量与耗时经
+	// KindTurnEnded 透出（Usage 为逐迭代累加的轮级合计）。
 }
 
 // EmitError 发射一轮错误结束事件。

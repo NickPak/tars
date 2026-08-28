@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/cloudwego/eino-ext/components/model/ark"
@@ -87,8 +89,9 @@ func (r *Manager) UpdateConfig(cfg *Config) error {
 	if m := cfg.ActiveModel(); m != nil && active != nil {
 		r.models[m.EntryID] = active
 	}
-	// 配置可能修复了密钥/端点：清空健康记录，给新配置一次全新尝试
-	r.ResetHealth()
+	// 配置可能修复了密钥/端点：清空健康记录，给新配置一次全新尝试。
+	// 锁已持有，内联重置（调 r.ResetHealth() 会对同一互斥锁二次加锁死锁）。
+	r.healthy = map[string]bool{}
 	return nil
 }
 
@@ -192,9 +195,15 @@ func buildOpenAI(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 	if p.BaseUrl == "" {
 		return nil, fmt.Errorf("供应商 %q 未配置 Base URL（openai 类型必填）", p.ID)
 	}
+	// BaseURL 只到服务根（如 .../v1）：客户端会自行拼接 /chat/completions。
+	// 用户误填完整端点时归一化，否则路径重复（.../chat/completions/chat/completions → 404）。
+	baseURL := strings.TrimSuffix(strings.TrimRight(p.BaseUrl, "/"), "/chat/completions")
+	if baseURL != p.BaseUrl {
+		slog.Warn("供应商 BaseUrl 含端点后缀，已归一化", "provider", p.ID, "baseUrl", baseURL)
+	}
 	cfg := &openai.ChatModelConfig{
 		APIKey:  p.ApiKey,
-		BaseURL: p.BaseUrl,
+		BaseURL: baseURL,
 		Model:   m.ModelId,
 	}
 	if m.MaxTokens > 0 {

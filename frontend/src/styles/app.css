@@ -439,19 +439,6 @@ body.resizing-col .resize-handle::after {
   white-space: nowrap;
 }
 
-.topicbar-ws-btn .ws-custom {
-  color: var(--accent);
-}
-
-.ws-custom-badge {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(168, 199, 250, 0.15);
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
 .topicbar-model-btn {
   display: flex;
   align-items: center;
@@ -583,6 +570,12 @@ body.resizing-col .resize-handle::after {
   gap: 24px;
 }
 
+/* 交错式一轮多条 assistant 气泡：24px 是"轮与轮"的间隔，同一轮内
+   的连续 assistant 气泡（迭代消息）收紧为 8px，否则迭代之间显得脱节 */
+.message-list-inner > .message.assistant + .message.assistant {
+  margin-top: -16px;
+}
+
 .message.user {
   display: flex;
   justify-content: flex-end;
@@ -690,7 +683,8 @@ body.resizing-col .resize-handle::after {
 
 /* ===== 思考过程（reasoning） ===== */
 .reasoning-block {
-  margin-bottom: 12px;
+  /* 气泡内各区块统一 10px 节奏（reasoning→正文→工具卡片） */
+  margin-bottom: 10px;
   border-left: 2px solid var(--border);
   border-radius: 0 8px 8px 0;
   background: rgba(255, 255, 255, 0.03);
@@ -762,8 +756,10 @@ body.resizing-col .resize-handle::after {
 .tool-calls {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 8px;
+  /* 气泡内各区块统一 10px 节奏 */
+  margin-top: 10px;
+  margin-bottom: 10px;
 }
 
 .tool-card {

@@ -307,7 +307,6 @@ export class ToolResultEvent {
 export class WorkspaceChangedEvent {
     "sessionId": string;
     "path": string;
-    "isCustom": boolean;
 
     /** Creates a new WorkspaceChangedEvent instance. */
     constructor($$source: Partial<WorkspaceChangedEvent> = {}) {
@@ -316,9 +315,6 @@ export class WorkspaceChangedEvent {
         }
         if (!("path" in $$source)) {
             this["path"] = "";
-        }
-        if (!("isCustom" in $$source)) {
-            this["isCustom"] = false;
         }
 
         Object.assign(this, $$source);

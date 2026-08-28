@@ -85,7 +85,7 @@ func (s *traceSink) Emit(e event.Event) {
 			trace.EndToolCall(span, e.ToolResult.Output)
 		}
 
-	case event.KindDone:
+	case event.KindTurnEnded:
 		// 轮正常结束（含用户取消的干净停止）：收尾未闭合的 LLM span
 		// （取消发生在 LLM 调用中途时不会触发 IterationEnd），闭合 turn span。
 		if s.llmSpan != nil {

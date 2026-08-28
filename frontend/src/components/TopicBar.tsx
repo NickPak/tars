@@ -90,11 +90,10 @@ export default function TopicBar() {
           title={workspace?.path || "未设置工作区"}
           onClick={() => setWsMenuOpen((v) => !v)}
         >
-          <FolderOpen size={14} className={workspace?.isCustom ? "ws-custom" : ""} />
+          <FolderOpen size={14} />
           <span className="topicbar-ws-name">
             {workspace?.name || "默认工作区"}
           </span>
-          {workspace?.isCustom && <span className="ws-custom-badge">自定义</span>}
           <ChevronDown size={12} />
         </button>
 
@@ -115,18 +114,16 @@ export default function TopicBar() {
                 <FolderInput size={14} />
                 打开目录…
               </button>
-              {workspace?.isCustom && (
-                <button
-                  className="topicbar-menu-item"
-                  onClick={() => {
-                    void resetWorkspace();
-                    setWsMenuOpen(false);
-                  }}
-                >
-                  <RotateCcw size={14} />
-                  重置为默认工作区
-                </button>
-              )}
+              <button
+                className="topicbar-menu-item"
+                onClick={() => {
+                  void resetWorkspace();
+                  setWsMenuOpen(false);
+                }}
+              >
+                <RotateCcw size={14} />
+                重置为默认工作区
+              </button>
               {activeId && (
                 <button
                   className="topicbar-menu-item"

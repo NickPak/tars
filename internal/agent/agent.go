@@ -24,7 +24,9 @@ import (
 type Agent interface {
 	Startup() error
 	// Run 驱动一轮对话（一个 turn）：ReAct 循环直到模型给出最终回复。
-	// assistantID 是本轮 assistant 消息的 ID（事件的 MessageID 与之对应）。
+	// assistantID 是轮锚点 ID：首轮迭代消息与 KindTurnStarted/KindTurnEnded 的
+	// MessageID 与之对应；交错式存储下，迭代 2+ 的 assistant 消息有独立 ID
+	// （流式/工具/迭代事件的 MessageID 携带当轮迭代 ID）。
 	// provider 是本轮的模型（宿主每轮解析，模型热切换由此生效）。
 	// 运行过程通过构造时注入的 event.Sink 发射事件。
 	Run(ctx context.Context, assistantID string, provider llm.Provider) (*Result, error)
@@ -39,10 +41,8 @@ type Session interface {
 	GetID() string
 	// History 返回消息历史（副本）。
 	History() []*schema.Message
-	// UpsertAssistant 把一轮迭代的 assistant 产出聚合进指定 ID 的消息
-	// （不存在则创建），含持久化快照与事件通知。
-	UpsertAssistant(id string, delta *schema.Message)
-	// AppendMessage 追加消息（工具结果等），含持久化与事件通知。
+	// AppendMessage 追加消息（assistant 迭代消息、工具结果等），
+	// 含持久化与事件通知。交错式存储：每次迭代一条全新 assistant 消息。
 	AppendMessage(updateAt int64, msg ...*schema.Message)
 
 	GetWorkspaceDir() string
@@ -58,12 +58,12 @@ type ToolExecutor interface {
 
 // Result 是一轮对话的结果。
 type Result struct {
-	// AssistantID 是本轮 assistant 消息的 ID（与事件的 MessageID 对应）。
+	// AssistantID 是轮锚点 ID（= 首轮迭代消息 ID，与 KindTurnEnded 的 MessageID 对应）。
 	AssistantID string
 	// Content 是最终回复文本。
 	Content string
-	// Usage 是最后一帧的 token 用量（可能为 nil；EntryID 由 llm
-	// 适配层在构造 provider 时标注，agent 只是透传）。
+	// Usage 是本轮的合计 token 用量（逐迭代累加，可能为 nil；KindTurnEnded
+	// 的载荷。EntryID 由 llm 适配层在构造 provider 时标注，agent 只是透传）。
 	Usage *schema.UsageInfo
 	// Iterations 是实际执行的迭代数。
 	Iterations int
@@ -76,7 +76,7 @@ type Result struct {
 // 轮级输入（assistantID/provider）经 Run 参数传入——模型热切换与
 // 每轮新消息 ID 由此表达；轮级状态（statusBar）是 Run 的局部变量。
 // 工具执行（查找/权限门/并行/事件）由 ToolExecutor 负责；
-// 消息聚合/持久化由 Session 负责。
+// 消息持久化由 Session 负责（交错式：每次迭代 append 一条新消息）。
 type ReActAgent struct {
 	cfg       *Config
 	prompt    prompt.Composer
@@ -123,6 +123,23 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 
 	sessionID := a.session.GetID()
 
+	// 轮级合计用量（Result.Usage 语义，KindTurnEnded 的载荷）：逐迭代累加，
+	// 覆盖该轮每一次 LLM 调用的真实成本（历史重发也计费，求和才是轮成本）。
+	var turnUsage *schema.UsageInfo
+	addUsage := func(u *schema.UsageInfo) {
+		if u == nil {
+			return
+		}
+		if turnUsage == nil {
+			turnUsage = &schema.UsageInfo{}
+		}
+		turnUsage.PromptTokens += u.PromptTokens
+		turnUsage.CompletionTokens += u.CompletionTokens
+		turnUsage.TotalTokens += u.TotalTokens
+		turnUsage.CachedTokens += u.CachedTokens
+		turnUsage.EntryID = u.EntryID
+	}
+
 	for iter := 1; iter <= a.cfg.MaxIterations; iter++ {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("context cancelled at iteration %d: %w", iter, err)
@@ -144,12 +161,20 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 		msgs = append(msgs, history...)
 		msgs = append(msgs, a.statusBar.Render(ctx, iter))
 
+		// 迭代消息 ID：首轮沿用轮锚点 assistantID（前端占位回填不变），
+		// 后续迭代后端分配新 ID——交错式存储，一迭代一条全新消息。
+		msgID := assistantID
+		if iter > 1 {
+			msgID = uuid.NewString()
+		}
+
 		a.emit(event.Event{Kind: event.KindIterationStart, Iteration: &event.IterationEvent{
-			SessionID: sessionID, MessageID: assistantID, Iteration: iter, Messages: msgs,
+			SessionID: sessionID, MessageID: msgID, Iteration: iter, Messages: msgs,
 		}})
 
 		// 2. 调模型（流式，带超时归一化；失败即终止——重试策略见下）
-		msg, err := a.callModel(ctx, provider, a.cfg.IterationTimeout, iter, msgs, sessionID, assistantID)
+		iterStart := time.Now()
+		msg, err := a.callModel(ctx, provider, a.cfg.IterationTimeout, iter, msgs, sessionID, msgID)
 		if err != nil {
 			return nil, err
 		}
@@ -157,11 +182,17 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 			return nil, fmt.Errorf("model returned empty message at iteration %d", iter)
 		}
 
-		// 3. assistant 增量落会话（聚合/持久化/事件由 session 负责）
-		a.session.UpsertAssistant(assistantID, msg)
+		// 3. assistant 落会话：交错式 append（无聚合、无占位），
+		//    用量与迭代耗时随消息盖章；用量同步累加进轮级合计。
+		msg.ID = msgID
+		msg.Role = schema.RoleAssistant
+		msg.CreatedAt = time.Now().UnixMilli()
+		msg.ElapsedMs = time.Since(iterStart).Milliseconds()
+		a.session.AppendMessage(msg.CreatedAt, msg)
+		addUsage(msg.Usage)
 
 		a.emit(event.Event{Kind: event.KindIterationEnd, Iteration: &event.IterationEvent{
-			SessionID: sessionID, MessageID: assistantID, Iteration: iter, Assistant: msg,
+			SessionID: sessionID, MessageID: msgID, Iteration: iter, Assistant: msg,
 		}})
 
 		// 4. 没有工具调用 → 这就是最终回复
@@ -169,7 +200,7 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 			return &Result{
 				AssistantID: assistantID,
 				Content:     msg.Content,
-				Usage:       msg.Usage,
+				Usage:       turnUsage,
 				Iterations:  iter,
 			}, nil
 		}
@@ -177,14 +208,14 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 		// 5. 执行工具：整体委托给 Registry（查找/权限门/并行都在内部完成）
 		for _, tc := range msg.ToolCalls {
 			a.emit(event.Event{Kind: event.KindToolDispatch, Tool: &event.ToolEvent{
-				SessionID: sessionID, MessageID: assistantID,
+				SessionID: sessionID, MessageID: msgID,
 				ToolCallID: tc.ID, ToolName: tc.Name, Args: tc.Args,
 			}})
 		}
 		results := a.toolExec.Execute(ctx, msg.ToolCalls, func(tr kernel.ToolResult) {
 			// 并发回调（每个工具完成时）：只发射事件，sink 链路需并发安全。
 			a.emit(event.Event{Kind: event.KindToolResult, ToolResult: &event.ToolResultEvent{
-				SessionID: sessionID, MessageID: assistantID,
+				SessionID: sessionID, MessageID: msgID,
 				ToolCallID: tr.ID, Output: tr.Output,
 			}})
 		})
@@ -207,10 +238,10 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 }
 
 // callModel 执行一次带超时的流式模型调用：逐帧转发流式事件，
-// 流结束后返回拼接好的完整消息。失败即返回错误（不重试——已部分
-// 流式输出的重试会在 UI 产生重复内容；如需重试策略，应加独立策略
-// 接口而非塞回循环）。
-func (a *ReActAgent) callModel(ctx context.Context, provider llm.Provider, timeout time.Duration, iter int, msgs []*schema.Message, sessionID, assistantID string) (*schema.Message, error) {
+// 流结束后返回拼接好的完整消息。messageID 是本次迭代产出的 assistant
+// 消息 ID（流式事件归属）。失败即返回错误（不重试——已部分流式输出的
+// 重试会在 UI 产生重复内容；如需重试策略，应加独立策略接口而非塞回循环）。
+func (a *ReActAgent) callModel(ctx context.Context, provider llm.Provider, timeout time.Duration, iter int, msgs []*schema.Message, sessionID, messageID string) (*schema.Message, error) {
 	callCtx := ctx
 	cancel := func() {}
 	if timeout > 0 {
@@ -237,12 +268,12 @@ func (a *ReActAgent) callModel(ctx context.Context, provider llm.Provider, timeo
 		}
 		if frame.Reasoning != "" {
 			a.emit(event.Event{Kind: event.KindReasoning, Reasoning: &event.ReasoningEvent{
-				SessionID: sessionID, MessageID: assistantID, Content: frame.Reasoning,
+				SessionID: sessionID, MessageID: messageID, Content: frame.Reasoning,
 			}})
 		}
 		if frame.Content != "" {
 			a.emit(event.Event{Kind: event.KindStreamChunk, Chunk: &event.StreamChunk{
-				SessionID: sessionID, MessageID: assistantID, Chunk: frame.Content,
+				SessionID: sessionID, MessageID: messageID, Chunk: frame.Content,
 			}})
 		}
 	}

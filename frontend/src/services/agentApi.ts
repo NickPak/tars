@@ -60,6 +60,8 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
     agent: {
       maxIterations: cfg.agent?.maxIterations ?? 100,
       compressionThreshold: cfg.agent?.compressionThreshold ?? 0.8,
+      compressionKeepTurns: cfg.agent?.compressionKeepTurns ?? 6,
+      compressionMinBatch: cfg.agent?.compressionMinBatch ?? 8,
       iterationTimeout: cfg.agent?.iterationTimeout ?? 0,
     },
     trace: {

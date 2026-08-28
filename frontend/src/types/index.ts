@@ -9,10 +9,8 @@ export interface ChatMessage {
   createdAt: number;
   /** 模型思考过程（reasoning content） */
   reasoning?: string;
-  /** 工具调用信息 */
+  /** 工具调用信息（本迭代发起的调用；输出经 toolCallId 从 tool 消息合并） */
   toolCalls?: ToolCallInfo[];
-  /** 按 ReAct 迭代有序的产出（assistant 角色）：交错渲染文本与工具卡片 */
-  parts?: MessagePart[];
   /** 工具调用 ID（tool role 消息用） */
   toolCallId?: string;
   /** token 用量统计 */
@@ -31,15 +29,6 @@ export interface ToolCallInfo {
   name: string;
   args: string;
   output?: string;
-}
-
-/** assistant 消息在一个 ReAct 迭代内的产出（本轮思考 + 文本 + 工具调用）。
- *  按 parts 顺序交错渲染思考/文本/工具卡片；content/reasoning/toolCalls
- *  聚合字段仍是全迭代拼接（复制、统计、旧数据回退渲染用）。 */
-export interface MessagePart {
-  content?: string;
-  reasoning?: string;
-  toolCalls?: ToolCallInfo[];
 }
 
 export interface Session {
@@ -208,8 +197,6 @@ export interface FileEntry {
 export interface WorkspaceInfo {
   /** 当前工作区目录绝对路径 */
   path: string;
-  /** 是否为用户自定义的外部目录 */
-  isCustom: boolean;
   /** 目录名（用于显示） */
   name: string;
 }
@@ -218,7 +205,6 @@ export interface WorkspaceInfo {
 export interface WorkspaceChangedEvent {
   sessionId: string;
   path: string;
-  isCustom: boolean;
 }
 
 // ===== 设置界面（直接镜像 Go 端 config / llm 包的结构体；密钥原样传输，
@@ -272,6 +258,10 @@ export interface LLMConfig {
 export interface AgentConfig {
   maxIterations: number;
   compressionThreshold: number;
+  /** 压缩时保留的最近完整轮数 */
+  compressionKeepTurns: number;
+  /** 最小压缩集消息数（低于则不压） */
+  compressionMinBatch: number;
   /** time.Duration 的 JSON 形式为纳秒数 */
   iterationTimeout: number;
 }

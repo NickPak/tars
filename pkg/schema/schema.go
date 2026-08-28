@@ -42,17 +42,9 @@ type UsageInfo struct {
 	EntryID string `json:"entryId,omitempty"`
 }
 
-// MessagePart 是 assistant 消息在一个 ReAct 迭代内的产出：本轮思考 + 文本 + 工具调用。
-// 前端据此把各迭代的思考/文本/工具卡片按时间顺序交错渲染；
-// Content/Reasoning/ToolCalls 聚合字段（全迭代拼接）继续供 LLM 上下文、
-// 导出、统计与旧数据回退渲染使用。
-type MessagePart struct {
-	Content   string     `json:"content,omitempty"`
-	Reasoning string     `json:"reasoning,omitempty"`
-	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
-}
-
 // Message 是会话中的一条消息（内存态与持久化共用同一结构）。
+// 交错式存储（plan/context 07 篇）：每次 ReAct 迭代一条独立 assistant 消息，
+// 工具结果消息紧随发起它的 assistant 消息、按 ToolCallID 配对。
 type Message struct {
 	ID         string     `json:"id"`
 	Role       Role       `json:"role"`
@@ -63,6 +55,4 @@ type Message struct {
 	Reasoning  string     `json:"reasoning,omitempty"`
 	Usage      *UsageInfo `json:"usage,omitempty"`
 	ElapsedMs  int64      `json:"elapsedMs,omitempty"`
-	// Parts 按 ReAct 迭代记录 assistant 消息的产出顺序（仅 assistant 角色）。
-	Parts []MessagePart `json:"parts,omitempty"`
 }

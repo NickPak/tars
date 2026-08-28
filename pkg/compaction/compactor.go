@@ -49,8 +49,8 @@ type CompactStore interface {
 	Compaction() *Compaction
 	// ApplyCompaction 写回压缩态（实现须先原子落盘再改内存，03 篇红线）。
 	ApplyCompaction(c *Compaction) error
-	// ArchivePath 分配归档文件路径（目录布局由实现方持有）。
-	ArchivePath(rangeLabel string) string
+	// WriteArchive 写入归档原文并返回路径（目录创建由实现方自闭合）。
+	WriteArchive(rangeLabel string, content []byte) (string, error)
 	// UnmarkSkillLoaded 一致性红线（02 篇 §5.1）：压缩集含 load_skill
 	// 正文时从会话 loaded 集合移除（含持久化写穿）。
 	UnmarkSkillLoaded(name string)
@@ -151,8 +151,8 @@ func (c *Compactor) compress(ctx context.Context, provider llm.Provider, raw []*
 
 	// ② 归档：原文先落盘（崩溃窗口见 03 篇 §3）
 	label := RangeLabel(raw, batch)
-	archivePath := c.store.ArchivePath(label)
-	if err := WriteArchive(archivePath, batch); err != nil {
+	archivePath, err := c.store.WriteArchive(label, RenderArchive(batch))
+	if err != nil {
 		return err
 	}
 

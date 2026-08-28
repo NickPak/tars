@@ -698,7 +698,8 @@ function ModelPage({
                       className="settings-input small"
                       type="number"
                       min={0}
-                      value={m.maxTokens}
+                      placeholder="0"
+                      value={m.maxTokens || ""}
                       onChange={(e) =>
                         patchModel(idx, { maxTokens: e.target.valueAsNumber || 0 })
                       }
@@ -709,7 +710,8 @@ function ModelPage({
                       className="settings-input small"
                       type="number"
                       min={0}
-                      value={m.contextWindow}
+                      placeholder="0"
+                      value={m.contextWindow || ""}
                       onChange={(e) =>
                         patchModel(idx, {
                           contextWindow: e.target.valueAsNumber || 0,
@@ -723,7 +725,8 @@ function ModelPage({
                       type="number"
                       min={0}
                       step={0.001}
-                      value={m.inputPricePerMillion}
+                      placeholder="0"
+                      value={m.inputPricePerMillion || ""}
                       onChange={(e) =>
                         patchModel(idx, {
                           inputPricePerMillion: e.target.valueAsNumber || 0,
@@ -737,7 +740,8 @@ function ModelPage({
                       type="number"
                       min={0}
                       step={0.001}
-                      value={m.outputPricePerMillion}
+                      placeholder="0"
+                      value={m.outputPricePerMillion || ""}
                       onChange={(e) =>
                         patchModel(idx, {
                           outputPricePerMillion: e.target.valueAsNumber || 0,
@@ -1006,7 +1010,7 @@ function AgentPage({
         </Field>
         <Field
           label="上下文压缩阈值"
-          hint="上下文使用占比超过该值时触发历史压缩（压缩功能规划中，当前仅状态栏展示）。"
+          hint="上下文使用占比超过该值时触发历史压缩（归档早期轮次为摘要条目，原始记录保留在磁盘）。"
         >
           <input
             className="settings-slider"
@@ -1028,6 +1032,46 @@ function AgentPage({
           <span className="settings-slider-value">
             {(draft.agent.compressionThreshold * 100).toFixed(0)}%
           </span>
+        </Field>
+        <Field
+          label="压缩保留轮数"
+          hint="压缩时原样保留的最近完整对话轮数；其余早期轮次归档为摘要条目。"
+        >
+          <input
+            className="settings-input small"
+            type="number"
+            min={1}
+            value={draft.agent.compressionKeepTurns}
+            onChange={(e) =>
+              update((d) => ({
+                ...d,
+                agent: {
+                  ...d.agent,
+                  compressionKeepTurns: Math.max(1, e.target.valueAsNumber || 1),
+                },
+              }))
+            }
+          />
+        </Field>
+        <Field
+          label="最小压缩批量"
+          hint="可压缩消息数低于该值时不执行压缩（收益不抵一次缓存重建）。"
+        >
+          <input
+            className="settings-input small"
+            type="number"
+            min={1}
+            value={draft.agent.compressionMinBatch}
+            onChange={(e) =>
+              update((d) => ({
+                ...d,
+                agent: {
+                  ...d.agent,
+                  compressionMinBatch: Math.max(1, e.target.valueAsNumber || 1),
+                },
+              }))
+            }
+          />
         </Field>
       </Section>
     </PageShell>

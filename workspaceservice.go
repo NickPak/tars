@@ -13,9 +13,6 @@ import (
 type WorkspaceInfo struct {
 	// Path is the effective workspace directory path.
 	Path string `json:"path"`
-	// IsCustom indicates whether the workspace is a user-chosen external
-	// directory (true) or the default isolated workspace (false).
-	IsCustom bool `json:"isCustom"`
 	// Name is the base name of the workspace directory, for display.
 	Name string `json:"name"`
 }
@@ -77,8 +74,7 @@ func (s *AgentService) GetWorkspaceInfo(sessionID string) (*WorkspaceInfo, error
 	workspaceDir := ctrl.GetSessionMgr().GetWorkspaceDir()
 
 	return &WorkspaceInfo{
-		Path:     workspaceDir,
-		IsCustom: true,
-		Name:     filepath.Base(workspaceDir),
+		Path: workspaceDir,
+		Name: filepath.Base(workspaceDir),
 	}, nil
 }

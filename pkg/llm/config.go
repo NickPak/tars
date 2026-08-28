@@ -166,7 +166,11 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", id, m.Provider)
 		}
 	}
-	if c.Active != "" && c.FindModel(c.Active) == nil {
+	if len(c.Models) == 0 {
+		// 模型列表为空时 Active 无意义：归零放行（允许用户在设置中清空全部
+		// 供应商与模型；首次对话时 Active() 才报"尚未配置任何模型"）。
+		c.Active = ""
+	} else if c.Active != "" && c.FindModel(c.Active) == nil {
 		return fmt.Errorf("当前模型 %q 不在模型列表中", c.Active)
 	}
 	return nil

@@ -7,6 +7,8 @@ import { Create as $Create } from "@wailsio/runtime";
 
 /**
  * Message 是会话中的一条消息（内存态与持久化共用同一结构）。
+ * 交错式存储（plan/context 07 篇）：每次 ReAct 迭代一条独立 assistant 消息，
+ * 工具结果消息紧随发起它的 assistant 消息、按 ToolCallID 配对。
  */
 export class Message {
     "id": string;
@@ -18,11 +20,6 @@ export class Message {
     "reasoning"?: string;
     "usage"?: UsageInfo | null;
     "elapsedMs"?: number;
-
-    /**
-     * Parts 按 ReAct 迭代记录 assistant 消息的产出顺序（仅 assistant 角色）。
-     */
-    "parts"?: MessagePart[];
 
     /** Creates a new Message instance. */
     constructor($$source: Partial<Message> = {}) {
@@ -48,7 +45,6 @@ export class Message {
     static createFrom($$source: any = {}): Message {
         const $$createField3_0 = $$createType1;
         const $$createField7_0 = $$createType3;
-        const $$createField9_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("toolCalls" in $$parsedSource) {
             $$parsedSource["toolCalls"] = $$createField3_0($$parsedSource["toolCalls"]);
@@ -56,40 +52,7 @@ export class Message {
         if ("usage" in $$parsedSource) {
             $$parsedSource["usage"] = $$createField7_0($$parsedSource["usage"]);
         }
-        if ("parts" in $$parsedSource) {
-            $$parsedSource["parts"] = $$createField9_0($$parsedSource["parts"]);
-        }
         return new Message($$parsedSource as Partial<Message>);
-    }
-}
-
-/**
- * MessagePart 是 assistant 消息在一个 ReAct 迭代内的产出：本轮思考 + 文本 + 工具调用。
- * 前端据此把各迭代的思考/文本/工具卡片按时间顺序交错渲染；
- * Content/Reasoning/ToolCalls 聚合字段（全迭代拼接）继续供 LLM 上下文、
- * 导出、统计与旧数据回退渲染使用。
- */
-export class MessagePart {
-    "content"?: string;
-    "reasoning"?: string;
-    "toolCalls"?: ToolCall[];
-
-    /** Creates a new MessagePart instance. */
-    constructor($$source: Partial<MessagePart> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new MessagePart instance from a string or object.
-     */
-    static createFrom($$source: any = {}): MessagePart {
-        const $$createField2_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("toolCalls" in $$parsedSource) {
-            $$parsedSource["toolCalls"] = $$createField2_0($$parsedSource["toolCalls"]);
-        }
-        return new MessagePart($$parsedSource as Partial<MessagePart>);
     }
 }
 
@@ -186,5 +149,3 @@ const $$createType0 = ToolCall.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = UsageInfo.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = MessagePart.createFrom;
-const $$createType5 = $Create.Array($$createType4);

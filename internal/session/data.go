@@ -71,48 +71,6 @@ func SortByCreatedAt(list []*Data) {
 	})
 }
 
-// UpsertAssistant 把一轮迭代的 assistant 产出聚合进指定 ID 的消息：
-// 不存在则创建（本轮首轮产出），存在则按增量聚合（Content/Reasoning 拼接、
-// ToolCalls 追加、Parts 按迭代追加一片），并写 jsonl 快照（按消息 ID 去重，
-// 崩溃安全：部分进度不丢）。
-func (i *Data) UpsertAssistant(id string, delta *schema.Message) *schema.Message {
-	now := time.Now().UnixMilli()
-	var m *schema.Message
-	_, m = i.FindMessage(id)
-	if m == nil {
-		m = &schema.Message{ID: id, Role: schema.RoleAssistant, CreatedAt: now}
-		i.Messages = append(i.Messages, m)
-	}
-
-	m.Content += delta.Content
-	m.Reasoning += delta.Reasoning
-	part := schema.MessagePart{Content: delta.Content, Reasoning: delta.Reasoning}
-	if len(delta.ToolCalls) > 0 {
-		m.ToolCalls = append(m.ToolCalls, delta.ToolCalls...)
-		part.ToolCalls = append(part.ToolCalls, delta.ToolCalls...)
-	}
-	m.Parts = append(m.Parts, part)
-	i.UpdatedAt = now
-	return m
-}
-
-// FinalizeAssistant 把一轮的 token 用量与总耗时写回 assistant 消息并快照，
-// 历史会话重新打开后每条消息的用量信息才能恢复。
-// 消息不存在（一轮未产出，如首轮即失败）时静默跳过。
-func (i *Data) FinalizeAssistant(id string, usage *schema.UsageInfo, elapsedMs int64) *schema.Message {
-	var assistant *schema.Message
-	_, assistant = i.FindMessage(id)
-	if assistant == nil {
-		return nil
-	}
-
-	assistant.Usage = usage
-	assistant.ElapsedMs = elapsedMs
-	i.UpdatedAt = time.Now().UnixMilli()
-
-	return assistant
-}
-
 // PrepareRetry 重试的消息准备：截断到目标轮的 user 消息，全量覆写持久化。
 // messageID 指定目标 assistant 消息（取其前最近的 user）；空 = 截断到
 // 最后一条 user 消息（涵盖"最后一轮 assistant"与"上一轮未产出"两种情形）。

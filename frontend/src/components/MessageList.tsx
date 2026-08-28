@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   Check,
@@ -18,12 +18,78 @@ import type { ToolCallInfo, UsageInfo } from "../types";
 import Markdown from "./Markdown";
 import { ApprovalCard, AskUserCard } from "./AskCards";
 
+/** 轮末判定：messages[i] 是该轮最后一条 assistant（下一条非 tool 消息是
+ *  user，或之后没有更多消息）。调用方保证 messages[i].role === "assistant"。 */
+function isTurnFinal(messages: { role: string }[], i: number): boolean {
+  for (let j = i + 1; j < messages.length; j++) {
+    if (messages[j].role === "tool") continue;
+    return messages[j].role === "user";
+  }
+  return true;
+}
+
+/** 轮级合计：该轮各 assistant 消息的 usage 求和 + 轮墙钟耗时。
+ *  live 时 Done 已把合计盖在末气泡上（中间气泡无 usage，求和结果一致）；
+ *  历史会话则为逐迭代求和。耗时取 轮末消息.createdAt − 轮起点 user.createdAt
+ *  （含工具执行间隙的墙钟时间，live 与历史口径一致）。 */
+function turnAggregate(
+  messages: { role: string; createdAt: number; usage?: UsageInfo }[],
+  i: number,
+): { usage?: UsageInfo; elapsedMs: number } {
+  let start = 0;
+  for (let j = i; j >= 0; j--) {
+    if (messages[j].role === "user") {
+      start = j;
+      break;
+    }
+  }
+  let prompt = 0;
+  let completion = 0;
+  let total = 0;
+  let cached: number | undefined;
+  let entryId: string | undefined;
+  let has = false;
+  for (let j = start + 1; j <= i; j++) {
+    const u = messages[j].usage;
+    if (!u) continue;
+    has = true;
+    prompt += u.promptTokens;
+    completion += u.completionTokens;
+    total += u.totalTokens;
+    if (u.cachedTokens !== undefined) cached = (cached ?? 0) + u.cachedTokens;
+    entryId = u.entryId;
+  }
+  return {
+    usage: has
+      ? {
+          promptTokens: prompt,
+          completionTokens: completion,
+          totalTokens: total,
+          cachedTokens: cached,
+          entryId,
+        }
+      : undefined,
+    elapsedMs: Math.max(0, messages[i].createdAt - messages[start].createdAt),
+  };
+}
+
 export default function MessageList() {
   const messages = useChatStore((s) => s.messages);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const deleteMessage = useChatStore((s) => s.deleteMessage);
   const pickAndSetWorkspace = useChatStore((s) => s.pickAndSetWorkspace);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // 进行中轮次的起点（最后一条 user 消息的位置）。交错式一轮产生多条
+  // assistant 气泡：轮级状态栏（usage/耗时/操作）必须在轮结束后才显示，
+  // 不能沿用"一轮一条消息"时代"非最后一条即完成"的判断。
+  const activeTurnStart = useMemo(() => {
+    if (!isStreaming) return -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return i;
+    }
+    return 0;
+  }, [messages, isStreaming]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
@@ -57,6 +123,12 @@ export default function MessageList() {
           if (m.role === "tool") return null;
           const streamingThis =
             isStreaming && i === messages.length - 1 && m.role === "assistant";
+          // 该气泡属于进行中的轮：轮级状态栏延迟到轮结束后显示
+          const inActiveTurn = activeTurnStart >= 0 && i > activeTurnStart;
+          // 轮级状态栏只挂在该轮最后一条 assistant 气泡上（轮级合计，
+          // 中间迭代气泡不显示）：下一条非 tool 消息是 user 或没有更多消息
+          const turnFinal = m.role === "assistant" && isTurnFinal(messages, i);
+          const agg = turnFinal ? turnAggregate(messages, i) : undefined;
           return (
             <div key={m.id} className={`message ${m.role}`}>
               {m.role === "user" ? (
@@ -68,60 +140,24 @@ export default function MessageList() {
                 />
               ) : (
                 <div className="assistant-body">
-                  {/* 旧数据回退：parts 中无分轮 reasoning（改动前持久化的消息）
-                      时，整块渲染聚合 reasoning；新数据按 part 交错渲染 */}
-                  {m.reasoning && !m.parts?.some((p) => p.reasoning) && (
+                  {/* 单迭代一消息（交错式）：reasoning → 文本 → 工具卡片 */}
+                  {m.reasoning && (
                     <ReasoningBlock
                       content={m.reasoning}
-                      streaming={streamingThis && !m.content}
+                      streaming={streamingThis && !m.content && !m.toolCalls?.length}
                     />
                   )}
-                  {m.parts && m.parts.length > 0 ? (
-                    // 按 ReAct 迭代交错渲染：每轮 reasoning → 文本 → 工具卡片
-                    <>
-                      {m.parts.map((part, pi, arr) => (
-                        <Fragment key={pi}>
-                          {part.reasoning && (
-                            <ReasoningBlock
-                              content={part.reasoning}
-                              streaming={
-                                streamingThis &&
-                                pi === arr.length - 1 &&
-                                !part.content
-                              }
-                            />
-                          )}
-                          {part.content && <Markdown content={part.content} />}
-                          {part.toolCalls && part.toolCalls.length > 0 && (
-                            <div className="tool-calls">
-                              {part.toolCalls.map((tc) => (
-                                <ToolEntry key={tc.id} tc={tc} />
-                              ))}
-                            </div>
-                          )}
-                        </Fragment>
+                  {m.content && <Markdown content={m.content} />}
+                  {m.toolCalls && m.toolCalls.length > 0 && (
+                    <div className="tool-calls">
+                      {m.toolCalls.map((tc) => (
+                        <ToolEntry key={tc.id} tc={tc} />
                       ))}
-                      {streamingThis && <span className="stream-cursor" />}
-                    </>
-                  ) : (
-                    // 旧数据（无 parts）回退：工具卡片集中显示在文本前
-                    <>
-                      {m.toolCalls && m.toolCalls.length > 0 && (
-                        <div className="tool-calls">
-                          {m.toolCalls.map((tc) => (
-                            <ToolEntry key={tc.id} tc={tc} />
-                          ))}
-                        </div>
-                      )}
-                      {m.content ? (
-                        <Markdown content={m.content} />
-                      ) : streamingThis && !m.reasoning ? (
-                        <span className="stream-cursor" />
-                      ) : null}
-                      {streamingThis && m.content && (
-                        <span className="stream-cursor" />
-                      )}
-                    </>
+                    </div>
+                  )}
+                  {/* 流式光标：有工具在执行时由工具卡片的 spinner 承担指示 */}
+                  {streamingThis && !m.toolCalls?.some((t) => t.output === undefined) && (
+                    <span className="stream-cursor" />
                   )}
                   {m.error && (
                     <ErrorBanner
@@ -130,11 +166,11 @@ export default function MessageList() {
                       isLast={i === messages.length - 1}
                     />
                   )}
-                  {!streamingThis && m.content && (
+                  {!inActiveTurn && m.content && turnFinal && agg && (
                     <MessageStatusBar
                       content={m.content}
-                      usage={m.usage}
-                      elapsedMs={m.elapsedMs}
+                      usage={agg.usage}
+                      elapsedMs={agg.elapsedMs}
                       onDelete={
                         isStreaming ? undefined : () => void deleteMessage(m.id)
                       }

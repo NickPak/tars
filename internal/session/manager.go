@@ -1,7 +1,9 @@
 package session
 
 import (
+	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"tars/pkg/compaction"
@@ -23,7 +25,7 @@ type Manager struct {
 	// risks 是"本会话常允许"的危险操作常允许表（内存态，重启清空），
 	// 由 guard.Gate 消费；会话级载体，跨轮共享。
 	risks *guard.RiskTable
-	// sink 事件出口：消息追加/聚合更新时发射 KindMessageAppended（非序列化）。
+	// sink 事件出口：消息追加时发射 KindMessageAppended（非序列化）。
 	sink event.Sink
 }
 
@@ -37,7 +39,26 @@ func NewManager(data *Data, sink event.Sink) *Manager {
 	}
 }
 
+// Startup 会话级启动钩子：非存储类目录（工作目录）在此集中检测与创建。
+// 策略（目录创建两处各归其位）：存储类目录由 StoreManager 写路径惰性
+// 自闭合；工作目录在初始创建与恢复加载时主动创建一次——Controller.Startup
+// 在这两个生命周期点都会调到这里。
 func (s *Manager) Startup() error {
+	def := GetWorkspaceDir(instance.GetWorkDir(), s.data.ID)
+	if s.data.WorkspaceDir == "" {
+		// 旧 meta 回填默认路径并持久化（SaveMetadata 自身保证目录创建）。
+		s.data.WorkspaceDir = def
+		if err := instance.SaveMetadata(s.data.ID, s.data.Metadata); err != nil {
+			slog.Warn("Failed to persist workspaceDir backfill", "id", s.data.ID, "error", err)
+		}
+	}
+	// 仅默认位置自动创建——自定义目录（SetWorkspaceDir 指向的用户项目）
+	// 不自动创建，避免掩盖目录已被删除的事实。
+	if s.data.WorkspaceDir == def {
+		if err := os.MkdirAll(def, 0755); err != nil {
+			return fmt.Errorf("session: create workspace dir for %s: %w", s.data.ID, err)
+		}
+	}
 	return nil
 }
 
@@ -73,6 +94,11 @@ func (s *Manager) GetWorkspaceDir() string {
 }
 
 func (s *Manager) SetWorkspaceDir(dir string) error {
+	// 自定义目录必须已存在（sandbox 以其为 chdir 目标；不存在时命令执行
+	// 必然失败，提前在此暴露而不是延迟到工具执行时）。
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return fmt.Errorf("workspace 目录不存在: %s", dir)
+	}
 	s.data.WorkspaceDir = dir
 	s.data.UpdatedAt = time.Now().UnixMilli()
 
@@ -83,7 +109,6 @@ func (s *Manager) SetWorkspaceDir(dir string) error {
 		Workspace: &event.WorkspaceChangedEvent{
 			SessionID: s.data.ID,
 			Path:      dir,
-			IsCustom:  true,
 		},
 	})
 	return err
@@ -105,18 +130,17 @@ func (s *Manager) RenameSession(title string) error {
 
 // AppendUserMessage 新一轮对话的消息准备：追加 user 消息，首条消息顺便完成自动命名。
 // 返回新建 user 消息的 ID（服务层透传给前端回填本地占位）。
-// assistant 消息不再预置——由轮运行中首轮产出时经 UpsertAssistant 创建。
+// assistant 消息不预置——交错式存储，由轮运行中每次迭代经 AppendMessage 追加。
 func (s *Manager) AppendUserMessage(content string) string {
 	now := time.Now().UnixMilli()
 	id := uuid.NewString()
-	s.data.AppendMessage(now,
-		&schema.Message{
-			ID:        id,
-			Role:      schema.RoleUser,
-			Content:   content,
-			CreatedAt: now,
-		},
-	)
+	msg := &schema.Message{
+		ID:        id,
+		Role:      schema.RoleUser,
+		Content:   content,
+		CreatedAt: now,
+	}
+	s.AppendMessage(now, msg)
 
 	v := s.data.UpdateTitle(content)
 	if v {
@@ -126,39 +150,6 @@ func (s *Manager) AppendUserMessage(content string) string {
 		}
 	}
 	return id
-}
-
-// UpsertAssistant 把一轮迭代的 assistant 产出聚合进指定 ID 的消息：
-// 不存在则创建（本轮首轮产出），存在则按增量聚合（Content/Reasoning 拼接、
-// ToolCalls 追加、Parts 按迭代追加一片），并写 jsonl 快照（按消息 ID 去重，
-// 崩溃安全：部分进度不丢）。
-func (s *Manager) UpsertAssistant(id string, delta *schema.Message) {
-	m := s.data.UpsertAssistant(id, delta)
-	if m == nil {
-		return
-	}
-
-	err := instance.AppendSaveMessage(s.data.ID, m)
-	if err != nil {
-		slog.Warn("Failed to snapshot assistant message", "id", s.data.ID, "error", err)
-	}
-	EmitMessageAppended(s.sink, s.data.ID, m)
-}
-
-// FinalizeAssistant 把一轮的 token 用量与总耗时写回 assistant 消息并快照，
-// 历史会话重新打开后每条消息的用量信息才能恢复。
-// 消息不存在（一轮未产出，如首轮即失败）时静默跳过。
-func (s *Manager) FinalizeAssistant(id string, usage *schema.UsageInfo, elapsedMs int64) {
-	m := s.data.FinalizeAssistant(id, usage, elapsedMs)
-	if m == nil {
-		return
-	}
-
-	err := instance.AppendSaveMessage(s.data.ID, m)
-	if err != nil {
-		slog.Warn("Failed to store message", "id", s.data.ID, "error", err)
-	}
-	EmitMessageAppended(s.sink, s.data.ID, m)
 }
 
 // PrepareRetry 重试的消息准备：截断到目标轮的 user 消息，全量覆写持久化。
@@ -264,13 +255,13 @@ func (s *Manager) ApplyCompaction(c *compaction.Compaction) error {
 	return nil
 }
 
-// ArchivePath 分配归档文件路径（目录布局由 StoreManager 持有）。
-func (s *Manager) ArchivePath(rangeLabel string) string {
-	return instance.ArchivePath(s.data.ID, rangeLabel)
+// WriteArchive 写入归档原文（目录创建由 StoreManager 自闭合）。
+func (s *Manager) WriteArchive(rangeLabel string, content []byte) (string, error) {
+	return instance.WriteArchive(s.data.ID, rangeLabel, content)
 }
 
 // UnmarkSkillLoaded 从已加载技能集合移除并写穿 meta.json
-//（02 篇 §5.1 一致性红线：skill 正文被压缩后调用）。
+// （02 篇 §5.1 一致性红线：skill 正文被压缩后调用）。
 func (s *Manager) UnmarkSkillLoaded(name string) {
 	s.data.UnmarkSkillLoaded(name)
 	if err := instance.SaveMetadata(s.data.ID, s.data.Metadata); err != nil {

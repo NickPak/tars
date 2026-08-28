@@ -83,9 +83,11 @@ func (a *App) Startup() error {
 	}
 	a.mcpMgr.RenderIndex()
 
+	// 零模型条目是合法状态（用户可能在设置中清空了全部模型）：启动容忍，
+	// 错误延迟到对话时经 Active() 暴露，用户可在设置页修复配置。
 	err = a.llmMgr.Startup()
 	if err != nil {
-		return fmt.Errorf("boot: llm registry: %w", err)
+		slog.Warn("LLM registry startup degraded, continuing", "error", err)
 	}
 
 	err = a.askMgr.Startup()
@@ -158,8 +160,13 @@ func (a *App) CreateSession() (*session.Data, error) {
 	trace.LogSessionCreated(sess.ID, sess.Title) // todo sink
 
 	a.mu.Lock()
-	a.ctrls[sess.ID] = NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
-	a.mu.Unlock()
+	defer a.mu.Unlock()
+	ctrl := NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
+	err = ctrl.Startup()
+	if err != nil {
+		return nil, err
+	}
+	a.ctrls[sess.ID] = ctrl
 	return sess, nil
 }
 
@@ -183,7 +190,14 @@ func (a *App) DeleteSession(id string) error {
 	}
 
 	a.mu.Lock()
-	delete(a.ctrls, id)
+	ctrl, ok := a.ctrls[id]
+	if ok {
+		err = ctrl.Shutdown()
+		if err != nil {
+			slog.Error("Failed to shutdown controller", "session", id, "error", err)
+		}
+		delete(a.ctrls, id)
+	}
 	a.mu.Unlock()
 
 	return session.GetStoreManager().DeleteSession(id)
@@ -216,7 +230,13 @@ func (a *App) RestoreSessions() error {
 	}
 	a.mu.Lock()
 	for _, sess := range infos {
-		a.ctrls[sess.ID] = NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
+		ctrl := NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
+		err = ctrl.Startup()
+		if err != nil {
+			slog.Error("Failed to startup controller", "session", sess.ID, "error", err)
+			continue
+		}
+		a.ctrls[sess.ID] = ctrl
 	}
 	a.mu.Unlock()
 	return nil

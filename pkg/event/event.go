@@ -23,13 +23,11 @@ const (
 	KindToolDispatch
 	// KindToolResult 一个工具调用执行完成（ToolResult 字段有效）。
 	KindToolResult
-	// KindDone 一轮正常结束，含用户取消的干净停止（Done 字段有效）。
-	KindDone
 	// KindError 一轮以错误结束（Error 字段有效）。
 	KindError
 	// KindApproval 危险工具调用的安全审批请求（Approval 字段有效）。
 	KindApproval
-	// KindMessageAppended 一条消息被追加（或聚合更新）到会话（Message 字段有效）。
+	// KindMessageAppended 一条消息被追加到会话（Message 字段有效）。
 	// 纯内核通知：供持久化/遥测等订阅者使用；不透出到 Wails 前端。
 	KindMessageAppended
 	// KindIterationStart 一次 ReAct 迭代（LLM 调用）开始（Iteration 字段有效）。
@@ -42,6 +40,9 @@ const (
 	// 轮级元信息（模型/系统提示词/工具描述）经此传给 trace 等订阅者；
 	// 不透出到 Wails 前端。
 	KindTurnStarted
+	// KindTurnEnded 一轮正常结束，含用户取消的干净停止（Done 字段有效）。
+	// 与 KindTurnStarted 对称的轮生命周期事件；携带轮级合计用量与耗时。
+	KindTurnEnded
 	// KindSessionRenamed 会话标题被修改（RenameSession 字段有效）。
 	// 纯内核通知：供持久化/遥测等订阅者使用；不透出到 Wails 前端。
 	KindSessionRenamed
@@ -59,7 +60,7 @@ type Event struct {
 	Reasoning      *ReasoningEvent        // KindReasoning
 	Tool           *ToolEvent             // KindToolDispatch
 	ToolResult     *ToolResultEvent       // KindToolResult
-	Done           *StreamDone            // KindDone
+	Done           *StreamDone            // KindTurnEnded
 	Error          *StreamError           // KindError
 	Approval       *ApprovalEvent         // KindApproval
 	Message        *MessageAppendedEvent  // KindMessageAppended
@@ -94,7 +95,7 @@ type IterationEvent struct {
 	Assistant *schema.Message
 }
 
-// MessageAppendedEvent 一条消息被追加（或聚合更新快照）到会话。
+// MessageAppendedEvent 一条消息被追加到会话。
 // 纯内核通知，不透出前端；供持久化/遥测等订阅者使用。
 type MessageAppendedEvent struct {
 	SessionID string          `json:"sessionId"`
@@ -175,5 +176,4 @@ type ApprovalEvent struct {
 type WorkspaceChangedEvent struct {
 	SessionID string `json:"sessionId"`
 	Path      string `json:"path"`
-	IsCustom  bool   `json:"isCustom"`
 }

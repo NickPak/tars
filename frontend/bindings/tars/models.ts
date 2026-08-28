@@ -356,12 +356,6 @@ export class WorkspaceInfo {
     "path": string;
 
     /**
-     * IsCustom indicates whether the workspace is a user-chosen external
-     * directory (true) or the default isolated workspace (false).
-     */
-    "isCustom": boolean;
-
-    /**
      * Name is the base name of the workspace directory, for display.
      */
     "name": string;
@@ -370,9 +364,6 @@ export class WorkspaceInfo {
     constructor($$source: Partial<WorkspaceInfo> = {}) {
         if (!("path" in $$source)) {
             this["path"] = "";
-        }
-        if (!("isCustom" in $$source)) {
-            this["isCustom"] = false;
         }
         if (!("name" in $$source)) {
             this["name"] = "";

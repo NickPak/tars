@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Session, ModelInfo, SessionStats, ToolCallInfo, WorkspaceInfo, ApprovalEvent } from "../types";
+import type { ChatMessage, Session, ModelInfo, SessionStats, WorkspaceInfo, ApprovalEvent } from "../types";
 
 export interface SessionMeta {
   id: string;
@@ -25,6 +25,8 @@ interface ChatState {
   models: ModelInfo[];
   /** 等待用户答复的危险调用审批（key: toolCallId），仅当前会话 */
   pendingApprovals: Record<string, ApprovalEvent>;
+  /** 本轮锚点占位的本地 ID（submit/retry 返回前，流式事件按它归属首轮气泡） */
+  streamAnchorId: string | null;
 
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
@@ -67,30 +69,22 @@ function errText(e: unknown): string {
 }
 
 /** 历史加载归一化：tool 消息的输出按 toolCallId 合并进 assistant 的
- *  parts（交错渲染）或 toolCalls（旧数据回退渲染）。
- *  后端 store.ToolCall 不持久化输出，输出在 role:"tool" 的独立消息里。 */
+ *  toolCalls（后端不持久化输出，输出在 role:"tool" 的独立消息里）。 */
 function mergeToolOutputs(messages: ChatMessage[]): ChatMessage[] {
   const outputs = new Map<string, string>();
   for (const m of messages) {
     if (m.role === "tool" && m.toolCallId) outputs.set(m.toolCallId, m.content);
   }
   if (outputs.size === 0) return messages;
-  const merge = (tcs: ToolCallInfo[]) =>
-    tcs.map((tc) => ({ ...tc, output: outputs.get(tc.id) ?? tc.output }));
   return messages.map((m) => {
-    if (m.role !== "assistant") return m;
-    if (m.parts?.length) {
-      return {
-        ...m,
-        parts: m.parts.map((p) =>
-          p.toolCalls ? { ...p, toolCalls: merge(p.toolCalls) } : p,
-        ),
-      };
-    }
-    if (m.toolCalls?.length) {
-      return { ...m, toolCalls: merge(m.toolCalls) };
-    }
-    return m;
+    if (m.role !== "assistant" || !m.toolCalls?.length) return m;
+    return {
+      ...m,
+      toolCalls: m.toolCalls.map((tc) => ({
+        ...tc,
+        output: outputs.get(tc.id) ?? tc.output,
+      })),
+    };
   });
 }
 
@@ -108,6 +102,29 @@ function markLastAssistantError(
   return next;
 }
 
+/** 解析流式事件的目标气泡（交错式存储，07 篇期 2）：
+ *  按 messageId 匹配 assistant 气泡；未匹配时——若尾部气泡是本轮待回填的
+ *  锚点占位（submit/retry 响应到达前的竞态窗口）则指向它，否则惰性创建
+ *  新气泡（迭代 2+ 的新消息，后端每次迭代分配新 ID）。
+ *  返回新数组与目标下标。 */
+function resolveBubble(
+  messages: ChatMessage[],
+  messageId: string,
+  anchorLocalId: string | null,
+): [ChatMessage[], number] {
+  const idx = messages.findIndex((m) => m.id === messageId && m.role === "assistant");
+  if (idx >= 0) return [[...messages], idx];
+  const last = messages[messages.length - 1];
+  if (anchorLocalId && last?.role === "assistant" && last.id === anchorLocalId) {
+    return [[...messages], messages.length - 1];
+  }
+  const next = [
+    ...messages,
+    { id: messageId, role: "assistant", content: "", createdAt: Date.now() } as ChatMessage,
+  ];
+  return [next, next.length - 1];
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   activeId: null,
@@ -119,6 +136,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   model: null,
   models: [],
   pendingApprovals: {},
+  streamAnchorId: null,
 
   init: () => {
     agentApi
@@ -135,26 +153,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     void get().refreshModels();
 
     return subscribeAgentEvents({
-      onChunk: ({ sessionId, chunk }) => {
+      onChunk: ({ sessionId, messageId, chunk }) => {
         if (!get().isStreaming || sessionId !== get().activeId) return;
         set((s) => {
-          const messages = [...s.messages];
-          const last = messages[messages.length - 1];
-          if (!last || last.role !== "assistant") return {};
-          // parts：文本续写到尾部 part；尾部已带工具调用说明进入了
-          // 下一轮迭代，开新 part
-          const parts = [...(last.parts ?? [])];
-          const tail = parts[parts.length - 1];
-          if (tail && !tail.toolCalls) {
-            parts[parts.length - 1] = { ...tail, content: (tail.content ?? "") + chunk };
-          } else {
-            parts.push({ content: chunk });
-          }
-          messages[messages.length - 1] = {
-            ...last,
-            content: last.content + chunk,
-            parts,
-          };
+          const [messages, idx] = resolveBubble(s.messages, messageId, s.streamAnchorId);
+          messages[idx] = { ...messages[idx], content: messages[idx].content + chunk };
           return { messages };
         });
       },
@@ -166,7 +169,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           if (last && last.role === "assistant") {
             messages[messages.length - 1] = { ...last, usage, elapsedMs };
           }
-          return { messages, isStreaming: false };
+          return { messages, isStreaming: false, streamAnchorId: null };
         });
         void get().refreshStats();
       },
@@ -175,6 +178,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => ({
           messages: markLastAssistantError(s.messages, err.error, err.kind),
           isStreaming: false,
+          streamAnchorId: null,
         }));
         void get().refreshStats();
       },
@@ -185,56 +189,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ),
         }));
       },
-      onReasoning: ({ sessionId, content }) => {
+      onReasoning: ({ sessionId, messageId, content }) => {
         if (!get().isStreaming || sessionId !== get().activeId) return;
         set((s) => {
-          const messages = [...s.messages];
-          const last = messages[messages.length - 1];
-          if (!last || last.role !== "assistant") return {};
-          // parts：分 part 规则与 onChunk 一致——尾部 part 尚无工具调用说明
-          // 仍在同一迭代内（reasoning 先于本轮工具事件到达），续写其 reasoning；
-          // 尾部已带工具调用说明进入了下一轮迭代，开新 part。
-          // reasoning 可能多轮（每次工具调用前模型都会思考），
-          // 聚合字段同步拼接（复制/旧数据回退用）。
-          const parts = [...(last.parts ?? [])];
-          const tail = parts[parts.length - 1];
-          if (tail && !tail.toolCalls) {
-            parts[parts.length - 1] = {
-              ...tail,
-              reasoning: (tail.reasoning ?? "") + content,
-            };
-          } else {
-            parts.push({ reasoning: content });
-          }
-          messages[messages.length - 1] = {
-            ...last,
-            reasoning: (last.reasoning ?? "") + content,
-            parts,
+          const [messages, idx] = resolveBubble(s.messages, messageId, s.streamAnchorId);
+          messages[idx] = {
+            ...messages[idx],
+            reasoning: (messages[idx].reasoning ?? "") + content,
           };
           return { messages };
         });
       },
-      onTool: ({ sessionId, toolCallId, toolName, args }) => {
+      onTool: ({ sessionId, messageId, toolCallId, toolName, args }) => {
         if (sessionId !== get().activeId) return;
         set((s) => {
-          const messages = [...s.messages];
-          const last = messages[messages.length - 1];
-          if (!last || last.role !== "assistant") return {};
-          const tc = { id: toolCallId, name: toolName, args };
-          const toolCalls = [...(last.toolCalls ?? []), tc];
-          // parts：一批工具调用先于其结果到达（agent 循环保证），因此
-          // 尾部 part 的工具全部未出结果时属于同一批，归入该 part；
-          // 否则说明已进入下一轮迭代，开新 part
-          const parts = [...(last.parts ?? [])];
-          const tail = parts[parts.length - 1];
-          if (tail && tail.toolCalls && tail.toolCalls.every((t) => t.output === undefined)) {
-            parts[parts.length - 1] = { ...tail, toolCalls: [...tail.toolCalls, tc] };
-          } else if (tail && !tail.toolCalls) {
-            parts[parts.length - 1] = { ...tail, toolCalls: [tc] };
-          } else {
-            parts.push({ toolCalls: [tc] });
-          }
-          messages[messages.length - 1] = { ...last, toolCalls, parts };
+          const [messages, idx] = resolveBubble(s.messages, messageId, s.streamAnchorId);
+          const target = messages[idx];
+          messages[idx] = {
+            ...target,
+            toolCalls: [...(target.toolCalls ?? []), { id: toolCallId, name: toolName, args }],
+          };
           return { messages };
         });
       },
@@ -242,22 +216,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (sessionId !== get().activeId) return;
         set((s) => {
           const messages = [...s.messages];
-          const last = messages[messages.length - 1];
-          if (!last || last.role !== "assistant") return {};
-          const toolCalls = last.toolCalls?.map((tc) =>
-            tc.id === toolCallId ? { ...tc, output } : tc,
-          );
-          const parts = last.parts?.map((p) =>
-            p.toolCalls?.some((tc) => tc.id === toolCallId)
-              ? {
-                  ...p,
-                  toolCalls: p.toolCalls.map((tc) =>
-                    tc.id === toolCallId ? { ...tc, output } : tc,
-                  ),
-                }
-              : p,
-          );
-          messages[messages.length - 1] = { ...last, toolCalls, parts };
+          // 自尾向前找发起该调用的气泡（交错式：结果配对到发起迭代的消息）
+          let idx = -1;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role === "assistant" && m.toolCalls?.some((t) => t.id === toolCallId)) {
+              idx = i;
+              break;
+            }
+          }
+          if (idx >= 0) {
+            const target = messages[idx];
+            messages[idx] = {
+              ...target,
+              toolCalls: target.toolCalls?.map((tc) =>
+                tc.id === toolCallId ? { ...tc, output } : tc,
+              ),
+            };
+          }
           // 结果到达 = 该调用的审批已了结
           const pendingApprovals = { ...s.pendingApprovals };
           delete pendingApprovals[toolCallId];
@@ -270,10 +246,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
           pendingApprovals: { ...s.pendingApprovals, [ev.toolCallId]: ev },
         }));
       },
-      onWorkspaceChanged: ({ sessionId, path, isCustom }) => {
+      onWorkspaceChanged: ({ sessionId, path }) => {
         if (sessionId !== get().activeId) return;
         const name = path ? path.split(/[/\\]/).pop() || path : "";
-        set({ workspace: { path, isCustom, name } });
+        set({ workspace: { path, name } });
       },
       onModelChanged: ({ model }) => {
         set({ model });
@@ -378,12 +354,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s) => ({
       messages: [...s.messages, userMsg, assistantMsg],
       isStreaming: true,
+      streamAnchorId: assistantMsg.id,
     }));
 
     try {
       const res = await agentApi.submitMessage(sessId, content);
-      // 后端分配的消息 ID 回填本地占位（此前的流式事件按位置写入，无竞态）；
-      // 之后 DeleteMessage 等按 ID 操作无需等待会话重载即可生效。
+      // 后端分配的消息 ID 回填本地占位（回填前的流式事件经 streamAnchorId
+      // 归属首轮气泡，无竞态）；之后 DeleteMessage 等按 ID 操作无需等待
+      // 会话重载即可生效。
       set((s) => ({
         messages: s.messages.map((m) =>
           m.id === userMsg.id
@@ -392,11 +370,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
               ? { ...m, id: res.assistantMessageId }
               : m,
         ),
+        streamAnchorId: null,
       }));
     } catch (e) {
       set((s) => ({
         messages: markLastAssistantError(s.messages, errText(e)),
         isStreaming: false,
+        streamAnchorId: null,
       }));
     }
   },
@@ -419,40 +399,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
 
-    // 前端回撤：清空该消息已渲染的内容/工具调用/错误标记，回到"生成中"状态。
-    // 后端 RetryMessage 会同步重置持久化数据，然后重新流式推送，
-    // 由既有事件流（chunk/reasoning/tool/done）重新填充该消息。
+    // 前端回撤：交错式一轮可能有多条 assistant 气泡——截断到本轮的
+    // user 消息（含），再挂新的占位气泡；后端 PrepareRetry 同步截断持久化数据，
+    // 新一轮由既有事件流（chunk/reasoning/tool/done）重新填充。
+    let userIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        userIdx = i;
+        break;
+      }
+    }
+    if (userIdx < 0) return;
+    const placeholder: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      createdAt: Date.now(),
+    };
     set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === last.id
-          ? {
-              ...m,
-              content: "",
-              reasoning: "",
-              toolCalls: [],
-              parts: undefined,
-              error: undefined,
-              errorKind: undefined,
-              usage: undefined,
-              elapsedMs: undefined,
-            }
-          : m,
-      ),
+      messages: [...s.messages.slice(0, userIdx + 1), placeholder],
       isStreaming: true,
+      streamAnchorId: placeholder.id,
     }));
 
     try {
       const newAssistantID = await agentApi.retryMessage(activeId);
-      // 新一轮的 assistant 消息 ID 回填（后端 PrepareRetry 已截断旧消息，
-      // 重试产出落在新 ID 的消息上；流式事件仍按位置写入，无竞态）
+      // 新一轮的锚点 ID 回填占位（回填前的流式事件经 streamAnchorId 归属）
       set((s) => ({
         messages: s.messages.map((m) =>
-          m.id === last.id ? { ...m, id: newAssistantID } : m,
+          m.id === placeholder.id ? { ...m, id: newAssistantID } : m,
         ),
+        streamAnchorId: null,
       }));
     } catch (e) {
       set((s) => ({
         isStreaming: false,
+        streamAnchorId: null,
         messages: markLastAssistantError(s.messages, errText(e), "error"),
       }));
     }

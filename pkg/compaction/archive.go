@@ -3,19 +3,14 @@ package compaction
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"tars/pkg/schema"
 )
 
-// WriteArchive 把压缩集原文落盘为 Markdown（02 篇统一原则：摘要 + 磁盘原文）。
-// 一次写永不改；目录不存在时创建。
-func WriteArchive(path string, batch []*schema.Message) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("compaction: create archive dir: %w", err)
-	}
+// RenderArchive 把压缩集原文渲染为 Markdown（02 篇统一原则：摘要 + 磁盘原文）。
+// 纯函数——落盘由 CompactStore.WriteArchive 负责（目录创建在 StoreManager 自闭合）。
+func RenderArchive(batch []*schema.Message) []byte {
 	var b strings.Builder
 	b.WriteString("# Archived turns\n\n")
 	for _, m := range batch {
@@ -36,10 +31,7 @@ func WriteArchive(path string, batch []*schema.Message) error {
 			fmt.Fprintf(&b, "> tool_call_id: %s\n\n", m.ToolCallID)
 		}
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
-		return fmt.Errorf("compaction: write archive %s: %w", path, err)
-	}
-	return nil
+	return []byte(b.String())
 }
 
 // RangeLabel 计算压缩集在轨迹中的轮序标签（"turn_3-5"，展示用）。
