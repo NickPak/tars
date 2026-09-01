@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tars/pkg/event"
@@ -63,7 +64,8 @@ func TestStartupBackfillsLegacyWorkspaceDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m2 := NewManager(&Data{Metadata: meta}, event.Discard)
+	m2 := NewManager(&Data{Metadata: meta}, event.Discard, testLLMManager(t, 128000),
+		testThreshold, testKeepTurns, testMinBatch, testMaxFailures)
 	if err := m2.Startup(); err != nil {
 		t.Fatalf("startup: %v", err)
 	}
@@ -115,6 +117,79 @@ func TestSetWorkspaceDirRequiresExistingDir(t *testing.T) {
 	}
 }
 
+// 锁定：有任何对话消息后禁止再改工作目录（后端权威守卫）。
+// 原因：历史消息里含相对旧根的路径与内容，改目录后模型照旧路径操作全错。
+// 用「有消息」而非「轮运行中」——零消息 ⇒ 从未启动过轮（SubmitMessage 先追加
+// 消息再启动），静态无竞态。
+func TestSetWorkspaceDirLocksAfterFirstMessage(t *testing.T) {
+	m := newTestManager(t)
+	dir1, dir2 := t.TempDir(), t.TempDir()
+
+	// 零消息窗口内：可改，且可反复改
+	if err := m.SetWorkspaceDir(dir1); err != nil {
+		t.Fatalf("set before any message: %v", err)
+	}
+	if err := m.SetWorkspaceDir(dir2); err != nil {
+		t.Fatalf("change within the pre-message window: %v", err)
+	}
+	if m.GetWorkspaceDir() != dir2 {
+		t.Fatalf("WorkspaceDir = %q, want %q", m.GetWorkspaceDir(), dir2)
+	}
+
+	// 第一条消息落地 → 锁定
+	m.AppendUserMessage("hi")
+	if err := m.SetWorkspaceDir(dir1); err == nil {
+		t.Fatal("SetWorkspaceDir must be rejected once the session has messages")
+	}
+	if m.GetWorkspaceDir() != dir2 {
+		t.Fatalf("WorkspaceDir changed after lock: %q", m.GetWorkspaceDir())
+	}
+	// 连"改回默认"也禁止（锁定后任何变更都拒绝）
+	if err := m.SetWorkspaceDir(""); err == nil {
+		t.Fatal("reset to default must also be locked")
+	}
+}
+
+// 首条消息自动命名：标题改为输入截断，且发射 session:renamed 事件——
+// 前端会话列表靠这个事件即时刷新；漏发时标题要重启重新拉列表才显示
+// （回归：事件链路齐全但发射点缺失）。
+func TestFirstMessageAutoTitlesAndEmits(t *testing.T) {
+	sink := &recordingSink{}
+	m, _ := newManagerWithSink(t, sink, nil)
+
+	long := strings.Repeat("帮我把这个模块重构一下，", 10) // 远超 50 字截断
+	m.AppendUserMessage(long)
+
+	if m.GetData().Title == DefaultSessionTitle {
+		t.Fatal("title should be renamed from the first user message")
+	}
+	if len(m.GetData().Title) > DefaultSessionTitleLength {
+		t.Fatalf("title len = %d, want <= %d", len(m.GetData().Title), DefaultSessionTitleLength)
+	}
+
+	var renamed *event.SessionRenamedEvent
+	for _, e := range sink.events {
+		if e.Kind == event.KindSessionRenamed {
+			renamed = e.SessionRenamed
+		}
+	}
+	if renamed == nil || renamed.SessionID != m.GetID() || renamed.Title != m.GetData().Title {
+		t.Fatalf("session:renamed event = %+v, title = %q", renamed, m.GetData().Title)
+	}
+
+	// 第二条消息不再改名（标题已被占用），也不再发事件
+	before := len(sink.events)
+	m.AppendUserMessage("第二条")
+	for _, e := range sink.events[before:] {
+		if e.Kind == event.KindSessionRenamed {
+			t.Fatal("second message must not re-emit rename")
+		}
+	}
+	if m.GetData().Title == "第二条" {
+		t.Fatal("second message must not overwrite the title")
+	}
+}
+
 // user 消息必须落盘 messages.jsonl（缺失会导致重启后用户输入丢失）。
 func TestAppendUserMessagePersists(t *testing.T) {
 	m := newTestManager(t)
@@ -150,5 +225,31 @@ func TestWriteArchiveSelfEnsuresDir(t *testing.T) {
 	}
 	if string(data) != "# test" {
 		t.Fatalf("archive content = %q", data)
+	}
+}
+
+// 归档回读：写入后经 ReadArchive 取回（read_file 的 archive:// 通道消费此方法）。
+// 这是"摘要不足时读回原文"的落地，指针必须真能解析。
+func TestReadArchiveRoundtrip(t *testing.T) {
+	m := newTestManager(t)
+	if _, err := m.WriteArchive("turn_3-5", []byte("# Archived turns\n\nbody\n")); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	data, err := m.ReadArchive("turn_3-5.md")
+	if err != nil {
+		t.Fatalf("read archive: %v", err)
+	}
+	if !strings.Contains(string(data), "body") {
+		t.Fatalf("archive content = %q", data)
+	}
+
+	// 缺失文件明确报错（模型据此知道指针写错了）
+	if _, err := m.ReadArchive("turn_9-9.md"); err == nil {
+		t.Fatal("missing archive should error")
+	}
+	// 穿越尝试被 filepath.Base 归一化，不可能读到归档目录之外
+	if _, err := m.ReadArchive(filepath.Join("..", MetaFile)); err == nil {
+		t.Fatal("traversal must not resolve outside the archive dir")
 	}
 }

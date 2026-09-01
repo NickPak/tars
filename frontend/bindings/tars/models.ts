@@ -244,6 +244,21 @@ export class SessionStats {
     "compressionMinBatch": number;
 
     /**
+     * CompressionMaxFailures 熔断阈值（连续压缩失败次数）。
+     */
+    "compressionMaxFailures": number;
+
+    /**
+     * CompressionCount 本会话累计压缩次数（从压缩态直读，plan/context 06 篇）。
+     */
+    "compressionCount": number;
+
+    /**
+     * LastCompressionRecovery 上次压缩的回收率（1 - after/before）。
+     */
+    "lastCompressionRecovery"?: number;
+
+    /**
      * 当前激活模型的价格表，透传给前端计算每条消息的"本次费用"。
      */
     "inputPricePerMillion": number;
@@ -294,6 +309,12 @@ export class SessionStats {
         if (!("compressionMinBatch" in $$source)) {
             this["compressionMinBatch"] = 0;
         }
+        if (!("compressionMaxFailures" in $$source)) {
+            this["compressionMaxFailures"] = 0;
+        }
+        if (!("compressionCount" in $$source)) {
+            this["compressionCount"] = 0;
+        }
         if (!("inputPricePerMillion" in $$source)) {
             this["inputPricePerMillion"] = 0;
         }
@@ -308,10 +329,10 @@ export class SessionStats {
      * Creates a new SessionStats instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionStats {
-        const $$createField14_0 = $$createType4;
+        const $$createField17_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("modelPrices" in $$parsedSource) {
-            $$parsedSource["modelPrices"] = $$createField14_0($$parsedSource["modelPrices"]);
+            $$parsedSource["modelPrices"] = $$createField17_0($$parsedSource["modelPrices"]);
         }
         return new SessionStats($$parsedSource as Partial<SessionStats>);
     }

@@ -4,8 +4,6 @@ import {
   MoreVertical,
   Hash,
   FolderOpen,
-  RotateCcw,
-  FolderInput,
   ExternalLink,
   Copy,
   Check,
@@ -14,14 +12,13 @@ import { useChatStore } from "../store/chatStore";
 import { agentApi } from "../services/agentApi";
 
 /**
- * 对话标题栏：显示当前会话 ID（可复制，用于链路追踪检索）、工作区路径（可切换）、模型选择器、更多操作。
+ * 对话标题栏：显示当前会话 ID（可复制，用于链路追踪检索）、工作区路径（锁定后只读）、模型选择器、更多操作。
+ * 工作目录仅可在新建会话的欢迎页选择；会话一旦开始就锁定，这里只提供"在文件管理器中打开"。
  */
 export default function TopicBar() {
   const activeId = useChatStore((s) => s.activeId);
   const workspace = useChatStore((s) => s.workspace);
   const model = useChatStore((s) => s.model);
-  const pickAndSetWorkspace = useChatStore((s) => s.pickAndSetWorkspace);
-  const resetWorkspace = useChatStore((s) => s.resetWorkspace);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsMenuOpen, setWsMenuOpen] = useState(false);
@@ -84,20 +81,26 @@ export default function TopicBar() {
       </div>
 
       <div className="topicbar-actions">
-        {/* 工作区路径按钮 */}
+        {/* 工作区路径按钮：无活动会话时不可点——此时还没有可打开的目录
+            （会话首次发送才真正创建），点开只会是个空菜单 */}
         <button
           className="topicbar-ws-btn"
-          title={workspace?.path || "未设置工作区"}
+          disabled={!activeId}
+          title={
+            activeId
+              ? workspace?.path || "未设置工作区"
+              : "发送首条消息后可查看工作区"
+          }
           onClick={() => setWsMenuOpen((v) => !v)}
         >
           <FolderOpen size={14} />
           <span className="topicbar-ws-name">
             {workspace?.name || "默认工作区"}
           </span>
-          <ChevronDown size={12} />
+          {activeId && <ChevronDown size={12} />}
         </button>
 
-        {wsMenuOpen && (
+        {wsMenuOpen && activeId && (
           <>
             <div
               className="topicbar-menu-overlay"
@@ -106,33 +109,11 @@ export default function TopicBar() {
             <div className="topicbar-menu">
               <button
                 className="topicbar-menu-item"
-                onClick={() => {
-                  void pickAndSetWorkspace();
-                  setWsMenuOpen(false);
-                }}
+                onClick={handleReveal}
               >
-                <FolderInput size={14} />
-                打开目录…
+                <ExternalLink size={14} />
+                在文件管理器中打开
               </button>
-              <button
-                className="topicbar-menu-item"
-                onClick={() => {
-                  void resetWorkspace();
-                  setWsMenuOpen(false);
-                }}
-              >
-                <RotateCcw size={14} />
-                重置为默认工作区
-              </button>
-              {activeId && (
-                <button
-                  className="topicbar-menu-item"
-                  onClick={handleReveal}
-                >
-                  <ExternalLink size={14} />
-                  在文件管理器中打开
-                </button>
-              )}
             </div>
           </>
         )}

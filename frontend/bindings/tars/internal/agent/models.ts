@@ -14,6 +14,7 @@ export class Config {
     "compressionThreshold"?: number;
     "compressionKeepTurns"?: number;
     "compressionMinBatch"?: number;
+    "compressionMaxFailures"?: number;
     "iterationTimeout"?: time$0.Duration;
 
     /** Creates a new Config instance. */

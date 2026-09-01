@@ -13,6 +13,26 @@ import { Create as $Create } from "@wailsio/runtime";
 export class Message {
     "id": string;
     "role": Role;
+
+    /**
+     * TurnID 轮分组键：一轮（user 提问 + 其后全部 assistant/tool 消息）内
+     * 所有消息共享同一值，取值为该轮 user 消息的 ID（user 消息的
+     * TurnID == 自身 ID）。重试复用原 user 消息，故 TurnID 跨重试稳定。
+     * 空值 = 旧数据，消费方回退"轮起点 = user 消息"的扫描规则。
+     */
+    "turnId"?: string;
+
+    /**
+     * Iteration 轮内迭代序号（1 起；assistant 消息与其工具结果同号；
+     * user 消息为 0）。
+     * 
+     * 纯展示/诊断元数据，不得作为索引、计数或位置依据：
+     *   - 分组只用 TurnID，不用 Iteration；
+     *   - 轮内排序只用消息在轨迹中的先后，不用 Iteration 数值；
+     *   - 不假设它从 1 开始、连续、或 max == 迭代总数——截断类操作
+     *     （删除/重试）与压缩投影都会让它出现缺口或非 1 起始。
+     */
+    "iteration"?: number;
     "content": string;
     "toolCalls"?: ToolCall[];
     "toolCallId"?: string;
@@ -43,14 +63,14 @@ export class Message {
      * Creates a new Message instance from a string or object.
      */
     static createFrom($$source: any = {}): Message {
-        const $$createField3_0 = $$createType1;
-        const $$createField7_0 = $$createType3;
+        const $$createField5_0 = $$createType1;
+        const $$createField9_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("toolCalls" in $$parsedSource) {
-            $$parsedSource["toolCalls"] = $$createField3_0($$parsedSource["toolCalls"]);
+            $$parsedSource["toolCalls"] = $$createField5_0($$parsedSource["toolCalls"]);
         }
         if ("usage" in $$parsedSource) {
-            $$parsedSource["usage"] = $$createField7_0($$parsedSource["usage"]);
+            $$parsedSource["usage"] = $$createField9_0($$parsedSource["usage"]);
         }
         return new Message($$parsedSource as Partial<Message>);
     }

@@ -155,6 +155,7 @@ func SaveAppConfigFile(cfg *AppConfig) error {
 		setScalar(am, "compressionThreshold", "!!float", strconv.FormatFloat(cfg.Agent.CompressionThreshold, 'f', -1, 64))
 		setScalar(am, "compressionKeepTurns", "!!int", strconv.FormatInt(int64(cfg.Agent.CompressionKeepTurns), 10))
 		setScalar(am, "compressionMinBatch", "!!int", strconv.FormatInt(int64(cfg.Agent.CompressionMinBatch), 10))
+		setScalar(am, "compressionMaxFailures", "!!int", strconv.FormatInt(int64(cfg.Agent.CompressionMaxFailures), 10))
 		setScalar(am, "iterationTimeout", "!!str", cfg.Agent.IterationTimeout.String())
 	}
 	if cfg.Skills != nil {

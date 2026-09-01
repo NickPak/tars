@@ -13,16 +13,11 @@ import (
 )
 
 // testFT/testSH 是当前用例共享的工具载体（与生产语义一致：会话级长命，
-// 跨多次工具调用持有根目录解析器与持久终端状态）。
+// 跨多次工具调用持有固定工作根与持久终端状态）。
 var (
 	testFT *FileTools
 	testSH *Shell
 )
-
-// smokeWorkspace 是测试用的 WorkspaceProvider。
-type smokeWorkspace struct{ dir string }
-
-func (w *smokeWorkspace) GetWorkspaceDir() string { return w.dir }
 
 func call(t *testing.T, def *kernel.Definition, args string) string {
 	t.Helper()
@@ -35,9 +30,9 @@ func call(t *testing.T, def *kernel.Definition, args string) string {
 
 func TestBuiltinToolsSmoke(t *testing.T) {
 	dir := t.TempDir()
-	sb := sandbox.NewNativeFs(&smokeWorkspace{dir: dir})
-	testFT = NewFileTools(sb)
-	testSH = NewShell(sb)
+	sb := sandbox.NewNativeFs(dir)
+	testFT = NewFileTools(sb, nil)
+	testSH = NewShell(sb, nil)
 	os.MkdirAll(filepath.Join(dir, "src", "pkg"), 0755)
 	os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("package main\n\nfunc main() {}\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "src", "pkg", "util.py"), []byte("def helper():\n    return 42\n"), 0644)
@@ -96,11 +91,17 @@ func TestBuiltinToolsSmoke(t *testing.T) {
 		t.Fatal("edit_file must leave the file untouched on failure")
 	}
 
-	// run_command persistent session: cwd must carry over
+	// run_command persistent session: cwd must carry over.
+	// 方言无关的验证：不依赖 `cd` 无参的行为（cmd 打印 cwd；pwsh 裸 cd
+	// 是 Set-Location 别名，无参切到 $HOME 不打印——三种方言行为不同），
+	// 而是让后续命令的产物落盘，断言它出现在切换后的目录里。
 	rc := testSH.RunCommand()
 	call(t, rc, `{"command":"cd src"}`)
-	out = call(t, rc, `{"command":"cd"}`)
-	if !strings.Contains(filepath.ToSlash(out), "src") {
-		t.Fatalf("run_command session did not persist cwd: %s", out)
+	call(t, rc, `{"command":"echo hi > marker.txt"}`)
+	if _, err := os.Stat(filepath.Join(dir, "src", "marker.txt")); err != nil {
+		t.Fatalf("run_command session did not persist cwd (marker should be in src): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "marker.txt")); err == nil {
+		t.Fatal("marker.txt leaked into the original cwd — cd did not persist")
 	}
 }

@@ -101,6 +101,20 @@ func (r *Manager) Config() *Config {
 	return r.cfg
 }
 
+// ContextWindow 返回当前激活模型的上下文窗口（token 数）；未配置返回 0。
+// 纯配置读——绝不允许走 Active()（后者触发模型客户端构建，为读一个 int
+// 建 eino client 是数量级错误的粒度，且零模型时返回 error 徒增分支）。
+func (r *Manager) ContextWindow() int {
+	cfg := r.Config()
+	if cfg == nil {
+		return 0
+	}
+	if m := cfg.ActiveModel(); m != nil {
+		return m.ContextWindow
+	}
+	return 0
+}
+
 func (r *Manager) Active() (model.ToolCallingChatModel, *ModelConfig, error) {
 	cfg := r.Config()
 	m := cfg.ActiveModel()

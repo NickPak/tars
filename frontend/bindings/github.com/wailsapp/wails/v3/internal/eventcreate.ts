@@ -23,8 +23,10 @@ function configure() {
         "agent:tool": $$createType11,
         "agent:tool_result": $$createType13,
         "model:changed": $$createType15,
-        "session:renamed": $$createType17,
-        "workspace:changed": $$createType19,
+        "session:compression_done": $$createType17,
+        "session:compression_failed": $$createType19,
+        "session:compression_started": $$createType21,
+        "session:renamed": $$createType23,
     }));
 }
 
@@ -45,9 +47,13 @@ const $$createType12 = event$0.ToolResultEvent.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
 const $$createType14 = main$0.ModelChangedEvent.createFrom;
 const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = event$0.SessionRenamedEvent.createFrom;
+const $$createType16 = event$0.CompressionDoneEvent.createFrom;
 const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = event$0.WorkspaceChangedEvent.createFrom;
+const $$createType18 = event$0.CompressionFailedEvent.createFrom;
 const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = event$0.CompressionStartedEvent.createFrom;
+const $$createType21 = $Create.Nullable($$createType20);
+const $$createType22 = event$0.SessionRenamedEvent.createFrom;
+const $$createType23 = $Create.Nullable($$createType22);
 
 configure();

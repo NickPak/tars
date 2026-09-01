@@ -16,7 +16,7 @@ import (
 func builtinDef(t *testing.T, name string) *kernel.Definition {
 	t.Helper()
 	reg := kernel.NewRegistry(nil)
-	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil)
+	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil, nil)
 	def, ok := reg.FindTool(name)
 	if !ok {
 		t.Fatalf("builtin tool %s not found", name)

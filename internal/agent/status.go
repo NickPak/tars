@@ -157,10 +157,11 @@ func (sb *StatusBar) render(ctx context.Context, iteration int) *schema.Message 
 	b := &sb.b
 	b.Reset()
 
-	// 头部
+	// 头部（\n 必须用双引号——反引号原始字符串里 \n 是字面两字符，
+	// 会原样渲染成 "\n" 而不是换行）
 	b.WriteString(`<agent_status seq="`)
 	b.WriteString(strconv.Itoa(iteration))
-	b.WriteString(`">\n`)
+	b.WriteString("\">\n")
 
 	// ---- env ----
 	// 统一写 <env></env> 标签，内部先动态行后静态行（预拼接）

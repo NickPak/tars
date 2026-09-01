@@ -24,11 +24,14 @@ func (f *FileTools) ReadFile() *kernel.Definition {
 			"(`<number><TAB>content`) as a reading aid — the prefix is NOT part of the file and must never be " +
 			"copied into edit_file anchors. Boundary: large files MUST be read in segments via offset/limit; " +
 			"whenever the output is partial, an explicit notice states the shown range and the total line count. " +
-			"Directories and binary files are rejected.",
+			"Directories and binary files are rejected. " +
+			"Compaction archives: a `path` of the form `archive://<name>.md` reads the full original text of " +
+			"turns that were compacted out of the context (the pointer shown in the <context_archive> block); " +
+			"such paths are read-only and support offset/limit like any other file.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path":   map[string]any{"type": "string", "description": "File path, workspace-relative or absolute, e.g. `src/main.go`"},
+				"path":   map[string]any{"type": "string", "description": "File path, workspace-relative or absolute, e.g. `src/main.go`; or `archive://<name>.md` for a compaction archive"},
 				"offset": map[string]any{"type": "integer", "description": "1-based line number to start reading from, default 1"},
 				"limit":  map[string]any{"type": "integer", "description": "Maximum number of lines to read, default: as many as fit the output size cap"},
 			},
@@ -39,20 +42,27 @@ func (f *FileTools) ReadFile() *kernel.Definition {
 			if err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
-			fs, err := f.fileSystem()
-			if err != nil {
-				return "", err
-			}
-			info, err := fs.Stat(args.Path)
-			if err != nil {
-				return "", err
-			}
-			if info.IsDir {
-				return "", fmt.Errorf("%s is a directory; use glob_files to list files", args.Path)
-			}
-			data, err := fs.ReadFile(args.Path)
-			if err != nil {
-				return "", err
+			var data []byte
+			if name, ok := ArchiveName(args.Path); ok {
+				// 归档分支：走会话数据目录，不经沙箱（归档在 workspace 之外）。
+				if data, err = f.readArchive(name); err != nil {
+					return "", err
+				}
+			} else {
+				fs, ferr := f.fileSystem()
+				if ferr != nil {
+					return "", ferr
+				}
+				info, serr := fs.Stat(args.Path)
+				if serr != nil {
+					return "", archiveHint(args.Path, serr)
+				}
+				if info.IsDir {
+					return "", fmt.Errorf("%s is a directory; use glob_files to list files", args.Path)
+				}
+				if data, err = fs.ReadFile(args.Path); err != nil {
+					return "", err
+				}
 			}
 			if len(data) == 0 {
 				return "(empty file)", nil

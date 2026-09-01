@@ -34,6 +34,12 @@ type SessionStats struct {
 	CompressionKeepTurns int `json:"compressionKeepTurns"`
 	// CompressionMinBatch 最小压缩集消息数（低于则不压）。
 	CompressionMinBatch int `json:"compressionMinBatch"`
+	// CompressionMaxFailures 熔断阈值（连续压缩失败次数）。
+	CompressionMaxFailures int `json:"compressionMaxFailures"`
+	// CompressionCount 本会话累计压缩次数（从压缩态直读，plan/context 06 篇）。
+	CompressionCount int `json:"compressionCount"`
+	// LastCompressionRecovery 上次压缩的回收率（1 - after/before）。
+	LastCompressionRecovery float64 `json:"lastCompressionRecovery,omitempty"`
 	// 当前激活模型的价格表，透传给前端计算每条消息的"本次费用"。
 	InputPricePerMillion  float64 `json:"inputPricePerMillion"`
 	OutputPricePerMillion float64 `json:"outputPricePerMillion"`
@@ -71,6 +77,7 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 		stats.CompressionThreshold = cfg.Agent.CompressionThreshold
 		stats.CompressionKeepTurns = cfg.Agent.CompressionKeepTurns
 		stats.CompressionMinBatch = cfg.Agent.CompressionMinBatch
+		stats.CompressionMaxFailures = cfg.Agent.CompressionMaxFailures
 		stats.InputPricePerMillion = activeIn
 		stats.OutputPricePerMillion = activeOut
 		stats.ModelPrices = make(map[string]ModelPrice, len(cfg.LLM.Models))
@@ -86,6 +93,13 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 	var msgs []*schema.Message
 	if sess, ok := s.app.FindSession(sessionID); ok {
 		msgs = append([]*schema.Message{}, sess.Messages...)
+		// 压缩计量（plan/context 06 篇）：从压缩态直读，无新基础设施。
+		if comp := sess.Compaction; comp != nil {
+			stats.CompressionCount = comp.TimesCompressed
+			if st := comp.Stats; st != nil && st.BeforeTokens > 0 {
+				stats.LastCompressionRecovery = 1 - float64(st.AfterTokens)/float64(st.BeforeTokens)
+			}
+		}
 	}
 	if msgs == nil {
 		return stats, nil

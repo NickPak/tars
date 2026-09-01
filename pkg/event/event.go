@@ -44,12 +44,17 @@ const (
 	// 与 KindTurnStarted 对称的轮生命周期事件；携带轮级合计用量与耗时。
 	KindTurnEnded
 	// KindSessionRenamed 会话标题被修改（RenameSession 字段有效）。
-	// 纯内核通知：供持久化/遥测等订阅者使用；不透出到 Wails 前端。
+	// 透出前端：会话列表据此即时刷新标题（手动改名与首条消息自动命名共用）。
 	KindSessionRenamed
 
-	// KindWorkspaceChanged 工作区被修改（Workspace 字段有效）。
-	// 纯内核通知：供持久化/遥测等订阅者使用；不透出到 Wails 前端。
-	KindWorkspaceChanged
+	// KindCompressionStarted 压缩管线触发并开始执行（Compression 字段有效）。
+	// 透出前端（压缩有秒级延迟与一次缓存重建成本，用户有权感知）。
+	KindCompressionStarted
+	// KindCompressionDone 一次压缩完成（CompressionDone 字段有效）。
+	KindCompressionDone
+	// KindCompressionFailed 压缩失败（CompressionFailed 字段有效；
+	// 连续失败达熔断阈值时 CircuitOpen=true）。
+	KindCompressionFailed
 )
 
 // Event 是后端事件流中的一个增量。按 Kind 读取对应的非 nil 载荷字段，
@@ -67,7 +72,10 @@ type Event struct {
 	Iteration      *IterationEvent        // KindIterationStart / KindIterationEnd
 	Turn           *TurnEvent             // KindTurnStarted
 	SessionRenamed *SessionRenamedEvent   // KindSessionRenamed
-	Workspace      *WorkspaceChangedEvent // KindWorkspaceChanged
+	// 压缩三件套共用同一字段名太绕，按语义分三个指针
+	CompressionStarted *CompressionStartedEvent // KindCompressionStarted
+	CompressionDone    *CompressionDoneEvent    // KindCompressionDone
+	CompressionFailed  *CompressionFailedEvent  // KindCompressionFailed
 }
 
 // TurnEvent 一轮对话的开始（内核事件，不透出前端）。trace 等订阅者据此
@@ -172,8 +180,28 @@ type ApprovalEvent struct {
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 }
 
-// WorkspaceChangedEvent is the payload of the "workspace:changed" event.
-type WorkspaceChangedEvent struct {
-	SessionID string `json:"sessionId"`
-	Path      string `json:"path"`
+// CompressionStartedEvent "session:compression_started"：压缩管线触发并开始执行。
+type CompressionStartedEvent struct {
+	SessionID     string `json:"sessionId"`
+	TriggerTokens int    `json:"triggerTokens"` // 触发时的实测 prompt tokens
+	Budget        int    `json:"budget"`        // 阈值预算（ContextWindow × threshold）
+}
+
+// CompressionDoneEvent "session:compression_done"：一次压缩完成。
+type CompressionDoneEvent struct {
+	SessionID    string `json:"sessionId"`
+	BeforeTokens int    `json:"beforeTokens"` // 压缩前实测
+	AfterTokens  int    `json:"afterTokens"`  // 压缩后估算（bytes/4）
+	NewEntries   int    `json:"newEntries"`   // 本次新增归档条目数
+	TotalEntries int    `json:"totalEntries"` // 条目总数
+	DurationMs   int64  `json:"durationMs"`
+}
+
+// CompressionFailedEvent "session:compression_failed"：压缩失败；
+// 连续失败达熔断阈值时 CircuitOpen=true（本会话不再自动压缩）。
+type CompressionFailedEvent struct {
+	SessionID   string `json:"sessionId"`
+	Error       string `json:"error"`
+	Failures    int    `json:"failures"`
+	CircuitOpen bool   `json:"circuitOpen"`
 }

@@ -50,7 +50,6 @@ export class Config {
  */
 export class ModelConfig {
     /**
-     * EntryID 配置条目的唯一键（= models map 的 key），"provider/modelId"
      * 形式，如 "gemini/gemini-3.1-flash-lite"。与 ModelId（发给 API 的
      * 真实模型名）区分：同一真实模型可配多个条目。
      */

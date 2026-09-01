@@ -46,17 +46,23 @@ func isDialogCancelled(err error) bool {
 }
 
 // SetWorkspaceDir sets a custom workspace directory for the given session.
-// All subsequent agent file operations will operate within this directory.
-// Pass an empty string to reset to the default isolated workspace.
+// 仅零消息窗口内生效：一旦产生对话消息即锁定（session.Manager 权威守卫），
+// 不存在"重置为默认"入口——该功能从未工作过（空串过不了 os.Stat 校验），
+// 已于 2026-09-01 删除。
+//
+// 两道守卫：轮运行中禁止（瞬态防并发）；已有对话消息禁止（静态防"锁定后
+// 仍能改"——历史消息里的相对路径会静默失效，模型无从察觉）。
 func (s *AgentService) SetWorkspaceDir(sessionID string, dir string) error {
 	ctrl, ok := s.app.FindController(sessionID)
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
+	if ctrl.IsRunning() {
+		return fmt.Errorf("turn in progress, cancel it first")
+	}
 
-	// Persist to meta.json
-	err := ctrl.GetSessionMgr().SetWorkspaceDir(dir)
-	if err != nil {
+	// 会话层守卫 + 持久化 + sandbox 根同步，一处完成
+	if err := ctrl.SetWorkspaceDir(dir); err != nil {
 		return fmt.Errorf("set workspace dir: %w", err)
 	}
 

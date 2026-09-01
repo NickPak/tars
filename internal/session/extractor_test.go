@@ -1,4 +1,4 @@
-package compaction
+package session
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package compaction
+package session
 
 import (
 	"encoding/json"
@@ -35,23 +35,20 @@ func RenderArchive(batch []*schema.Message) []byte {
 }
 
 // RangeLabel 计算压缩集在轨迹中的轮序标签（"turn_3-5"，展示用）。
-// 轮序 = user 消息序号（1 起）。
+// 轮序 = 轮起点序号（1 起，轮划分见 turn.go）。
 func RangeLabel(raw, batch []*schema.Message) string {
 	if len(batch) == 0 {
 		return "turn_0-0"
 	}
-	firstID, lastID := batch[0].ID, batch[len(batch)-1].ID
-	ord, start, end := 0, 0, 0
-	for _, m := range raw {
-		if m.Role == schema.RoleUser {
-			ord++
+	firstIdx := indexOfID(raw, batch[0].ID)
+	lastIdx := indexOfID(raw, batch[len(batch)-1].ID)
+	start, end := 0, 0
+	for ord, s := range TurnStarts(raw) {
+		if s <= firstIdx {
+			start = ord + 1
 		}
-		if m.ID == firstID {
-			start = ord
-		}
-		if m.ID == lastID {
-			end = ord
-			break
+		if s <= lastIdx {
+			end = ord + 1
 		}
 	}
 	if start == 0 {
@@ -92,6 +89,19 @@ func LoadSkillCalls(batch []*schema.Message) []string {
 	return names
 }
 
+// messagesBytes 统计消息的可压缩文本体量（01 篇 §5 PartExtraction 口径：
+// Content + Reasoning + 工具调用参数）——经济性校验的"压缩前"一侧。
+func messagesBytes(msgs []*schema.Message) int {
+	n := 0
+	for _, m := range msgs {
+		n += len(m.Content) + len(m.Reasoning)
+		for _, tc := range m.ToolCalls {
+			n += len(tc.Args)
+		}
+	}
+	return n
+}
+
 // lastPromptTokens 反扫轨迹中最后一条带实测用量的 assistant 消息
 //（触发信号，01 篇 §6：跨轮有效——首轮迭代即可感知上一轮结束时的规模）。
 func lastPromptTokens(raw []*schema.Message) int {
@@ -104,6 +114,8 @@ func lastPromptTokens(raw []*schema.Message) int {
 }
 
 // estimateProjectedTokens 估算压缩后视图规模（bytes/4，01 篇 §6 估算回退）。
+// 仅用于计量（Stats.AfterTokens）与阶梯选档，不作触发判定——它不含
+// system prompt、工具 schema 与状态栏（可达 5-15k token），系统性偏小。
 func estimateProjectedTokens(entries []*ArchiveEntry, raw []*schema.Message, cutoffID string) int {
 	n := 0
 	if syn := (&Compaction{Entries: entries}).Message(); syn != nil {

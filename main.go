@@ -33,7 +33,9 @@ func init() {
 	application.RegisterEvent[*event.ReasoningEvent]("agent:reasoning")
 	application.RegisterEvent[*event.ApprovalEvent]("agent:approval")
 	application.RegisterEvent[*event.SessionRenamedEvent]("session:renamed")
-	application.RegisterEvent[*event.WorkspaceChangedEvent]("workspace:changed")
+	application.RegisterEvent[*event.CompressionStartedEvent]("session:compression_started")
+	application.RegisterEvent[*event.CompressionDoneEvent]("session:compression_done")
+	application.RegisterEvent[*event.CompressionFailedEvent]("session:compression_failed")
 	application.RegisterEvent[*ModelChangedEvent]("model:changed")
 }
 

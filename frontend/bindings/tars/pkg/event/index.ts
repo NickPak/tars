@@ -3,12 +3,14 @@
 
 export {
     ApprovalEvent,
+    CompressionDoneEvent,
+    CompressionFailedEvent,
+    CompressionStartedEvent,
     ReasoningEvent,
     SessionRenamedEvent,
     StreamChunk,
     StreamDone,
     StreamError,
     ToolEvent,
-    ToolResultEvent,
-    WorkspaceChangedEvent
+    ToolResultEvent
 } from "./models.js";

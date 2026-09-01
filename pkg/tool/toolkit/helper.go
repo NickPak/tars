@@ -10,7 +10,12 @@ import (
 )
 
 // MaxOutputBytes caps a single tool output to avoid blowing up the context.
-const MaxOutputBytes = 64 * 1024
+//
+// 24KB ≈ 6k token，占 128k 窗口约 4.7%。原值 64KB（≈16k token，12.5%）偏大：
+// 保留区 6 轮各一条满额输出就能吃掉 128k 窗口的全部压缩预算，单条合法而累积
+// 失控。下调的前提是超限输出已落盘可回读（见 spill.go）——信息不丢，只是多
+// 一次 read_file。
+const MaxOutputBytes = 24 * 1024
 
 // UnmarshalArgs 将模型生成的 JSON 参数反序列化为指定类型，供 Handler 使用。
 func UnmarshalArgs[T any](args json.RawMessage) (T, error) {
@@ -61,6 +66,9 @@ func RelToOS(rel string) string {
 
 // TruncateOutput caps s at maxOutputBytes with an explicit notice; truncation
 // is never silent. ToValidUTF8 keeps the cut from landing mid-rune.
+//
+// 保底路径：优先用 OutputSpill.Apply（落盘 + 头尾摘要，可回读）。此函数只在
+// 未装配归档通道或落盘失败时兜底——它丢弃的尾部不可找回。
 func TruncateOutput(s string) string {
 	if len(s) <= MaxOutputBytes {
 		return s

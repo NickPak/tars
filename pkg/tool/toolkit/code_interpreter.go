@@ -41,15 +41,16 @@ var codeInterpreterRiskRules = []kernel.RiskRule{
 // 临时脚本名经计数器生成（无随机依赖），Close 无资源可清。
 type CodeInterpreter struct {
 	sb      sandbox.SandboxProvider
+	spill   *OutputSpill
 	counter uint64 // 临时脚本序号（会话内唯一即可）
 	python  string // 探测缓存的解释器名（环境内不变）
 	mu      sync.Mutex
 }
 
 // NewCodeInterpreter 创建 code_interpreter 载体。sb 为 nil 时 handler 报错
-// （装配层须保证注入）。
-func NewCodeInterpreter(sb sandbox.SandboxProvider) *CodeInterpreter {
-	return &CodeInterpreter{sb: sb}
+// （装配层须保证注入）。archive 为超长输出的落盘通道；nil 时退化为原地截断。
+func NewCodeInterpreter(sb sandbox.SandboxProvider, archive ArchiveProvider) *CodeInterpreter {
+	return &CodeInterpreter{sb: sb, spill: NewOutputSpill(archive)}
 }
 
 // Definitions 实现 tool.Carrier。
@@ -75,8 +76,9 @@ func (c *CodeInterpreter) definition() *kernel.Definition {
 			"variables, print only what matters. Scientific libraries (numpy/pandas/sympy) are available when " +
 			"installed in the environment. Boundary: runs with the desktop app's permissions (no sandbox or " +
 			"network isolation yet) — do not perform destructive system operations; for plain single-file " +
-			"reads/writes prefer read_file/write_file. Long output is truncated with an explicit notice. " +
-			"Default timeout 60s, max 300s.",
+			"reads/writes prefer read_file/write_file. Long output keeps its head and tail with the omitted " +
+			"amount stated in the middle, and the complete output is written to an `archive://...` file that " +
+			"read_file can open. Default timeout 60s, max 300s.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -128,7 +130,7 @@ func (c *CodeInterpreter) definition() *kernel.Definition {
 				return "", fmt.Errorf("code_interpreter: %w", err)
 			}
 
-			result := TruncateOutput(strings.TrimRight(res.Output, "\r\n"))
+			result := c.spill.Apply("code_interpreter", strings.TrimRight(res.Output, "\r\n"))
 			if res.TimedOut {
 				return result + fmt.Sprintf("\n[execution timed out (%d s) and was terminated]", timeout), nil
 			}
@@ -153,7 +155,8 @@ func (c *CodeInterpreter) nextTempScript() string {
 
 // lookupPython 经执行环境探测 Python 3 解释器：`python` 优先
 // （Windows 标准），`python3` 兜底（macOS/Linux 标准）。
-// 结果缓存于载体（环境的解释器不会中途变更）。
+// 结果缓存于载体：工作根恒定（仅零消息窗口可变），不存在"切到另一个
+// venv 项目但解释器缓存不更新"的窗口。
 func (c *CodeInterpreter) lookupPython(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"sync"
 	"tars/pkg/ask"
-	"tars/pkg/compaction"
 	"tars/pkg/skill"
 	"tars/pkg/tool/kernel"
 	"tars/pkg/tool/toolkit"
@@ -74,7 +73,7 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 		agent:      nil,
 	}
 
-	c.sessionMgr = session.NewManager(data, sink)
+	c.sessionMgr = session.NewManager(data, sink, llmMgr, cfg.Agent.CompressionThreshold, cfg.Agent.CompressionKeepTurns, cfg.Agent.CompressionMinBatch, cfg.Agent.CompressionMaxFailures)
 
 	c.todoMgr = todo.NewManager(c.sessionMgr.GetSessionDir())
 
@@ -82,36 +81,22 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 
 	c.toolReg = kernel.NewRegistry(c.gate)
 
-	c.sandbox = sandbox.NewNativeFs(c.sessionMgr)
+	// sandbox 根在构造时固定（WorkspaceDir 已由 session.NewManager 解析），
+	// 不再经 provider 每次回调；零消息窗口内换目录走 Controller.SetWorkspaceDir。
+	c.sandbox = sandbox.NewNativeFs(c.sessionMgr.GetWorkspaceDir())
 
 	c.skillPv = NewSkillProvider(skillMgr, c.sessionMgr)
 
 	// MCP 通道：闭包捕获会话 Registry（动态注册归宿）；无 MCP 时为 nil。
 	c.mcpPv = NewMCPProvider(mcpMgr, c.toolReg, c.sessionMgr)
 
-	toolkit.RegisterBuiltinTools(c.toolReg, c.sandbox, c.todoMgr, askMgr, c.skillPv, c.mcpPv)
+	toolkit.RegisterBuiltinTools(c.toolReg, c.sandbox, c.todoMgr, askMgr, c.skillPv, c.mcpPv, c.sessionMgr)
 
 	c.prompt = NewPromptCompose(c.toolReg, c.skillPv, c.mcpPv)
 
-	// 压缩器（plan/context 02 篇）：会话级长命对象，store 复用会话存储；
-	// 提取模型用当前轮 provider（Run 参数透传）；window 闭包每次调用解析
-	// 激活模型（模型热切换生效），未配置 ContextWindow 时 Compactor 回退默认值。
-	compactor := compaction.New(c.sessionMgr, nil, compaction.LLMExtractor{}, func() int {
-		if cur := config.Get(); cur != nil && cur.LLM != nil {
-			if m := cur.LLM.ActiveModel(); m != nil {
-				return m.ContextWindow
-			}
-		}
-		return 0
-	}, compaction.Config{
-		Threshold: cfg.Agent.CompressionThreshold,
-		KeepTurns: cfg.Agent.CompressionKeepTurns,
-		MinBatch:  cfg.Agent.CompressionMinBatch,
-	})
-
 	// 会话级 agent：跨轮复用（会话级依赖构造注入；模型/消息 ID 等轮级
 	// 输入经 Run 参数传入；配置热更新经 Limits 每轮解析）。
-	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, c.todoMgr, c.skillPv, c.mcpPv, compactor)
+	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, c.todoMgr, c.skillPv, c.mcpPv)
 	return c
 }
 
@@ -220,6 +205,17 @@ func (c *Controller) Shutdown() error {
 
 // GetSessionMgr 返回本 Controller 持有的会话。
 func (c *Controller) GetSessionMgr() *session.Manager { return c.sessionMgr }
+
+// SetWorkspaceDir 会话层守卫 + sandbox 根同步（零消息窗口内，见
+// session.Manager.SetWorkspaceDir 的锁定语义）。sandbox 根是固定值，
+// 不跟随 provider——成功换目录后必须显式通知。
+func (c *Controller) SetWorkspaceDir(dir string) error {
+	if err := c.sessionMgr.SetWorkspaceDir(dir); err != nil {
+		return err
+	}
+	c.sandbox.SetRoot(c.sessionMgr.GetWorkspaceDir())
+	return nil
+}
 
 // SubmitMessage 提交一条用户消息并启动一轮对话：消息准备（追加 user 消息，
 // assistant 首轮产出时创建）与运行标记同步完成，循环异步执行。

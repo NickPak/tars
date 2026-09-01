@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"tars/pkg/compaction"
 	"tars/pkg/prompt"
 	"tars/pkg/tool/kernel"
 	"time"
@@ -44,6 +43,9 @@ type Session interface {
 	// AppendMessage 追加消息（assistant 迭代消息、工具结果等），
 	// 含持久化与事件通知。交错式存储：每次迭代一条全新 assistant 消息。
 	AppendMessage(updateAt int64, msg ...*schema.Message)
+	// MaybeCompress 上下文压缩触发点（plan/context 02 篇）：迭代组装消息前
+	// 调用，达到阈值则执行一次完整压缩；未装配压缩器时为空操作。
+	MaybeCompress(ctx context.Context, provider llm.Provider)
 
 	GetWorkspaceDir() string
 }
@@ -84,16 +86,13 @@ type ReActAgent struct {
 	sink      event.Sink
 	toolExec  ToolExecutor
 	statusBar *StatusBar
-	// compactor 上下文压缩器（plan/context 02 篇）；nil 时跳过压缩（测试与降级路径）。
-	compactor *compaction.Compactor
 }
 
 var _ Agent = (*ReActAgent)(nil)
 
 // NewReAct 创建一个 ReAct 循环的 agent（会话级，由 Controller 持有复用）。
 // sink 为 nil 时静默（归一化为 event.Discard，emit 路径无需判空）。
-// compactor 为 nil 时循环不执行压缩检查。
-func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.Sink, toolExec ToolExecutor, todoPv TodoStatus, skillPv SkillStatus, mcpPv MCPStatus, compactor *compaction.Compactor) *ReActAgent {
+func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.Sink, toolExec ToolExecutor, todoPv TodoStatus, skillPv SkillStatus, mcpPv MCPStatus) *ReActAgent {
 	if sink == nil {
 		sink = event.Discard
 	}
@@ -104,7 +103,6 @@ func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.S
 		sink:      sink,
 		toolExec:  toolExec,
 		statusBar: NewStatusBar(session, todoPv, skillPv, mcpPv),
-		compactor: compactor,
 	}
 }
 
@@ -147,9 +145,8 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 
 		// 0. 压缩检查（plan/context 02 篇）：上一轮实测 token 超阈值则先压缩
 		//    再组装本轮输入。压缩只改投影规则，原始轨迹不动；失败不阻塞主循环。
-		if a.compactor != nil {
-			a.compactor.Maybe(ctx, provider)
-		}
+		//    压缩器由会话侧持有（Session.MaybeCompress），未装配时为空操作。
+		a.session.MaybeCompress(ctx, provider)
 
 		// 1. 构建 LLM 输入：system（动态）+ 会话历史 + 状态栏。
 		//    状态栏追加到内存上下文尾部（不改 system 前缀，保住 KV Cache），
@@ -184,8 +181,10 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 
 		// 3. assistant 落会话：交错式 append（无聚合、无占位），
 		//    用量与迭代耗时随消息盖章；用量同步累加进轮级合计。
+		//    轮分组键（TurnID）由会话侧统一盖章——循环只管迭代序号。
 		msg.ID = msgID
 		msg.Role = schema.RoleAssistant
+		msg.Iteration = iter
 		msg.CreatedAt = time.Now().UnixMilli()
 		msg.ElapsedMs = time.Since(iterStart).Milliseconds()
 		a.session.AppendMessage(msg.CreatedAt, msg)
@@ -227,6 +226,7 @@ func (a *ReActAgent) Run(ctx context.Context, assistantID string, provider llm.P
 			a.session.AppendMessage(now, &schema.Message{
 				ID:         uuid.NewString(),
 				Role:       schema.RoleTool,
+				Iteration:  iter, // 与发起调用的 assistant 消息同号
 				Content:    r.Output,
 				ToolCallID: r.ID,
 				CreatedAt:  now,
@@ -285,11 +285,24 @@ func (a *ReActAgent) callModel(ctx context.Context, provider llm.Provider, timeo
 	return full, nil
 }
 
-// normalizeErr 把迭代超时归一化为包装 context.DeadlineExceeded 的错误，
-// 宿主经 errors.Is 可靠识别（区分于用户取消：父 ctx 完成时不做包装）。
+// normalizeErr 把模型调用错误归一化为宿主可识别、用户可操作的形态：
+//   - 迭代超时 → 包装 context.DeadlineExceeded（宿主经 errors.Is 可靠识别；
+//     区分于用户取消：父 ctx 完成时不做包装）
+//   - 上下文超窗口 → 包装 llm.ErrContextOverflow 并给出可操作建议
+//
+// 上下文超限刻意**不做组装期预检**：预检要靠 bytes/4 估算，而该估算系统性偏小
+// （CJK 尤甚，3 字节/字符 vs 约 1 token/字符），既可能漏拦、也可能误拦本来能
+// 成功的请求；供应商才是自己限额的权威。故等它拒绝，再把文案翻译成人话。
 func normalizeErr(callCtx, ctx context.Context, timeout time.Duration, iter int, err error) error {
 	if ctx.Err() == nil && callCtx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("iteration %d timed out after %v: %w", iter, timeout, context.DeadlineExceeded)
+	}
+	if llm.IsContextOverflow(err) {
+		// 保留原始错误文本：各家会带上"上限 N / 实际 M"这类有用数字，
+		// 且用户报障时需要它（不静默丢信息）。
+		return fmt.Errorf("%w：本轮内容过大，自动压缩已无法再回收空间。"+
+			"可以开启新会话、把当前任务拆成更小的步骤，或换用上下文窗口更大的模型。"+
+			"（原始错误：%v）", llm.ErrContextOverflow, err)
 	}
 	return err
 }

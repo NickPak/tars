@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Archive,
   Copy,
   Check,
   ThumbsUp,
@@ -14,15 +15,71 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
-import type { ToolCallInfo, UsageInfo } from "../types";
+import type { ChatMessage, CompressionMark, ToolCallInfo, UsageInfo } from "../types";
 import Markdown from "./Markdown";
 import { ApprovalCard, AskUserCard } from "./AskCards";
 
-/** 轮末判定：messages[i] 是该轮最后一条 assistant（下一条非 tool 消息是
- *  user，或之后没有更多消息）。调用方保证 messages[i].role === "assistant"。 */
-function isTurnFinal(messages: { role: string }[], i: number): boolean {
+/** 时间线条目：消息 + 压缩标记按时间合并渲染。标记是本地运行时状态，
+ *  不进 messages——轮边界/配对/合计等判定全部基于 messages，不被污染。 */
+type TimelineItem =
+  | { kind: "msg"; at: number; m: ChatMessage; i: number }
+  | { kind: "mark"; at: number; mark: CompressionMark };
+
+/** 上下文压缩的时间线分隔标记（Claude Code 风格留痕）。 */
+function CompressionDivider({ mark }: { mark: CompressionMark }) {
+  return (
+    <div className={`compression-mark${mark.error ? " error" : ""}`}>
+      <Archive size={13} />
+      {mark.error ? (
+        <span>
+          上下文压缩失败
+          {mark.circuitOpen
+            ? "（连续失败已熔断，本会话不再自动压缩，建议拆分任务或开新会话）"
+            : "（稍后自动重试）"}
+        </span>
+      ) : (
+        <span>
+          上下文已压缩 {formatTokens(mark.beforeTokens ?? 0)} →{" "}
+          {formatTokens(mark.afterTokens ?? 0)}
+          {mark.newEntries ? `（归档 ${mark.newEntries} 条）` : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** 轮分组键：优先后端盖的 turnId；旧数据回退"user 消息 ID 即轮键"，
+ *  非 user 消息返回空（由调用方按位置归属）。 */
+function turnKey(m: ChatMessage): string {
+  if (m.turnId) return m.turnId;
+  return m.role === "user" ? m.id : "";
+}
+
+/** 轮起点下标：messages[i] 所属轮的第一条消息。 */
+function turnStart(messages: ChatMessage[], i: number): number {
+  const key = turnKey(messages[i]);
+  if (key) {
+    let first = i;
+    for (let j = i - 1; j >= 0; j--) {
+      const k = turnKey(messages[j]);
+      if (k === key) first = j;
+      else if (k) break;
+    }
+    return first;
+  }
+  for (let j = i; j >= 0; j--) {
+    if (messages[j].role === "user") return j;
+  }
+  return 0;
+}
+
+/** 轮末判定：messages[i] 是该轮最后一条 assistant 消息。
+ *  按 turnId 分组（旧数据回退到"下一条非 tool 消息是 user"）。 */
+function isTurnFinal(messages: ChatMessage[], i: number): boolean {
+  const key = turnKey(messages[i]);
   for (let j = i + 1; j < messages.length; j++) {
     if (messages[j].role === "tool") continue;
+    if (key) return turnKey(messages[j]) !== key;
     return messages[j].role === "user";
   }
   return true;
@@ -30,19 +87,13 @@ function isTurnFinal(messages: { role: string }[], i: number): boolean {
 
 /** 轮级合计：该轮各 assistant 消息的 usage 求和 + 轮墙钟耗时。
  *  live 时 Done 已把合计盖在末气泡上（中间气泡无 usage，求和结果一致）；
- *  历史会话则为逐迭代求和。耗时取 轮末消息.createdAt − 轮起点 user.createdAt
+ *  历史会话则为逐迭代求和。耗时取 轮末消息.createdAt − 轮起点.createdAt
  *  （含工具执行间隙的墙钟时间，live 与历史口径一致）。 */
 function turnAggregate(
-  messages: { role: string; createdAt: number; usage?: UsageInfo }[],
+  messages: ChatMessage[],
   i: number,
 ): { usage?: UsageInfo; elapsedMs: number } {
-  let start = 0;
-  for (let j = i; j >= 0; j--) {
-    if (messages[j].role === "user") {
-      start = j;
-      break;
-    }
-  }
+  const start = turnStart(messages, i);
   let prompt = 0;
   let completion = 0;
   let total = 0;
@@ -78,18 +129,32 @@ export default function MessageList() {
   const isStreaming = useChatStore((s) => s.isStreaming);
   const deleteMessage = useChatStore((s) => s.deleteMessage);
   const pickAndSetWorkspace = useChatStore((s) => s.pickAndSetWorkspace);
+  const compressionMarks = useChatStore((s) => s.compressionMarks);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 进行中轮次的起点（最后一条 user 消息的位置）。交错式一轮产生多条
-  // assistant 气泡：轮级状态栏（usage/耗时/操作）必须在轮结束后才显示，
-  // 不能沿用"一轮一条消息"时代"非最后一条即完成"的判断。
+  // 进行中轮次的起点。交错式一轮产生多条 assistant 气泡：轮级状态栏
+  // （usage/耗时/操作）必须在轮结束后才显示，不能沿用"一轮一条消息"
+  // 时代"非最后一条即完成"的判断。轮划分按 turnId（见 turnKey）。
   const activeTurnStart = useMemo(() => {
-    if (!isStreaming) return -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") return i;
-    }
-    return 0;
+    if (!isStreaming || messages.length === 0) return -1;
+    return turnStart(messages, messages.length - 1);
   }, [messages, isStreaming]);
+
+  // 时间线：消息 + 压缩标记按时间合并。标记是本地运行时状态，不进
+  // messages——轮边界/配对/轮级合计等判定全部基于 messages，不被污染。
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = messages.map((m, i) => ({
+      kind: "msg",
+      at: m.createdAt,
+      m,
+      i,
+    }));
+    for (const mark of compressionMarks) {
+      items.push({ kind: "mark", at: mark.at, mark });
+    }
+    items.sort((a, b) => a.at - b.at);
+    return items;
+  }, [messages, compressionMarks]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
@@ -117,7 +182,12 @@ export default function MessageList() {
   return (
     <div className="message-list">
       <div className="message-list-inner">
-        {messages.map((m, i) => {
+        {timeline.map((item) => {
+          if (item.kind === "mark") {
+            return <CompressionDivider key={item.mark.id} mark={item.mark} />;
+          }
+          const m = item.m;
+          const i = item.i; // messages 下标——轮末/合计等判定照旧基于 messages
           // tool 消息（历史会话中的工具执行结果）不单独渲染——
           // 其内容已通过 assistant 消息的 toolCalls 数组展示在 ToolCallCard 中
           if (m.role === "tool") return null;

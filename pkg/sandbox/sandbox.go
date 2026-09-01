@@ -49,6 +49,11 @@ const (
 	ShellSh ShellKind = "sh"
 	// ShellCmd 是 Windows cmd 方言。
 	ShellCmd ShellKind = "cmd"
+	// ShellPwsh 是 PowerShell 7+（pwsh，github.com/PowerShell/PowerShell）。
+	// Windows 上装了 pwsh 即优先于 cmd：cmd 表达能力太弱。
+	// 不回退 Windows 自带的 powershell.exe 5.1——&& 链式运算符是 PS 7.0
+	// 才支持的，而 run_command 的工具描述承诺了 && 语法。
+	ShellPwsh ShellKind = "pwsh"
 )
 
 // Executor 是执行环境的命令执行面。无状态：每次调用独立执行。
@@ -56,7 +61,8 @@ type Executor interface {
 	Exec(ctx context.Context, req ExecRequest) (*ExecResult, error)
 	ShellKind() ShellKind
 	// Root 返回默认工作根（环境原生路径；native 为宿主路径、
-	// docker 为容器内挂载点），供 Shell 键控持久终端会话。
+	// docker 为容器内挂载点）。Shell 用它初始化持久终端的初始 cwd；
+	// 工作根恒定（仅会话零消息窗口内可变），不存在按 root 分桶的需求。
 	Root() string
 }
 

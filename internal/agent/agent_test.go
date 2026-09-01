@@ -83,6 +83,9 @@ func (s *fakeSession) AppendMessage(_ int64, msg ...*schema.Message) {
 	s.msgs = append(s.msgs, msg...)
 }
 
+// MaybeCompress 压缩触发点（agent.Session 接口）；测试会话不装配压缩器，空操作。
+func (s *fakeSession) MaybeCompress(context.Context, llm.Provider) {}
+
 func (s *fakeSession) byRole(r schema.Role) []*schema.Message {
 	var out []*schema.Message
 	for _, m := range s.msgs {
@@ -157,7 +160,7 @@ func (fakeSkillStatus) GetLoadedSkills() []string { return nil }
 func newTestAgent(reg *kernel.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
 	cfg := &Config{MaxIterations: maxIter}
 	cfg.Validate()
-	a := NewReAct(cfg, fakeComposer{}, sess, sink, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{}, nil)
+	a := NewReAct(cfg, fakeComposer{}, sess, sink, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		panic(err)
 	}
@@ -405,11 +408,65 @@ func TestRun_InterleavedLayout(t *testing.T) {
 	}
 }
 
+// 上下文超窗口：供应商原文对用户无意义，需翻译成可操作建议，
+// 同时保留 sentinel（宿主可 errors.Is）与原始文本（含"上限/实际"数字，报障要用）。
+func TestRun_ContextOverflowErrorIsActionable(t *testing.T) {
+	raw := "This model's maximum context length is 128000 tokens. However, your messages resulted in 131204 tokens."
+	m := &stubProvider{
+		responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "x"}},
+		errs:      []error{errors.New(raw)},
+	}
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, &recordingSink{}, 5)
+
+	_, err := runTurn(a, context.Background(), "go", m)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, llm.ErrContextOverflow) {
+		t.Fatalf("host must be able to identify the cause via errors.Is: %v", err)
+	}
+	msg := err.Error()
+	for _, want := range []string{"开启新会话", "拆成更小的步骤", "窗口更大的模型"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message must offer the actionable option %q: %s", want, msg)
+		}
+	}
+	if !strings.Contains(msg, "131204") {
+		t.Errorf("original provider text (with the numbers) must be preserved: %s", msg)
+	}
+	if m.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (no retry — retrying cannot help)", m.calls)
+	}
+}
+
+// 超时不得被误判成上下文超限（"context deadline exceeded" 含 "context"，
+// 是最危险的误判源；且超时分支必须优先于超限分支）。
+func TestRun_TimeoutNotMisreportedAsOverflow(t *testing.T) {
+	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
+	cfg.Validate()
+	a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, &recordingSink{},
+		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
+	if err := a.Startup(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runTurn(a, context.Background(), "go", &stuckProvider{})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if errors.Is(err, llm.ErrContextOverflow) {
+		t.Fatalf("timeout must not be reported as a context overflow: %v", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want DeadlineExceeded", err)
+	}
+}
+
 func TestRun_IterationTimeout(t *testing.T) {
 	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
 	cfg.Validate()
 	a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, &recordingSink{},
-		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{}, nil)
+		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		t.Fatal(err)
 	}

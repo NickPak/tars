@@ -25,7 +25,7 @@ var expectedBuiltinNames = []string{
 // TestRegisterBuiltinTools 钉住内置工具注册集合：名称、顺序、声明完整性。
 func TestRegisterBuiltinTools(t *testing.T) {
 	reg := kernel.NewRegistry(nil)
-	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil)
+	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil, nil)
 
 	names := reg.ToolNames()
 	if len(names) != len(expectedBuiltinNames) {
@@ -48,9 +48,9 @@ func TestRegisterBuiltinTools(t *testing.T) {
 // TestSessionRegistryIsolation 两个会话注册表互不影响。
 func TestSessionRegistryIsolation(t *testing.T) {
 	reg := kernel.NewRegistry(nil)
-	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil)
+	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil, nil)
 	other := kernel.NewRegistry(nil)
-	RegisterBuiltinTools(other, nil, nil, nil, nil, nil)
+	RegisterBuiltinTools(other, nil, nil, nil, nil, nil, nil)
 
 	reg.Unregister("read_file")
 	if _, ok := other.FindTool("read_file"); !ok {

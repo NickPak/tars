@@ -25,6 +25,9 @@ type traceSink struct {
 
 	llmSpan   oteltrace.Span
 	toolSpans map[string]oteltrace.Span
+	// compressionSpan 进行中的压缩 span（压缩在轮内同步执行，随
+	// KindCompressionDone/Failed 闭合；轮终止时防御性收尾）。
+	compressionSpan oteltrace.Span
 }
 
 // NewTraceSink 创建 trace 订阅者（无参数：一切状态由事件流驱动）。
@@ -85,9 +88,36 @@ func (s *traceSink) Emit(e event.Event) {
 			trace.EndToolCall(span, e.ToolResult.Output)
 		}
 
+	case event.KindCompressionStarted:
+		if s.ctx == nil {
+			return
+		}
+		_, s.compressionSpan = trace.StartCompression(s.ctx, e.CompressionStarted.SessionID,
+			e.CompressionStarted.TriggerTokens, e.CompressionStarted.Budget)
+
+	case event.KindCompressionDone:
+		if s.compressionSpan == nil {
+			return
+		}
+		d := e.CompressionDone
+		trace.EndCompression(s.compressionSpan, nil, d.BeforeTokens, d.AfterTokens,
+			d.NewEntries, d.TotalEntries, d.DurationMs)
+		s.compressionSpan = nil
+
+	case event.KindCompressionFailed:
+		if s.compressionSpan == nil {
+			return
+		}
+		trace.EndCompression(s.compressionSpan, errors.New(e.CompressionFailed.Error), 0, 0, 0, 0, 0)
+		s.compressionSpan = nil
+
 	case event.KindTurnEnded:
 		// 轮正常结束（含用户取消的干净停止）：收尾未闭合的 LLM span
 		// （取消发生在 LLM 调用中途时不会触发 IterationEnd），闭合 turn span。
+		if s.compressionSpan != nil {
+			trace.EndCompression(s.compressionSpan, context.Canceled, 0, 0, 0, 0, 0)
+			s.compressionSpan = nil
+		}
 		if s.llmSpan != nil {
 			trace.EndLLMCall(s.llmSpan, context.Canceled, "", "", nil, "", 0, 0, 0)
 			s.llmSpan = nil

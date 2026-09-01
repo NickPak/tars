@@ -1073,6 +1073,26 @@ function AgentPage({
             }
           />
         </Field>
+        <Field
+          label="压缩熔断阈值"
+          hint="连续压缩失败达该次数后，本会话不再自动压缩（避免失败循环空烧 API）；重开会话恢复。"
+        >
+          <input
+            className="settings-input small"
+            type="number"
+            min={1}
+            value={draft.agent.compressionMaxFailures}
+            onChange={(e) =>
+              update((d) => ({
+                ...d,
+                agent: {
+                  ...d.agent,
+                  compressionMaxFailures: Math.max(1, e.target.valueAsNumber || 1),
+                },
+              }))
+            }
+          />
+        </Field>
       </Section>
     </PageShell>
   );

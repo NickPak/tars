@@ -38,6 +38,7 @@ const (
 	SpanLLMChat        = "gen_ai.chat"
 	SpanToolExecute    = "gen_ai.execute_tool"
 	SpanSessionCreated = "session.created"
+	SpanCompression    = "agent.compression"
 )
 
 // --- 全局单例 ---
@@ -383,6 +384,45 @@ func EndToolCall(span oteltrace.Span, output string) {
 	span.SetAttributes(
 		attribute.String("output.value", output),
 		attribute.String("output.mime_type", "text/plain"),
+	)
+	span.SetStatus(codes.Ok, "")
+	span.End()
+}
+
+// StartCompression 开启一次上下文压缩 span（挂在 turn span 下，由 tracesink
+// 订阅 KindCompressionStarted 调用）。
+func StartCompression(ctx context.Context, sessionID string, triggerTokens, budget int) (context.Context, oteltrace.Span) {
+	if tracer == nil {
+		return ctx, noopSpan(ctx)
+	}
+	return tracer.Start(ctx, SpanCompression,
+		oteltrace.WithAttributes(
+			attribute.String("openinference.span.kind", "CHAIN"),
+			attribute.String("session.id", sessionID),
+			attribute.Int("compression.trigger_tokens", triggerTokens),
+			attribute.Int("compression.budget", budget),
+		),
+	)
+}
+
+// EndCompression 闭合压缩 span（KindCompressionDone/Failed）：成功记录回收
+// 计量（before/after/条目数/耗时），失败记错误。
+func EndCompression(span oteltrace.Span, err error, beforeTokens, afterTokens, newEntries, totalEntries int, durationMs int64) {
+	if tracer == nil {
+		return
+	}
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.End()
+		return
+	}
+	span.SetAttributes(
+		attribute.Int("compression.before_tokens", beforeTokens),
+		attribute.Int("compression.after_tokens", afterTokens),
+		attribute.Int("compression.new_entries", newEntries),
+		attribute.Int("compression.total_entries", totalEntries),
+		attribute.Int64("compression.duration_ms", durationMs),
 	)
 	span.SetStatus(codes.Ok, "")
 	span.End()

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"tars/pkg/compaction"
 	"tars/pkg/schema"
 	"time"
 
@@ -251,7 +250,7 @@ func (s *StoreManager) AppendSaveMessage(sessionID string, msg ...*schema.Messag
 // --- 压缩态持久化（plan/context 03 篇：compaction.json + archive/） ---
 
 // SaveCompaction 原子写压缩态（tmp+rename，03 篇 §3：崩溃无中间态）。
-func (s *StoreManager) SaveCompaction(sessionID string, c *compaction.Compaction) error {
+func (s *StoreManager) SaveCompaction(sessionID string, c *Compaction) error {
 	dataDir := GetDataDir(s.workDir, sessionID)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("session store: create data dir for %s: %w", sessionID, err)
@@ -280,7 +279,7 @@ func (s *StoreManager) SaveCompaction(sessionID string, c *compaction.Compaction
 
 // LoadCompaction 读取压缩态：文件不存在返回 (nil, nil)；
 // 损坏返回 (nil, error)——调用方回退恒等投影（03 篇安全降级）。
-func (s *StoreManager) LoadCompaction(sessionID string) (*compaction.Compaction, error) {
+func (s *StoreManager) LoadCompaction(sessionID string) (*Compaction, error) {
 	path := filepath.Join(GetDataDir(s.workDir, sessionID), CompactionFile)
 	f, err := os.Open(path)
 	if err != nil {
@@ -290,7 +289,7 @@ func (s *StoreManager) LoadCompaction(sessionID string) (*compaction.Compaction,
 		return nil, fmt.Errorf("session store: read compaction for %s: %w", sessionID, err)
 	}
 	defer f.Close()
-	c := &compaction.Compaction{}
+	c := &Compaction{}
 	if err := json.NewDecoder(f).Decode(c); err != nil {
 		return nil, fmt.Errorf("session store: decode compaction for %s: %w", sessionID, err)
 	}
@@ -319,6 +318,18 @@ func (s *StoreManager) WriteArchive(sessionID, rangeLabel string, content []byte
 		return "", fmt.Errorf("session store: write archive for %s: %w", sessionID, err)
 	}
 	return path, nil
+}
+
+// ReadArchive 读取归档原文（data/archive/<name>）。
+// name 经 filepath.Base 归一，无论调用方传什么都不可能穿越出归档目录
+// （纵深防御：调用侧 toolkit 已做白名单校验，此处再兜一层结构性保证）。
+func (s *StoreManager) ReadArchive(sessionID, name string) ([]byte, error) {
+	path := filepath.Join(GetDataDir(s.workDir, sessionID), ArchiveDir, filepath.Base(name))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("session store: read archive for %s: %w", sessionID, err)
+	}
+	return data, nil
 }
 
 // RewriteMessages 全量覆写消息文件（重试/删除/编辑等截断操作后）。

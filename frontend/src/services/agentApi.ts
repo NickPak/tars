@@ -14,7 +14,7 @@ import type * as mcpModels from "../../bindings/tars/pkg/mcp/models";
 import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
-import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, WorkspaceChangedEvent, ApprovalEvent } from "../types";
+import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, ApprovalEvent, CompressionDoneEvent, CompressionFailedEvent } from "../types";
 
 /**
  * 后端 llm.Config 中 providers/models 是 map（key 即条目 ID），
@@ -62,6 +62,7 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
       compressionThreshold: cfg.agent?.compressionThreshold ?? 0.8,
       compressionKeepTurns: cfg.agent?.compressionKeepTurns ?? 6,
       compressionMinBatch: cfg.agent?.compressionMinBatch ?? 8,
+      compressionMaxFailures: cfg.agent?.compressionMaxFailures ?? 3,
       iterationTimeout: cfg.agent?.iterationTimeout ?? 0,
     },
     trace: {
@@ -288,8 +289,9 @@ export interface AgentEventHandlers {
   onTool?: (ev: ToolEvent) => void;
   onToolResult?: (ev: ToolResultEvent) => void;
   onApproval?: (ev: ApprovalEvent) => void;
-  onWorkspaceChanged?: (ev: WorkspaceChangedEvent) => void;
   onModelChanged?: (ev: ModelChangedEvent) => void;
+  onCompressionDone?: (ev: CompressionDoneEvent) => void;
+  onCompressionFailed?: (ev: CompressionFailedEvent) => void;
 }
 
 /**
@@ -319,11 +321,14 @@ export function subscribeAgentEvents(handlers: AgentEventHandlers): () => void {
     Events.On(AgentEvents.Approval, (ev) =>
       handlers.onApproval?.(ev.data as ApprovalEvent),
     ),
-    Events.On(AgentEvents.WorkspaceChanged, (ev) =>
-      handlers.onWorkspaceChanged?.(ev.data as WorkspaceChangedEvent),
-    ),
     Events.On(AgentEvents.ModelChanged, (ev) =>
       handlers.onModelChanged?.(ev.data as ModelChangedEvent),
+    ),
+    Events.On(AgentEvents.CompressionDone, (ev) =>
+      handlers.onCompressionDone?.(ev.data as CompressionDoneEvent),
+    ),
+    Events.On(AgentEvents.CompressionFailed, (ev) =>
+      handlers.onCompressionFailed?.(ev.data as CompressionFailedEvent),
     ),
   ];
   return () => unsubs.forEach((unsub) => unsub());

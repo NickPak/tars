@@ -7,6 +7,11 @@ export interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number;
+  /** 轮分组键：一轮内所有消息共享（= 该轮 user 消息 ID）；旧数据为空 */
+  turnId?: string;
+  /** 轮内迭代序号（1 起）。纯展示元数据：不连续、可能非 1 起始，
+   *  不得用作索引或计数依据（分组只用 turnId） */
+  iteration?: number;
   /** 模型思考过程（reasoning content） */
   reasoning?: string;
   /** 工具调用信息（本迭代发起的调用；输出经 toolCallId 从 tool 消息合并） */
@@ -150,6 +155,13 @@ export interface SessionStats {
   contextWindow: number;
   /** 压缩阈值 0-1 */
   compressionThreshold: number;
+  /** 压缩保留轮数 / 最小批量（设置页可配，状态栏未用） */
+  compressionKeepTurns?: number;
+  compressionMinBatch?: number;
+  /** 本会话累计压缩次数 */
+  compressionCount?: number;
+  /** 上次压缩回收率（1 - after/before） */
+  lastCompressionRecovery?: number;
   /** 价格表（元/百万 token），前端算每条消息的本次费用 */
   inputPricePerMillion: number;
   outputPricePerMillion: number;
@@ -201,10 +213,35 @@ export interface WorkspaceInfo {
   name: string;
 }
 
-/** "workspace:changed" 事件 payload */
-export interface WorkspaceChangedEvent {
+/** "session:compression_done" 事件 payload：一次上下文压缩完成 */
+export interface CompressionDoneEvent {
   sessionId: string;
-  path: string;
+  beforeTokens: number;
+  afterTokens: number;
+  newEntries: number;
+  totalEntries: number;
+  durationMs: number;
+}
+
+/** "session:compression_failed" 事件 payload：压缩失败 */
+export interface CompressionFailedEvent {
+  sessionId: string;
+  error: string;
+  failures: number;
+  /** 连续失败达熔断阈值（本会话不再自动压缩） */
+  circuitOpen: boolean;
+}
+
+/** 时间线上的压缩标记（仅前端本地状态，随会话切换清空） */
+export interface CompressionMark {
+  id: string;
+  at: number;
+  beforeTokens?: number;
+  afterTokens?: number;
+  newEntries?: number;
+  durationMs?: number;
+  error?: string;
+  circuitOpen?: boolean;
 }
 
 // ===== 设置界面（直接镜像 Go 端 config / llm 包的结构体；密钥原样传输，
@@ -262,6 +299,8 @@ export interface AgentConfig {
   compressionKeepTurns: number;
   /** 最小压缩集消息数（低于则不压） */
   compressionMinBatch: number;
+  /** 熔断阈值：连续压缩失败达此次数后本会话不再自动压缩 */
+  compressionMaxFailures: number;
   /** time.Duration 的 JSON 形式为纳秒数 */
   iterationTimeout: number;
 }
@@ -341,6 +380,7 @@ export const AgentEvents = {
   Tool: "agent:tool",
   ToolResult: "agent:tool_result",
   Approval: "agent:approval",
-  WorkspaceChanged: "workspace:changed",
   ModelChanged: "model:changed",
+  CompressionDone: "session:compression_done",
+  CompressionFailed: "session:compression_failed",
 } as const;

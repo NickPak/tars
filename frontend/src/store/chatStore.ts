@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Session, ModelInfo, SessionStats, WorkspaceInfo, ApprovalEvent } from "../types";
+import type { ChatMessage, Session, ModelInfo, SessionStats, WorkspaceInfo, ApprovalEvent, CompressionMark } from "../types";
 
 export interface SessionMeta {
   id: string;
@@ -27,6 +27,8 @@ interface ChatState {
   pendingApprovals: Record<string, ApprovalEvent>;
   /** 本轮锚点占位的本地 ID（submit/retry 返回前，流式事件按它归属首轮气泡） */
   streamAnchorId: string | null;
+  /** 时间线上的压缩标记（仅本地运行时状态，随会话切换清空） */
+  compressionMarks: CompressionMark[];
 
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
@@ -46,10 +48,8 @@ interface ChatState {
   /** 设置后端错误横幅（供聊天域之外的组件复用错误提示通道） */
   setBackendError: (msg: string) => void;
 
-  /** 弹出目录选择对话框并设置工作区 */
+  /** 弹出目录选择对话框并设置工作区（仅零消息窗口内生效，后端守卫） */
   pickAndSetWorkspace: () => Promise<void>;
-  /** 重置为默认工作区 */
-  resetWorkspace: () => Promise<void>;
   /** 拉取当前会话的聚合统计（done/error/切换会话后调用） */
   refreshStats: () => Promise<void>;
   /** 重新拉取模型信息（设置界面保存配置后调用，TopicBar/状态栏随之更新） */
@@ -137,6 +137,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   models: [],
   pendingApprovals: {},
   streamAnchorId: null,
+  compressionMarks: [],
 
   init: () => {
     agentApi
@@ -246,10 +247,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
           pendingApprovals: { ...s.pendingApprovals, [ev.toolCallId]: ev },
         }));
       },
-      onWorkspaceChanged: ({ sessionId, path }) => {
-        if (sessionId !== get().activeId) return;
-        const name = path ? path.split(/[/\\]/).pop() || path : "";
-        set({ workspace: { path, name } });
+      onCompressionDone: (ev) => {
+        if (ev.sessionId !== get().activeId) return;
+        set((s) => ({
+          compressionMarks: [
+            ...s.compressionMarks,
+            {
+              id: crypto.randomUUID(),
+              at: Date.now(),
+              beforeTokens: ev.beforeTokens,
+              afterTokens: ev.afterTokens,
+              newEntries: ev.newEntries,
+              durationMs: ev.durationMs,
+            },
+          ],
+        }));
+      },
+      onCompressionFailed: (ev) => {
+        if (ev.sessionId !== get().activeId) return;
+        set((s) => ({
+          compressionMarks: [
+            ...s.compressionMarks,
+            {
+              id: crypto.randomUUID(),
+              at: Date.now(),
+              error: ev.error,
+              circuitOpen: ev.circuitOpen,
+            },
+          ],
+        }));
       },
       onModelChanged: ({ model }) => {
         set({ model });
@@ -267,7 +293,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   selectSession: async (id) => {
     if (get().isStreaming || id === get().activeId) return;
-    set({ activeId: id, messages: [], workspace: null, stats: null, pendingApprovals: {} });
+    set({ activeId: id, messages: [], workspace: null, stats: null, pendingApprovals: {}, compressionMarks: [] });
     try {
       const sess = await agentApi.getSession(id);
       set({ messages: mergeToolOutputs(sess.messages ?? []) });
@@ -484,22 +510,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({ workspace: ws });
       } else {
         await agentApi.setWorkspaceDir(activeId, dir);
-        // workspace:changed 事件会更新状态，但主动获取确保即时
         const ws = await agentApi.getWorkspaceInfo(activeId);
         set({ workspace: ws });
       }
-    } catch (e) {
-      set({ backendError: errText(e) });
-    }
-  },
-
-  resetWorkspace: async () => {
-    const { activeId } = get();
-    if (!activeId) return;
-    try {
-      await agentApi.setWorkspaceDir(activeId, "");
-      const ws = await agentApi.getWorkspaceInfo(activeId);
-      set({ workspace: ws });
     } catch (e) {
       set({ backendError: errText(e) });
     }

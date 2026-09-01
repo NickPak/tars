@@ -38,8 +38,12 @@ func (s *WailsSink) Emit(e event.Event) {
 		app.Event.Emit("agent:approval", e.Approval)
 	case event.KindSessionRenamed:
 		app.Event.Emit("session:renamed", e.SessionRenamed)
-	case event.KindWorkspaceChanged:
-		app.Event.Emit("workspace:changed", e.Workspace)
+	case event.KindCompressionStarted:
+		app.Event.Emit("session:compression_started", e.CompressionStarted)
+	case event.KindCompressionDone:
+		app.Event.Emit("session:compression_done", e.CompressionDone)
+	case event.KindCompressionFailed:
+		app.Event.Emit("session:compression_failed", e.CompressionFailed)
 	case event.KindMessageAppended, event.KindIterationStart,
 		event.KindIterationEnd, event.KindTurnStarted:
 		// 内核事件：不透出前端（trace 等其他订阅者经 FanOut 消费）。

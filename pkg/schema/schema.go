@@ -46,8 +46,22 @@ type UsageInfo struct {
 // 交错式存储（plan/context 07 篇）：每次 ReAct 迭代一条独立 assistant 消息，
 // 工具结果消息紧随发起它的 assistant 消息、按 ToolCallID 配对。
 type Message struct {
-	ID         string     `json:"id"`
-	Role       Role       `json:"role"`
+	ID   string `json:"id"`
+	Role Role   `json:"role"`
+	// TurnID 轮分组键：一轮（user 提问 + 其后全部 assistant/tool 消息）内
+	// 所有消息共享同一值，取值为该轮 user 消息的 ID（user 消息的
+	// TurnID == 自身 ID）。重试复用原 user 消息，故 TurnID 跨重试稳定。
+	// 空值 = 旧数据，消费方回退"轮起点 = user 消息"的扫描规则。
+	TurnID string `json:"turnId,omitempty"`
+	// Iteration 轮内迭代序号（1 起；assistant 消息与其工具结果同号；
+	// user 消息为 0）。
+	//
+	// 纯展示/诊断元数据，不得作为索引、计数或位置依据：
+	//   - 分组只用 TurnID，不用 Iteration；
+	//   - 轮内排序只用消息在轨迹中的先后，不用 Iteration 数值；
+	//   - 不假设它从 1 开始、连续、或 max == 迭代总数——截断类操作
+	//     （删除/重试）与压缩投影都会让它出现缺口或非 1 起始。
+	Iteration  int        `json:"iteration,omitempty"`
 	Content    string     `json:"content"`
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`

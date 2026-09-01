@@ -11,7 +11,6 @@ import (
 	"slices"
 	"time"
 
-	"tars/pkg/compaction"
 	"tars/pkg/schema"
 )
 
@@ -52,7 +51,7 @@ type Data struct {
 	Messages []*schema.Message `json:"messages"`
 	// Compaction 压缩态（plan/context 02 篇）：nil 或 CutoffMessageID 为空
 	// = 恒等投影。持久化走独立 compaction.json（03 篇），不随 Data 序列化。
-	Compaction *compaction.Compaction `json:"-"`
+	Compaction *Compaction `json:"-"`
 }
 
 // NewData 创建新会话的内存态；store/sink 由 Store.Create 注入。
@@ -72,9 +71,9 @@ func SortByCreatedAt(list []*Data) {
 }
 
 // PrepareRetry 重试的消息准备：截断到目标轮的 user 消息，全量覆写持久化。
-// messageID 指定目标 assistant 消息（取其前最近的 user）；空 = 截断到
-// 最后一条 user 消息（涵盖"最后一轮 assistant"与"上一轮未产出"两种情形）。
-// 返回该轮的 user 消息内容（trace 展示用）。
+// messageID 指定目标 assistant 消息（取其所属轮的起点）；空 = 截断到
+// 最后一轮的起点（涵盖"最后一轮 assistant"与"上一轮未产出"两种情形）。
+// 返回该轮的 user 消息内容（trace 展示用）。轮划分见 turn.go。
 func (i *Data) PrepareRetry(messageID string) (string, error) {
 	if len(i.Messages) == 0 {
 		return "", fmt.Errorf("no messages to retry")
@@ -92,21 +91,11 @@ func (i *Data) PrepareRetry(messageID string) (string, error) {
 		if targetAssistant == -1 {
 			return "", fmt.Errorf("no assistant message found to retry")
 		}
-		for k := targetAssistant - 1; k >= 0; k-- {
-			if i.Messages[k].Role == schema.RoleUser {
-				userIndex = k
-				break
-			}
-		}
-	} else {
-		for k := len(i.Messages) - 1; k >= 0; k-- {
-			if i.Messages[k].Role == schema.RoleUser {
-				userIndex = k
-				break
-			}
-		}
+		userIndex = TurnStartBefore(i.Messages, targetAssistant)
+	} else if starts := TurnStarts(i.Messages); len(starts) > 0 {
+		userIndex = starts[len(starts)-1]
 	}
-	if userIndex == -1 {
+	if userIndex < 0 {
 		return "", fmt.Errorf("no user message found to retry")
 	}
 

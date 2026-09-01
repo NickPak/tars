@@ -64,6 +64,143 @@ export class ApprovalEvent {
 }
 
 /**
+ * CompressionDoneEvent "session:compression_done"：一次压缩完成。
+ */
+export class CompressionDoneEvent {
+    "sessionId": string;
+
+    /**
+     * 压缩前实测
+     */
+    "beforeTokens": number;
+
+    /**
+     * 压缩后估算（bytes/4）
+     */
+    "afterTokens": number;
+
+    /**
+     * 本次新增归档条目数
+     */
+    "newEntries": number;
+
+    /**
+     * 条目总数
+     */
+    "totalEntries": number;
+    "durationMs": number;
+
+    /** Creates a new CompressionDoneEvent instance. */
+    constructor($$source: Partial<CompressionDoneEvent> = {}) {
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("beforeTokens" in $$source)) {
+            this["beforeTokens"] = 0;
+        }
+        if (!("afterTokens" in $$source)) {
+            this["afterTokens"] = 0;
+        }
+        if (!("newEntries" in $$source)) {
+            this["newEntries"] = 0;
+        }
+        if (!("totalEntries" in $$source)) {
+            this["totalEntries"] = 0;
+        }
+        if (!("durationMs" in $$source)) {
+            this["durationMs"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CompressionDoneEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CompressionDoneEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CompressionDoneEvent($$parsedSource as Partial<CompressionDoneEvent>);
+    }
+}
+
+/**
+ * CompressionFailedEvent "session:compression_failed"：压缩失败；
+ * 连续失败达熔断阈值时 CircuitOpen=true（本会话不再自动压缩）。
+ */
+export class CompressionFailedEvent {
+    "sessionId": string;
+    "error": string;
+    "failures": number;
+    "circuitOpen": boolean;
+
+    /** Creates a new CompressionFailedEvent instance. */
+    constructor($$source: Partial<CompressionFailedEvent> = {}) {
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+        if (!("failures" in $$source)) {
+            this["failures"] = 0;
+        }
+        if (!("circuitOpen" in $$source)) {
+            this["circuitOpen"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CompressionFailedEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CompressionFailedEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CompressionFailedEvent($$parsedSource as Partial<CompressionFailedEvent>);
+    }
+}
+
+/**
+ * CompressionStartedEvent "session:compression_started"：压缩管线触发并开始执行。
+ */
+export class CompressionStartedEvent {
+    "sessionId": string;
+
+    /**
+     * 触发时的实测 prompt tokens
+     */
+    "triggerTokens": number;
+
+    /**
+     * 阈值预算（ContextWindow × threshold）
+     */
+    "budget": number;
+
+    /** Creates a new CompressionStartedEvent instance. */
+    constructor($$source: Partial<CompressionStartedEvent> = {}) {
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("triggerTokens" in $$source)) {
+            this["triggerTokens"] = 0;
+        }
+        if (!("budget" in $$source)) {
+            this["budget"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CompressionStartedEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CompressionStartedEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CompressionStartedEvent($$parsedSource as Partial<CompressionStartedEvent>);
+    }
+}
+
+/**
  * ReasoningEvent "agent:reasoning"：思考链内容的流式增量片段。
  */
 export class ReasoningEvent {
@@ -298,34 +435,6 @@ export class ToolResultEvent {
     static createFrom($$source: any = {}): ToolResultEvent {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new ToolResultEvent($$parsedSource as Partial<ToolResultEvent>);
-    }
-}
-
-/**
- * WorkspaceChangedEvent is the payload of the "workspace:changed" event.
- */
-export class WorkspaceChangedEvent {
-    "sessionId": string;
-    "path": string;
-
-    /** Creates a new WorkspaceChangedEvent instance. */
-    constructor($$source: Partial<WorkspaceChangedEvent> = {}) {
-        if (!("sessionId" in $$source)) {
-            this["sessionId"] = "";
-        }
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkspaceChangedEvent instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkspaceChangedEvent {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkspaceChangedEvent($$parsedSource as Partial<WorkspaceChangedEvent>);
     }
 }
 

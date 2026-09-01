@@ -1,4 +1,4 @@
-package compaction
+package session
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ func mkTrajectoryP(prefix string, n int) []*schema.Message {
 func TestSelectKeepsTailTurns(t *testing.T) {
 	raw := mkTrajectory(10) // 30 条
 	sel := NewTailKeepSelector(3, 2)
-	batch, cutoff, ok := sel.Select(raw, "")
+	batch, cutoff, ok := sel.Select(raw, "", PressureNormal)
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -49,7 +49,7 @@ func TestSelectKeepsTailTurns(t *testing.T) {
 func TestSelectRespectsMinBatch(t *testing.T) {
 	raw := mkTrajectory(3) // 9 条
 	sel := NewTailKeepSelector(2, 8)
-	if _, _, ok := sel.Select(raw, ""); ok {
+	if _, _, ok := sel.Select(raw, "", PressureNormal); ok {
 		t.Fatal("expected not ok: batch (3) < minBatch (8)")
 	}
 }
@@ -57,7 +57,7 @@ func TestSelectRespectsMinBatch(t *testing.T) {
 func TestSelectTooFewTurns(t *testing.T) {
 	raw := mkTrajectory(6) // 恰好 6 轮
 	sel := NewTailKeepSelector(6, 1)
-	if _, _, ok := sel.Select(raw, ""); ok {
+	if _, _, ok := sel.Select(raw, "", PressureNormal); ok {
 		t.Fatal("expected not ok: no compressible turns beyond keepTurns")
 	}
 }
@@ -66,18 +66,18 @@ func TestSelectIncremental(t *testing.T) {
 	raw := mkTrajectory(10)
 	sel := NewTailKeepSelector(3, 2)
 
-	batch1, cutoff1, ok1 := sel.Select(raw, "")
+	batch1, cutoff1, ok1 := sel.Select(raw, "", PressureNormal)
 	if !ok1 {
 		t.Fatal("first select: expected ok")
 	}
 	// 同一轨迹上重复选择：没有新轮次可压，应放弃（增量 append-only）。
-	if _, _, ok := sel.Select(raw, cutoff1); ok {
+	if _, _, ok := sel.Select(raw, cutoff1, PressureNormal); ok {
 		t.Fatal("second select on unchanged trajectory should not be ok")
 	}
 
 	// 轨迹增长 5 轮后第二次选择：从旧 cutoff 之后开始。
 	raw = append(raw, mkTrajectoryP("b", 5)...)
-	batch2, cutoff2, ok2 := sel.Select(raw, cutoff1)
+	batch2, cutoff2, ok2 := sel.Select(raw, cutoff1, PressureNormal)
 	if !ok2 {
 		t.Fatal("second select after growth: expected ok")
 	}
@@ -95,12 +95,66 @@ func TestSelectIncremental(t *testing.T) {
 func TestSelectCutoffLostFallback(t *testing.T) {
 	raw := mkTrajectory(10)
 	sel := NewTailKeepSelector(3, 2)
-	batchLost, _, ok1 := sel.Select(raw, "nonexistent")
-	batchFresh, _, ok2 := sel.Select(raw, "")
+	batchLost, _, ok1 := sel.Select(raw, "nonexistent", PressureNormal)
+	batchFresh, _, ok2 := sel.Select(raw, "", PressureNormal)
 	if !ok1 || !ok2 {
 		t.Fatal("expected ok for both")
 	}
 	if batchLost[0].ID != batchFresh[0].ID || len(batchLost) != len(batchFresh) {
 		t.Fatal("lost cutoff should fall back to从头开始")
+	}
+}
+
+// --- 压力降级阶梯 ---
+
+// 档位越高保留区越窄、压缩集越大（保留区是预算里最大的一项）。
+func TestSelectPressureShrinksRetained(t *testing.T) {
+	raw := mkTrajectory(10) // 30 条
+	sel := NewTailKeepSelector(6, 8)
+
+	want := map[Pressure]int{
+		PressureNormal:   12, // 留 6 轮 → 压 4 轮
+		PressureHigh:     21, // 留 3 轮 → 压 7 轮
+		PressureCritical: 27, // 留 1 轮 → 压 9 轮
+	}
+	for _, p := range Pressures {
+		batch, _, ok := sel.Select(raw, "", p)
+		if !ok {
+			t.Fatalf("pressure %s: expected ok", p)
+		}
+		if len(batch) != want[p] {
+			t.Fatalf("pressure %s: batch len = %d, want %d", p, len(batch), want[p])
+		}
+	}
+}
+
+// 极限档忽略 minBatch：此刻不压的后果是请求超长被拒、整轮失败，
+// 任何压缩都比失败强。
+func TestSelectCriticalIgnoresMinBatch(t *testing.T) {
+	raw := mkTrajectory(2) // 6 条
+	sel := NewTailKeepSelector(6, 8)
+
+	if _, _, ok := sel.Select(raw, "", PressureNormal); ok {
+		t.Fatal("normal: expected not ok (keepTurns=6 covers all turns)")
+	}
+	batch, _, ok := sel.Select(raw, "", PressureCritical)
+	if !ok {
+		t.Fatal("critical: expected ok")
+	}
+	if len(batch) != 3 { // 留最后 1 轮，压第 1 轮的 3 条（< minBatch=8 但仍压）
+		t.Fatalf("critical batch len = %d, want 3", len(batch))
+	}
+}
+
+// keepTurns=1 时高压档不得把保留区算成 0 轮（向上取整）。
+func TestSelectHighPressureKeepsAtLeastOneTurn(t *testing.T) {
+	sel := &TailKeep{keepTurns: 1, minBatch: 1}
+	if keep, _ := sel.params(PressureHigh); keep != 1 {
+		t.Fatalf("keepTurns at high pressure = %d, want 1", keep)
+	}
+	raw := mkTrajectory(3)
+	batch, _, ok := sel.Select(raw, "", PressureHigh)
+	if !ok || len(batch) != 6 {
+		t.Fatalf("batch len = %d (ok=%v), want 6", len(batch), ok)
 	}
 }

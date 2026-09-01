@@ -428,9 +428,14 @@ body.resizing-col .resize-handle::after {
   max-width: 240px;
 }
 
-.topicbar-ws-btn:hover {
+.topicbar-ws-btn:hover:not(:disabled) {
   background: var(--hover);
   color: var(--text);
+}
+
+.topicbar-ws-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .topicbar-ws-name {
@@ -679,6 +684,32 @@ body.resizing-col .resize-handle::after {
 .message-error-retry:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ===== 压缩标记（时间线分隔线） ===== */
+.compression-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.compression-mark::before,
+.compression-mark::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.compression-mark.error {
+  color: var(--error);
+}
+
+.compression-mark.error::before,
+.compression-mark.error::after {
+  border-top-color: rgba(242, 139, 130, 0.4);
 }
 
 /* ===== 思考过程（reasoning） ===== */

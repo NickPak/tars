@@ -53,6 +53,14 @@ export default function StatusBar() {
             <span className="statusbar-item" title="上下文压缩阈值（超过后应触发历史压缩）">
               压缩阈值 {formatPercent(stats.compressionThreshold)}
             </span>
+            {(stats.compressionCount ?? 0) > 0 && (
+              <span
+                className="statusbar-item"
+                title={`本会话已压缩 ${stats.compressionCount} 次，上次回收率 ${formatPercent(stats.lastCompressionRecovery ?? 0)}`}
+              >
+                已压缩 {stats.compressionCount} 次
+              </span>
+            )}
             {stats.inputPricePerMillion > 0 && (
               <span className="statusbar-item" title="会话累计费用（按当前价格表估算）">
                 会话费用 ¥{stats.totalCostYuan.toFixed(4)}

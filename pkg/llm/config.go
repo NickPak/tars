@@ -17,6 +17,13 @@ const (
 	ProviderQianfan  = "qianfan" // 百度千帆（AK/SK 鉴权）
 )
 
+// 模型计量字段的默认值：Validate 期回填，保证下游（压缩阈值判定、状态栏
+// 上下文占比、请求的最大输出）拿到的永远是非零值，调用方无需兜底。
+const (
+	DefaultContextWindow = 1000000 // 上下文窗口（token）
+	DefaultMaxTokens     = 50000   // 单次最大输出（token）
+)
+
 // ProviderTypes 返回全部受支持的供应商类型（UI 枚举用）。
 func ProviderTypes() []string {
 	return []string{
@@ -63,8 +70,7 @@ type ProviderConfig struct {
 
 // ModelConfig 是一个可用模型条目。
 // EntryID 不进 YAML——文件中 map key 即条目 ID，Validate 时归一化回填。
-type ModelConfig struct {
-	// EntryID 配置条目的唯一键（= models map 的 key），"provider/modelId"
+type ModelConfig struct {	// EntryID 配置条目的唯一键（= models map 的 key），"provider/modelId"
 	// 形式，如 "gemini/gemini-3.1-flash-lite"。与 ModelId（发给 API 的
 	// 真实模型名）区分：同一真实模型可配多个条目。
 	EntryID  string `yaml:"-" json:"entryId"`
@@ -164,6 +170,14 @@ func (c *Config) Validate() error {
 		}
 		if c.FindProvider(m.Provider) == nil {
 			return fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", id, m.Provider)
+		}
+		// 计量字段回填默认值：构建期保证非零，下游（压缩阈值、状态栏、
+		// 请求参数）直接取用，不再各自兜底。
+		if m.ContextWindow <= 0 {
+			m.ContextWindow = DefaultContextWindow
+		}
+		if m.MaxTokens <= 0 {
+			m.MaxTokens = DefaultMaxTokens
 		}
 	}
 	if len(c.Models) == 0 {
