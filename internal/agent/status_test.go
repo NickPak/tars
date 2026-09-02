@@ -20,9 +20,9 @@ func TestRun_StatusBarInjectedAndNotPersisted(t *testing.T) {
 	}}
 	sess := &fakeSession{}
 	sink := &recordingSink{}
-	a := newTestAgent(newTestRegistry(nil), sess, sink, 5)
+	a := newTestAgent(newTestRegistry(nil), sess, 5)
 
-	_, err := runTurn(a, context.Background(), "hi", m)
+	_, _, err := runTurn(a, context.Background(), sink, "hi", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -120,9 +120,9 @@ func TestRun_ToolErrorOutputNoPanic(t *testing.T) {
 			return "permission denied", fmt.Errorf("permission denied")
 		},
 	})
-	a := newTestAgent(reg, &fakeSession{}, &recordingSink{}, 5)
+	a := newTestAgent(reg, &fakeSession{}, 5)
 
-	_, err := runTurn(a, context.Background(), "go", m)
+	_, _, err := runTurn(a, context.Background(), nil, "go", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

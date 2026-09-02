@@ -157,19 +157,43 @@ type fakeSkillStatus struct{}
 
 func (fakeSkillStatus) RenderStatus(int) string { return "" }
 
-func newTestAgent(reg *kernel.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
+func newTestAgent(reg *kernel.Registry, sess *fakeSession, maxIter int) *ReActAgent {
 	cfg := &Config{MaxIterations: maxIter}
 	cfg.Validate()
-	a := NewReAct(cfg, fakeComposer{}, sess, sink, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{})
+	a := NewReAct(cfg, fakeComposer{}, sess, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		panic(err)
 	}
 	return a
 }
 
-// runTurn 以固定 assistantID 跑一轮（provider 作为轮级输入）。
-func runTurn(a *ReActAgent, ctx context.Context, userMsg string, p llm.Provider) (*Result, error) {
-	return a.Run(ctx, "test-assistant", p)
+// runTurn 以固定 assistantID 跑一轮并 drain 事件流：过程事件转发给 sink
+// （nil 时仅 drain），返回从流中归约的终态（最终文本/迭代数）与终端错误。
+func runTurn(a *ReActAgent, ctx context.Context, sink event.Sink, userMsg string, p llm.Provider) (string, int, error) {
+	iter := a.Run(ctx, "test-assistant", p)
+	var content string
+	var iters int
+	var runErr error
+	for {
+		e, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if e.Err != nil {
+			runErr = e.Err
+			continue
+		}
+		if sink != nil {
+			sink.Emit(e)
+		}
+		if e.Kind == event.KindIterationEnd && e.Iteration.Assistant != nil {
+			iters = e.Iteration.Iteration
+			if len(e.Iteration.Assistant.ToolCalls) == 0 {
+				content = e.Iteration.Assistant.Content
+			}
+		}
+	}
+	return content, iters, runErr
 }
 
 func TestRun_PlainTextAnswer(t *testing.T) {
@@ -178,14 +202,14 @@ func TestRun_PlainTextAnswer(t *testing.T) {
 	}}
 	sess := &fakeSession{}
 	sink := &recordingSink{}
-	a := newTestAgent(newTestRegistry(nil), sess, sink, 5)
+	a := newTestAgent(newTestRegistry(nil), sess, 5)
 
-	res, err := runTurn(a, context.Background(), "hi", m)
+	content, _, err := runTurn(a, context.Background(), sink, "hi", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if res.Content != "hello" {
-		t.Errorf("final = %q, want %q", res.Content, "hello")
+	if content != "hello" {
+		t.Errorf("final = %q, want %q", content, "hello")
 	}
 	if sink.count(event.KindIterationStart) != 1 || sink.count(event.KindIterationEnd) != 1 {
 		t.Errorf("iteration events = %d/%d, want 1/1",
@@ -213,14 +237,14 @@ func TestRun_OneToolRound(t *testing.T) {
 	})
 	sess := &fakeSession{}
 	sink := &recordingSink{}
-	a := newTestAgent(reg, sess, sink, 5)
+	a := newTestAgent(reg, sess, 5)
 
-	res, err := runTurn(a, context.Background(), "go", m)
+	content, _, err := runTurn(a, context.Background(), sink, "go", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if res.Content != "done" {
-		t.Errorf("final = %q, want done", res.Content)
+	if content != "done" {
+		t.Errorf("final = %q, want done", content)
 	}
 	if sink.count(event.KindIterationEnd) != 2 {
 		t.Fatalf("iteration ends = %d, want 2 rounds", sink.count(event.KindIterationEnd))
@@ -249,9 +273,9 @@ func TestRun_UnknownTool(t *testing.T) {
 	}}
 	sess := &fakeSession{}
 	sink := &recordingSink{}
-	a := newTestAgent(newTestRegistry(nil), sess, sink, 5)
+	a := newTestAgent(newTestRegistry(nil), sess, 5)
 
-	_, err := runTurn(a, context.Background(), "go", m)
+	_, _, err := runTurn(a, context.Background(), sink, "go", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -273,9 +297,9 @@ func TestRun_ToolPanicRecovered(t *testing.T) {
 	})
 	sess := &fakeSession{}
 	sink := &recordingSink{}
-	a := newTestAgent(reg, sess, sink, 5)
+	a := newTestAgent(reg, sess, 5)
 
-	_, err := runTurn(a, context.Background(), "go", m)
+	_, _, err := runTurn(a, context.Background(), sink, "go", m)
 	if err != nil {
 		t.Fatalf("Run should not return error on tool panic: %v", err)
 	}
@@ -293,9 +317,9 @@ func TestRun_MaxIterationsExceeded(t *testing.T) {
 	reg := newTestRegistry(map[string]kernel.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "x", nil },
 	})
-	a := newTestAgent(reg, &fakeSession{}, &recordingSink{}, 2)
+	a := newTestAgent(reg, &fakeSession{}, 2)
 
-	_, err := runTurn(a, context.Background(), "go", m)
+	_, _, err := runTurn(a, context.Background(), nil, "go", m)
 	if err == nil {
 		t.Fatal("expected max-iterations error")
 	}
@@ -306,9 +330,9 @@ func TestRun_ContextCancelled(t *testing.T) {
 	cancel()
 
 	m := &stubProvider{responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "x"}}}
-	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, &recordingSink{}, 5)
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, 5)
 
-	_, err := runTurn(a, ctx, "go", m)
+	_, _, err := runTurn(a, ctx, nil, "go", m)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
@@ -316,9 +340,10 @@ func TestRun_ContextCancelled(t *testing.T) {
 
 func TestRun_NilSink(t *testing.T) {
 	m := &stubProvider{responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "hi"}}}
-	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, nil, 1)
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, 1)
 
-	_, err := runTurn(a, context.Background(), "go", m)
+	// 无转发 sink：仅 drain 事件流也应正常完成一轮
+	_, _, err := runTurn(a, context.Background(), nil, "go", m)
 	if err != nil {
 		t.Fatalf("Run with nil sink: %v", err)
 	}
@@ -329,9 +354,9 @@ func TestRun_ProviderErrorFailsFast(t *testing.T) {
 		responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "x"}},
 		errs:      []error{errors.New("provider down")},
 	}
-	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, &recordingSink{}, 5)
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, 5)
 
-	_, err := runTurn(a, context.Background(), "go", m)
+	_, _, err := runTurn(a, context.Background(), nil, "go", m)
 	if err == nil {
 		t.Fatal("expected error on provider failure")
 	}
@@ -358,14 +383,14 @@ func TestRun_InterleavedLayout(t *testing.T) {
 	})
 	sess := &fakeSession{}
 	sink := &recordingSink{}
-	a := newTestAgent(reg, sess, sink, 5)
+	a := newTestAgent(reg, sess, 5)
 
-	res, err := runTurn(a, context.Background(), "go", m)
+	content, iters, err := runTurn(a, context.Background(), sink, "go", m)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if res.Content != "final" || res.Iterations != 3 {
-		t.Fatalf("result = %+v, want final/3 iterations", res)
+	if content != "final" || iters != 3 {
+		t.Fatalf("result = %q/%d, want final/3 iterations", content, iters)
 	}
 
 	// 消息序列：assistant, tool, assistant, tool, assistant（标准交错序）
@@ -416,9 +441,9 @@ func TestRun_ContextOverflowErrorIsActionable(t *testing.T) {
 		responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "x"}},
 		errs:      []error{errors.New(raw)},
 	}
-	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, &recordingSink{}, 5)
+	a := newTestAgent(newTestRegistry(nil), &fakeSession{}, 5)
 
-	_, err := runTurn(a, context.Background(), "go", m)
+	_, _, err := runTurn(a, context.Background(), nil, "go", m)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -444,13 +469,13 @@ func TestRun_ContextOverflowErrorIsActionable(t *testing.T) {
 func TestRun_TimeoutNotMisreportedAsOverflow(t *testing.T) {
 	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
 	cfg.Validate()
-	a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, &recordingSink{},
+	a := NewReAct(cfg, fakeComposer{}, &fakeSession{},
 		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := runTurn(a, context.Background(), "go", &stuckProvider{})
+	_, _, err := runTurn(a, context.Background(), nil, "go", &stuckProvider{})
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
@@ -465,14 +490,14 @@ func TestRun_TimeoutNotMisreportedAsOverflow(t *testing.T) {
 func TestRun_IterationTimeout(t *testing.T) {
 	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
 	cfg.Validate()
-	a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, &recordingSink{},
+	a := NewReAct(cfg, fakeComposer{}, &fakeSession{},
 		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		t.Fatal(err)
 	}
 
 	start := time.Now()
-	_, err := runTurn(a, context.Background(), "go", &stuckProvider{})
+	_, _, err := runTurn(a, context.Background(), nil, "go", &stuckProvider{})
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}

@@ -96,7 +96,7 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 
 	// 会话级 agent：跨轮复用（会话级依赖构造注入；模型/消息 ID 等轮级
 	// 输入经 Run 参数传入；配置热更新经 Limits 每轮解析）。
-	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, toolkit.SystemEnv{}, c.todoMgr, c.skillPv, c.mcpPv)
+	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.toolReg, toolkit.SystemEnv{}, c.todoMgr, c.skillPv, c.mcpPv)
 	return c
 }
 
@@ -276,8 +276,9 @@ func (c *Controller) start(userText, assistantID string) {
 	go c.run(ctx, userText, assistantID)
 }
 
-// run 执行一轮对话：本轮组件（Provider/traceSink/FanOut/agent）装配 →
-// agent.Run → 轮级收尾（Done/Error 事件、usage 写回、turn span）。
+// run 执行一轮对话：本轮组件（Provider/FanOut/agent）装配 → agent.Run
+// 返回事件迭代器 → drain 事件流（过程事件转发 sink，终态从流中归约）→
+// 轮级收尾（Done/Error 事件、usage 写回、turn span）。
 // ctx 已携带本轮的取消通道（start 注入）。
 func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 	// 清除"轮运行中"标记：panic 也要解除，否则该会话的删除/重试/发送被永久拒绝。
@@ -319,31 +320,60 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 		},
 	})
 
-	result, err := c.agent.Run(ctx, assistantID, provider)
-	elapsedMs := elapsed()
+	iter := c.agent.Run(ctx, assistantID, provider)
 
+	// drain 事件流：过程事件转发进会话级 sink（UI/trace/持久化）；
+	// 终态（最终回复/轮级合计用量）从流中归约——流即事实源。
 	var finalOutput string
 	var usage *schema.UsageInfo
-	if result != nil {
-		finalOutput = result.Content
-		usage = result.Usage
+	var runErr error
+	for {
+		e, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if e.Err != nil {
+			// 终端错误事件：不透出，由下方统一分类后发 KindError。
+			runErr = e.Err
+			continue
+		}
+		if e.Kind == event.KindIterationEnd && e.Iteration.Assistant != nil {
+			// 轮级合计用量：逐迭代累加，覆盖该轮每一次 LLM 调用的真实
+			// 成本（历史重发也计费，求和才是轮成本）。
+			if u := e.Iteration.Assistant.Usage; u != nil {
+				if usage == nil {
+					usage = &schema.UsageInfo{}
+				}
+				usage.PromptTokens += u.PromptTokens
+				usage.CompletionTokens += u.CompletionTokens
+				usage.TotalTokens += u.TotalTokens
+				usage.CachedTokens += u.CachedTokens
+				usage.EntryID = u.EntryID
+			}
+			// 无工具调用的迭代即最终回复迭代。
+			if len(e.Iteration.Assistant.ToolCalls) == 0 {
+				finalOutput = e.Iteration.Assistant.Content
+			}
+		}
+		sink.Emit(e)
 	}
+	elapsedMs := elapsed()
 
-	if err != nil {
+	if runErr != nil {
 		// 取消是干净停止，不算错误。
 		if ctx.Err() != nil {
 			sink.Emit(event.Event{Kind: event.KindTurnEnded, Done: &event.StreamDone{
 				SessionID: c.sessionMgr.GetID(), MessageID: assistantID,
-				ElapsedMs: elapsedMs, FinalOutput: finalOutput,
+				ElapsedMs: elapsedMs,
 			}})
 		} else {
 			c.llmMgr.SetHealthy(modelCfg.EntryID, false)
 			// 迭代超时单独分类，前端据此给出针对性提示（"provider 拥塞，重试？"）。
 			kind := "error"
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(runErr, context.DeadlineExceeded) {
 				kind = "timeout"
 			}
-			EmitError(sink, c.sessionMgr.GetID(), assistantID, err, kind, elapsedMs)
+			EmitError(sink, c.sessionMgr.GetID(), assistantID, runErr, kind, elapsedMs)
 		}
 	} else {
 		c.llmMgr.SetHealthy(modelCfg.EntryID, true)

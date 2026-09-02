@@ -60,18 +60,22 @@ const (
 // Event 是后端事件流中的一个增量。按 Kind 读取对应的非 nil 载荷字段，
 // 其余字段为 nil。载荷用指针：避免大结构拷贝，且非目标字段不占空间。
 type Event struct {
-	Kind           Kind
-	Chunk          *StreamChunk           // KindStreamChunk
-	Reasoning      *ReasoningEvent        // KindReasoning
-	Tool           *ToolEvent             // KindToolDispatch
-	ToolResult     *ToolResultEvent       // KindToolResult
-	Done           *StreamDone            // KindTurnEnded
-	Error          *StreamError           // KindError
-	Approval       *ApprovalEvent         // KindApproval
-	Message        *MessageAppendedEvent  // KindMessageAppended
-	Iteration      *IterationEvent        // KindIterationStart / KindIterationEnd
-	Turn           *TurnEvent             // KindTurnStarted
-	SessionRenamed *SessionRenamedEvent   // KindSessionRenamed
+	Kind Kind
+	// Err 终端错误（KindError）：拉模型（Iterator）下由生产端携带原始
+	// 错误值，消费方据此分类（errors.Is）后转换为 StreamError 载荷透出。
+	// 纯内核字段——Event 本身不序列化（载荷才序列化），不影响 TS 绑定。
+	Err            error
+	Chunk          *StreamChunk          // KindStreamChunk
+	Reasoning      *ReasoningEvent       // KindReasoning
+	Tool           *ToolEvent            // KindToolDispatch
+	ToolResult     *ToolResultEvent      // KindToolResult
+	Done           *StreamDone           // KindTurnEnded
+	Error          *StreamError          // KindError
+	Approval       *ApprovalEvent        // KindApproval
+	Message        *MessageAppendedEvent // KindMessageAppended
+	Iteration      *IterationEvent       // KindIterationStart / KindIterationEnd
+	Turn           *TurnEvent            // KindTurnStarted
+	SessionRenamed *SessionRenamedEvent  // KindSessionRenamed
 	// 压缩三件套共用同一字段名太绕，按语义分三个指针
 	CompressionStarted *CompressionStartedEvent // KindCompressionStarted
 	CompressionDone    *CompressionDoneEvent    // KindCompressionDone
