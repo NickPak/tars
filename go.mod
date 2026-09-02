@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/baidubce/bce-sdk-go v0.9.164
-	github.com/cloudwego/eino v0.9.13
+	github.com/cloudwego/eino v0.9.19
 	github.com/cloudwego/eino-ext/components/model/ark v0.1.69
 	github.com/cloudwego/eino-ext/components/model/claude v0.1.25
 	github.com/cloudwego/eino-ext/components/model/deepseek v0.1.7
