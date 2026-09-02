@@ -92,7 +92,7 @@ var _ Agent = (*ReActAgent)(nil)
 
 // NewReAct 创建一个 ReAct 循环的 agent（会话级，由 Controller 持有复用）。
 // sink 为 nil 时静默（归一化为 event.Discard，emit 路径无需判空）。
-func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.Sink, toolExec ToolExecutor, todoPv TodoStatus, skillPv SkillStatus, mcpPv MCPStatus) *ReActAgent {
+func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.Sink, toolExec ToolExecutor, env EnvInfo, sections ...StatusSection) *ReActAgent {
 	if sink == nil {
 		sink = event.Discard
 	}
@@ -102,7 +102,7 @@ func NewReAct(cfg *Config, prompt prompt.Composer, session Session, sink event.S
 		session:   session,
 		sink:      sink,
 		toolExec:  toolExec,
-		statusBar: NewStatusBar(session, todoPv, skillPv, mcpPv),
+		statusBar: NewStatusBar(session, env, sections...),
 	}
 }
 

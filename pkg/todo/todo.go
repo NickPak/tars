@@ -55,7 +55,11 @@ type Manager struct {
 	mu       sync.RWMutex
 	todos    []Todo
 	filePath string
-	version  int64 // 每次 Replace 自增，供 StatusBar 检测变更与"未更新轮数"
+	version  int64 // 每次 Replace 自增，供 RenderStatus 检测变更与"未更新轮数"
+
+	// ---- RenderStatus 的陈旧提醒跟踪（只在 RenderStatus 内读写）----
+	renderVersion     int64
+	renderChangedIter int
 }
 
 // NewManager 创建一个以 baseDir 为会话目录的 TodoStore。
@@ -125,7 +129,7 @@ func (s *Manager) Save() error {
 }
 
 // Snapshot 返回当前 TODO 列表的副本和版本号。
-// StatusBar 在 Render 时调用此方法渲染 todo 区并检测"未更新轮数"。
+// RenderStatus 在状态栏渲染时基于此检测变更与"未更新轮数"。
 func (s *Manager) Snapshot() ([]Todo, int64) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

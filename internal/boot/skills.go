@@ -1,6 +1,8 @@
 package boot
 
 import (
+	"strings"
+
 	"tars/pkg/schema"
 	"tars/pkg/skill"
 )
@@ -81,4 +83,16 @@ func (r *SkillProvider) MarkSkillLoaded(name string) {
 
 func (r *SkillProvider) GetLoadedSkills() []string {
 	return r.state.GetLoadedSkills()
+}
+
+// RenderStatus 实现 agent 状态栏的 StatusSection（消费侧窄接口，方法集
+// 天然满足，无需 import agent 包）：把已加载技能幂等集合自渲染为
+// <skills loaded/> 区块。集合为空时返回空串（区块省略）。
+// 已加载技能（load_skill 幂等集合）：让模型明确知道哪些手册已在轨迹中。
+func (r *SkillProvider) RenderStatus(int) string {
+	loaded := r.state.GetLoadedSkills()
+	if len(loaded) == 0 {
+		return ""
+	}
+	return "  <skills loaded=\"" + strings.Join(loaded, ", ") + "\"/>\n"
 }

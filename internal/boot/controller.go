@@ -96,7 +96,7 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 
 	// 会话级 agent：跨轮复用（会话级依赖构造注入；模型/消息 ID 等轮级
 	// 输入经 Run 参数传入；配置热更新经 Limits 每轮解析）。
-	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, c.todoMgr, c.skillPv, c.mcpPv)
+	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.sink, c.toolReg, toolkit.SystemEnv{}, c.todoMgr, c.skillPv, c.mcpPv)
 	return c
 }
 

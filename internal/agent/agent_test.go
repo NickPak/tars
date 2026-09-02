@@ -152,10 +152,10 @@ type fakeComposer struct{}
 
 func (fakeComposer) GetSystemMessage() []*schema.Message { return nil }
 
-// fakeSkillStatus 是 SkillStatus 的测试实现（无已加载技能）。
+// fakeSkillStatus 是 StatusSection 的测试实现（无已加载技能，渲染为空）。
 type fakeSkillStatus struct{}
 
-func (fakeSkillStatus) GetLoadedSkills() []string { return nil }
+func (fakeSkillStatus) RenderStatus(int) string { return "" }
 
 func newTestAgent(reg *kernel.Registry, sess *fakeSession, sink event.Sink, maxIter int) *ReActAgent {
 	cfg := &Config{MaxIterations: maxIter}

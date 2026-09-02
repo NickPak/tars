@@ -8,20 +8,27 @@ import (
 	"time"
 
 	"tars/pkg/schema"
-	"tars/pkg/todo"
-	"tars/pkg/tool/toolkit"
 )
 
-type SkillStatus interface {
-	GetLoadedSkills() []string
+// StatusSection 是状态栏外部区块的统一提供者接口（todo/skills/tools 等）。
+// 各提供者自己渲染自己的数据为 XML 片段返回 string；返回空串表示本轮
+// 该区块省略。StatusBar 只负责最后的组装，不感知任何提供者的数据结构，
+// 因此 agent 包无需引入 todo 等外部包。
+//
+// iteration 由 Agent 循环传入，供需要轮次语义的提供者（如 todo 的
+// 陈旧提醒）自行计算"未更新轮数"。
+type StatusSection interface {
+	RenderStatus(iteration int) string
 }
 
-type MCPStatus interface {
-	GetLoadedTools() []string
-}
-
-type TodoStatus interface {
-	Snapshot() ([]todo.Todo, int64)
+// EnvInfo 提供 env 区的静态系统信息（os/shell/python 软件版本）。
+// 与 StatusSection 分离：它是 env 内置区块的数据源，进程内不变，
+// Start 时一次性采集并预拼接，而非每轮渲染。空串对应行省略；
+// nil 提供者整个静态段为空。
+type EnvInfo interface {
+	OSInfo() string
+	ShellInfo() string
+	PythonVersion() string
 }
 
 // StatusBar 是 Agent 循环的状态栏：在每轮迭代前渲染一条 <agent_status>
@@ -29,7 +36,7 @@ type TodoStatus interface {
 //
 // 设计要点（见设计文档 2.10）：
 //   - 状态栏消息只在内存中存在，不进 IterationEnd delta，宿主不会持久化；
-//   - 静态信息（OS/shell/Python）New 时初始化一次，进程内不变；
+//   - 静态信息（OS/shell/Python）经 EnvInfo 接口注入，Start 时采集一次，进程内不变；
 //   - 动态信息（time/git/cwd/计数）每次 Render 时实时采集；
 //   - 键值格式而非自然语言/JSON：LLM 对显式标记的键值提取最稳定、token 最省。
 //
@@ -37,23 +44,19 @@ type TodoStatus interface {
 // 不产生中间 []string 切片；静态 env 前缀在 New 时预算好。
 // git 采集带 5 秒 TTL 缓存（fork 两个 git 进程太贵，不能每轮都跑）。
 //
-// 当前实现 env + todo + counters 三区；loaded/events 两区待对应功能落地后扩展。
+// 当前实现 env + 外部区块（todo/skills/tools）+ counters；events 区待
+// 对应功能落地后扩展。
 //
-// 会话级数据源经 StatusDeps 构造注入（消费侧窄接口：只读快照，不需要
-// 完整 Provider 契约）；nil 字段对应区块渲染为空。
+// 会话级数据源以 StatusSection 构造注入：提供者各自渲染自己的 XML
+// 片段，StatusBar 只组装；nil 提供者对应区块渲染为空。
 type StatusBar struct {
-	session     Session
-	todoStatus  TodoStatus
-	skillStatus SkillStatus
-	mcpStatus   MCPStatus
-	// ---- 静态字段（进程内不变，New 时初始化）----
+	session  Session
+	env      EnvInfo
+	sections []StatusSection
+	// ---- 静态字段（进程内不变，Start 时初始化）----
 	// envStatic 是 env 区静态行（os/shell/python），预拼接好，
 	// render 时直接写入，不重复拼接。不含 <env></env> 标签。
 	envStatic string
-
-	todos           []todo.Todo
-	todoVersion     int64
-	todoChangedIter int
 
 	// ---- counters（由循环本身维护）----
 	calls             map[string]int
@@ -66,15 +69,15 @@ type StatusBar struct {
 	b strings.Builder
 }
 
-// NewStatusBar 创建状态栏：静态环境信息在此一次性采集并预拼接。
-func NewStatusBar(session Session, todoStatus TodoStatus, skillStatus SkillStatus, mcpStatus MCPStatus) *StatusBar {
-	sb := &StatusBar{
-		session:     session,
-		todoStatus:  todoStatus,
-		skillStatus: skillStatus,
-		mcpStatus:   mcpStatus,
+// NewStatusBar 创建状态栏。env 为 env 区静态信息源（nil 时静态段为空）；
+// sections 为外部区块提供者（顺序即渲染顺序），nil 项被跳过。
+func NewStatusBar(session Session, env EnvInfo, sections ...StatusSection) *StatusBar {
+	sb := &StatusBar{session: session, env: env}
+	for _, s := range sections {
+		if s != nil {
+			sb.sections = append(sb.sections, s)
+		}
 	}
-
 	return sb
 }
 
@@ -82,27 +85,25 @@ func (sb *StatusBar) Start() {
 	sb.b.Grow(512)
 
 	// 预拼接 env 区静态行（os/shell/python）——这三行进程内不变
-	if os := toolkit.OSInfo(); os != "" {
-		sb.b.WriteString("    os: ")
-		sb.b.WriteString(os)
-		sb.b.WriteByte('\n')
-	}
-	if shell := toolkit.ShellInfo(); shell != "" {
-		sb.b.WriteString("    shell: ")
-		sb.b.WriteString(shell)
-		sb.b.WriteByte('\n')
-	}
-	if py := toolkit.PythonVersion(); py != "" {
-		sb.b.WriteString("    python: ")
-		sb.b.WriteString(py)
-		sb.b.WriteByte('\n')
+	if sb.env != nil {
+		if os := sb.env.OSInfo(); os != "" {
+			sb.b.WriteString("    os: ")
+			sb.b.WriteString(os)
+			sb.b.WriteByte('\n')
+		}
+		if shell := sb.env.ShellInfo(); shell != "" {
+			sb.b.WriteString("    shell: ")
+			sb.b.WriteString(shell)
+			sb.b.WriteByte('\n')
+		}
+		if py := sb.env.PythonVersion(); py != "" {
+			sb.b.WriteString("    python: ")
+			sb.b.WriteString(py)
+			sb.b.WriteByte('\n')
+		}
 	}
 	sb.envStatic = sb.b.String()
 	sb.b.Reset()
-
-	sb.todos = nil
-	sb.todoVersion = 0
-	sb.todoChangedIter = 0
 
 	sb.calls = make(map[string]int)
 	sb.callNames = make([]string, 0, 8)
@@ -112,10 +113,6 @@ func (sb *StatusBar) Start() {
 }
 
 func (sb *StatusBar) Stop() {
-	sb.todos = nil
-	sb.todoVersion = 0
-	sb.todoChangedIter = 0
-
 	sb.calls = nil
 	sb.callNames = nil
 	sb.consecutiveErrors = 0
@@ -125,18 +122,10 @@ func (sb *StatusBar) Stop() {
 }
 
 // Render 渲染当前迭代的状态栏消息，追加到上下文尾部。
-// 动态字段（time/cwd/git）每次调用实时采集；todo/skills/tools 数据
-// 从构造注入的 StatusDeps 读取。ctx 仅用于 git 探针的超时控制。
+// 动态字段（time/cwd/git）每次调用实时采集；外部区块（todo/skills/
+// tools）由构造注入的 StatusSection 各自渲染。ctx 仅用于 git 探针的
+// 超时控制。
 func (sb *StatusBar) Render(ctx context.Context, iteration int) *schema.Message {
-	// 从 TodoStore 读取快照，检测版本变更以计算"未更新轮数"
-	if sb.todoStatus != nil {
-		todos, version := sb.todoStatus.Snapshot()
-		if version != sb.todoVersion {
-			sb.todoVersion = version
-			sb.todoChangedIter = iteration
-		}
-		sb.todos = todos
-	}
 	return sb.render(ctx, iteration)
 }
 
@@ -187,37 +176,10 @@ func (sb *StatusBar) render(ctx context.Context, iteration int) *schema.Message 
 	b.WriteString(sb.envStatic) // 预拼接的 os/shell/python 行
 	b.WriteString("  </env>\n")
 
-	// ---- todo ----
-	// 从 TodoStore 快照渲染（设计文档 2.10 数据流投影）
-	if len(sb.todos) > 0 {
-		b.WriteString("  <todo>\n")
-		for i, t := range sb.todos {
-			b.WriteString("    [")
-			b.WriteString(strconv.Itoa(i + 1))
-			b.WriteString("] ")
-			b.WriteString(truncateLine(t.Content, 60))
-			b.WriteString(" — ")
-			b.WriteString(t.Status)
-			b.WriteByte('\n')
-		}
-		b.WriteString("  </todo>\n")
-	}
-
-	// ---- loaded 区（设计文档 2.10：skills 与 discovered_tools 两个幂等集合）----
-	// 已加载技能（load_skill 幂等集合）：让模型明确知道哪些手册已在轨迹中。
-	loadedSkills := sb.skillStatus.GetLoadedSkills()
-	if len(loadedSkills) > 0 {
-		b.WriteString("  <skills loaded=\"")
-		b.WriteString(strings.Join(loadedSkills, ", "))
-		b.WriteString("\"/>\n")
-	}
-	// 已注册 MCP 工具（discover_tools 命中即注册的幂等集合）：让模型明确
-	// 知道哪些外部工具已可直接调用，避免重复发现/重复注册。
-	loadedTools := sb.mcpStatus.GetLoadedTools()
-	if len(loadedTools) > 0 {
-		b.WriteString("  <tools registered=\"")
-		b.WriteString(strings.Join(loadedTools, ", "))
-		b.WriteString("\"/>\n")
+	// ---- 外部区块（设计文档 2.10：todo/skills/tools 等）----
+	// 各提供者自渲染为 XML 片段，StatusBar 只按注入顺序组装。
+	for _, s := range sb.sections {
+		b.WriteString(s.RenderStatus(iteration))
 	}
 
 	// ---- counters ----
@@ -256,24 +218,6 @@ func (sb *StatusBar) render(ctx context.Context, iteration int) *schema.Message 
 			b.WriteString(")")
 		}
 		b.WriteString(" → do not retry as-is; change approach or inform the user\n")
-	}
-
-	// TODO 陈旧提醒：列表存在且 N 轮未更新且有未完成项时提示推进
-	if len(sb.todos) > 0 {
-		pending := 0
-		for _, t := range sb.todos {
-			if t.Status == todo.TodoPending || t.Status == todo.TodoInProgress {
-				pending++
-			}
-		}
-		stale := iteration - sb.todoChangedIter
-		if stale >= 3 && pending > 0 {
-			b.WriteString("    todo: unchanged for ")
-			b.WriteString(strconv.Itoa(stale))
-			b.WriteString(" turns (")
-			b.WriteString(strconv.Itoa(pending))
-			b.WriteString(" items pending) → check whether to advance or update it\n")
-		}
 	}
 
 	b.WriteString("  </counters>\n</agent_status>")

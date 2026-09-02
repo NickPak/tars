@@ -158,6 +158,19 @@ func (r *McpProvider) GetLoadedTools() []string {
 	return r.toolState.GetLoadedTools()
 }
 
+// RenderStatus 实现 agent 状态栏的 StatusSection（消费侧窄接口，方法集
+// 天然满足，无需 import agent 包）：把已注册 MCP 工具幂等集合自渲染为
+// <tools registered/> 区块。集合为空时返回空串（区块省略）。
+// 已注册 MCP 工具（discover_tools 命中即注册）：让模型明确知道哪些外部
+// 工具已可直接调用，避免重复发现/重复注册。
+func (r *McpProvider) RenderStatus(int) string {
+	loaded := r.toolState.GetLoadedTools()
+	if len(loaded) == 0 {
+		return ""
+	}
+	return "  <tools registered=\"" + strings.Join(loaded, ", ") + "\"/>\n"
+}
+
 // mcpToolCarrier 是 MCP 物化工具的载体（Carrier）：持有转发所需的
 // 服务器连接管理器与工具坐标。连接资源归进程级 mcp.Manager 池化持有，
 // 不属载体，Close 为空方法。

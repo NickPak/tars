@@ -220,15 +220,19 @@ func TestStatusBar_TodoStalenessSkipsWhenAllDone(t *testing.T) {
 }
 
 // newTestStatusBar 以测试数据源构造状态栏（session 为内存实现）。
-// nil 的状态源以空 stub 兜底（StatusBar 对 skillStatus/mcpStatus 无 nil 防护）。
-func newTestStatusBar(todoStatus TodoStatus, mcpStatus MCPStatus) *StatusBar {
-	if mcpStatus == nil {
-		mcpStatus = &mockMCPRuntime{}
-	}
-	sb := NewStatusBar(&fakeSession{}, todoStatus, fakeSkillStatus{}, mcpStatus)
+// nil 的区块提供者被跳过（对应区块省略）。
+func newTestStatusBar(todoSection, mcpSection StatusSection) *StatusBar {
+	sb := NewStatusBar(&fakeSession{}, fakeEnvInfo{}, todoSection, fakeSkillStatus{}, mcpSection)
 	sb.Start()
 	return sb
 }
+
+// fakeEnvInfo 是 EnvInfo 的测试实现（固定值，避免依赖真实系统环境）。
+type fakeEnvInfo struct{}
+
+func (fakeEnvInfo) OSInfo() string        { return "test-os" }
+func (fakeEnvInfo) ShellInfo() string     { return "test-shell" }
+func (fakeEnvInfo) PythonVersion() string { return "" }
 
 // mockMCPRuntime 提供 Loaded 数据（状态栏 tools 区测试）。
 type mockMCPRuntime struct {
@@ -240,6 +244,14 @@ func (m *mockMCPRuntime) Search(query string, limit int) ([]mcp.ToolHit, error) 
 }
 func (m *mockMCPRuntime) Materialize(hit mcp.ToolHit) error { return nil }
 func (m *mockMCPRuntime) GetLoadedTools() []string          { return m.names }
+
+// RenderStatus 自渲染 tools 区块（StatusSection 契约：提供者自带渲染）。
+func (m *mockMCPRuntime) RenderStatus(int) string {
+	if len(m.names) == 0 {
+		return ""
+	}
+	return "  <tools registered=\"" + strings.Join(m.names, ", ") + "\"/>\n"
+}
 
 func TestStatusBar_ToolsZone(t *testing.T) {
 	sb := newTestStatusBar(nil, &mockMCPRuntime{names: []string{"mcp__yahoo-finance__get_stock_price"}})
