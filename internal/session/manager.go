@@ -433,7 +433,9 @@ type compactPlan struct {
 func (s *Manager) planCompaction(raw []*schema.Message, budget int) (*compactPlan, bool) {
 	var curCutoff string
 	var oldEntries []*ArchiveEntry
-	if cur := s.Compaction(); cur != nil {
+
+	cur := s.GetCompaction()
+	if cur != nil {
 		curCutoff = cur.CutoffMessageID
 		oldEntries = cur.Entries
 	}
@@ -538,10 +540,12 @@ func (s *Manager) compress(ctx context.Context, provider llm.Provider, raw []*sc
 	merged = append(merged, entries...)
 	merged = s.capEntries(merged)
 	times := 1
-	if cur := s.Compaction(); cur != nil {
+
+	cur := s.GetCompaction()
+	if cur != nil {
 		times = cur.TimesCompressed + 1 // 累计计数随压缩态延续
 	}
-	next := &Compaction{
+	next := &CompactionData{
 		Entries:         merged,
 		CutoffMessageID: newCutoff,
 		TimesCompressed: times,
@@ -555,7 +559,9 @@ func (s *Manager) compress(ctx context.Context, provider llm.Provider, raw []*sc
 			At:           time.Now().UnixMilli(),
 		},
 	}
-	if err := s.ApplyCompaction(next); err != nil {
+
+	err = s.SetCompaction(next)
+	if err != nil {
 		return 0, 0, nil, err
 	}
 
@@ -572,13 +578,13 @@ func (s *Manager) RawHistory() []*schema.Message {
 	return s.data.RawHistory()
 }
 
-// Compaction 返回当前压缩态（nil = 未压缩，恒等投影）。
-func (s *Manager) Compaction() *Compaction {
+// GetCompaction 返回当前压缩态（nil = 未压缩，恒等投影）。
+func (s *Manager) GetCompaction() *CompactionData {
 	return s.data.Compaction
 }
 
-// ApplyCompaction 写回压缩态：先原子落盘再改内存（03 篇红线）。
-func (s *Manager) ApplyCompaction(c *Compaction) error {
+// SetCompaction 写回压缩态：先原子落盘再改内存（03 篇红线）。
+func (s *Manager) SetCompaction(c *CompactionData) error {
 	if err := instance.SaveCompaction(s.data.ID, c); err != nil {
 		return err
 	}

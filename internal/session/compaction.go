@@ -20,9 +20,9 @@ const LoadSkillTool = "load_skill"
 // 无需任何转换。
 const ArchiveScheme = "archive://"
 
-// Compaction 是会话的压缩态：视图投影的规则参数。由 session 独立持久化
+// CompactionData 是会话的压缩态：视图投影的规则参数。由 session 独立持久化
 // （compaction.json，03 篇）。nil 或 CutoffMessageID 为空 = 恒等投影。
-type Compaction struct {
+type CompactionData struct {
 	// Entries 归档条目区（按时间升序，append-only），渲染进视图时整体拼接。
 	Entries []*ArchiveEntry `json:"entries"`
 	// CutoffMessageID 压缩边界：该 ID 及其之前的轨迹消息已被条目替代。
@@ -153,7 +153,7 @@ func renderEntries(entries []*ArchiveEntry) string {
 // Message 把归档条目区渲染为合成视图消息（01 篇投影）。
 // nil/空条目返回 nil。role=user：这是"提供给模型的背景资料"，不是模型自己
 // 说过的话——用 assistant 角色会让模型误认为是自己的输出。
-func (c *Compaction) Message() *schema.Message {
+func (c *CompactionData) Message() *schema.Message {
 	if c == nil || len(c.Entries) == 0 {
 		return nil
 	}

@@ -103,7 +103,7 @@ func messagesBytes(msgs []*schema.Message) int {
 }
 
 // lastPromptTokens 反扫轨迹中最后一条带实测用量的 assistant 消息
-//（触发信号，01 篇 §6：跨轮有效——首轮迭代即可感知上一轮结束时的规模）。
+// （触发信号，01 篇 §6：跨轮有效——首轮迭代即可感知上一轮结束时的规模）。
 func lastPromptTokens(raw []*schema.Message) int {
 	for i := len(raw) - 1; i >= 0; i-- {
 		if m := raw[i]; m.Role == schema.RoleAssistant && m.Usage != nil && m.Usage.PromptTokens > 0 {
@@ -118,7 +118,7 @@ func lastPromptTokens(raw []*schema.Message) int {
 // system prompt、工具 schema 与状态栏（可达 5-15k token），系统性偏小。
 func estimateProjectedTokens(entries []*ArchiveEntry, raw []*schema.Message, cutoffID string) int {
 	n := 0
-	if syn := (&Compaction{Entries: entries}).Message(); syn != nil {
+	if syn := (&CompactionData{Entries: entries}).Message(); syn != nil {
 		n += len(syn.Content)
 	}
 	idx := indexOfID(raw, cutoffID)

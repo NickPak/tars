@@ -48,10 +48,8 @@ func NewMetadata(id string) *Metadata {
 // 轮的运行态（取消标记）在 boot.Controller——goroutine 在那里创建。
 type Data struct {
 	*Metadata
-	Messages []*schema.Message `json:"messages"`
-	// Compaction 压缩态（plan/context 02 篇）：nil 或 CutoffMessageID 为空
-	// = 恒等投影。持久化走独立 compaction.json（03 篇），不随 Data 序列化。
-	Compaction *Compaction `json:"-"`
+	Messages   []*schema.Message `json:"messages"`
+	Compaction *CompactionData   `json:"-"`
 }
 
 // NewData 创建新会话的内存态；store/sink 由 Store.Create 注入。
@@ -154,10 +152,11 @@ func (i *Data) AppendMessage(updateAt int64, msg ...*schema.Message) {
 // cutoff 失效（截断未清理等）回退恒等投影。轮运行期间消息列表只允许
 // 尾部追加，副本头部下标稳定。
 func (i *Data) History() []*schema.Message {
-	if c := i.Compaction; c != nil && c.CutoffMessageID != "" {
-		if idx, _ := i.FindMessage(c.CutoffMessageID); idx >= 0 {
+	if i.Compaction != nil && i.Compaction.CutoffMessageID != "" {
+		idx, _ := i.FindMessage(i.Compaction.CutoffMessageID)
+		if idx >= 0 {
 			out := make([]*schema.Message, 0, len(i.Messages)-idx)
-			if syn := c.Message(); syn != nil {
+			if syn := i.Compaction.Message(); syn != nil {
 				out = append(out, syn)
 			}
 			return append(out, i.Messages[idx+1:]...)

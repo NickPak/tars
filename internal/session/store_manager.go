@@ -250,7 +250,7 @@ func (s *StoreManager) AppendSaveMessage(sessionID string, msg ...*schema.Messag
 // --- 压缩态持久化（plan/context 03 篇：compaction.json + archive/） ---
 
 // SaveCompaction 原子写压缩态（tmp+rename，03 篇 §3：崩溃无中间态）。
-func (s *StoreManager) SaveCompaction(sessionID string, c *Compaction) error {
+func (s *StoreManager) SaveCompaction(sessionID string, c *CompactionData) error {
 	dataDir := GetDataDir(s.workDir, sessionID)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("session store: create data dir for %s: %w", sessionID, err)
@@ -279,7 +279,7 @@ func (s *StoreManager) SaveCompaction(sessionID string, c *Compaction) error {
 
 // LoadCompaction 读取压缩态：文件不存在返回 (nil, nil)；
 // 损坏返回 (nil, error)——调用方回退恒等投影（03 篇安全降级）。
-func (s *StoreManager) LoadCompaction(sessionID string) (*Compaction, error) {
+func (s *StoreManager) LoadCompaction(sessionID string) (*CompactionData, error) {
 	path := filepath.Join(GetDataDir(s.workDir, sessionID), CompactionFile)
 	f, err := os.Open(path)
 	if err != nil {
@@ -289,7 +289,7 @@ func (s *StoreManager) LoadCompaction(sessionID string) (*Compaction, error) {
 		return nil, fmt.Errorf("session store: read compaction for %s: %w", sessionID, err)
 	}
 	defer f.Close()
-	c := &Compaction{}
+	c := &CompactionData{}
 	if err := json.NewDecoder(f).Decode(c); err != nil {
 		return nil, fmt.Errorf("session store: decode compaction for %s: %w", sessionID, err)
 	}
