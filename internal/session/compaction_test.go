@@ -88,8 +88,8 @@ func appendTurns(t *testing.T, m *Manager, n int) []string {
 // 占位符级的短内容会让"条目比原文还大"，与生产场景不符。
 func appendTurnsP(t *testing.T, m *Manager, prefix string, n int) []string {
 	t.Helper()
-	userText := strings.Repeat("请帮我检查这个模块的实现。", 8)      // ~300B
-	assistantText := strings.Repeat("我先读取相关文件确认现状。", 8) // ~300B
+	userText := strings.Repeat("请帮我检查这个模块的实现。", 8)                           // ~300B
+	assistantText := strings.Repeat("我先读取相关文件确认现状。", 8)                      // ~300B
 	toolOutput := strings.Repeat("file content line with some detail\n", 40) // ~1.4KB
 	var ids []string
 	for k := 0; k < n; k++ {
@@ -123,7 +123,7 @@ func withLastUsage(m *Manager, promptTokens int) {
 // applyTestCompaction 在 cutoffID 处写入一个最小压缩态。
 func applyTestCompaction(t *testing.T, m *Manager, cutoffID string) {
 	t.Helper()
-	err := m.ApplyCompaction(&Compaction{
+	err := m.SetCompaction(&CompactionData{
 		Entries: []*ArchiveEntry{{
 			Range: "turn_1-1", Goal: "g", Result: "ok", Pointer: "archive/turn_1-1.md",
 		}},
@@ -137,10 +137,10 @@ func applyTestCompaction(t *testing.T, m *Manager, cutoffID string) {
 // --- 合成归档消息渲染（冻结：同输入同字节） ---
 
 func TestMessageDeterministic(t *testing.T) {
-	c := &Compaction{Entries: []*ArchiveEntry{{
+	c := &CompactionData{Entries: []*ArchiveEntry{{
 		Range: "turn_1-3", Goal: "g", UserAsks: []string{"帮我修一下超时"},
 		Actions: []string{"a"}, Result: "ok",
-		Facts:   []string{"f.go", "abc123"}, Pointer: "archive/turn_1-3.md",
+		Facts: []string{"f.go", "abc123"}, Pointer: "archive/turn_1-3.md",
 	}}}
 	m1 := c.Message()
 	m2 := c.Message()
@@ -160,7 +160,7 @@ func TestMessageDeterministic(t *testing.T) {
 
 // 视图形态是紧凑文本而非 JSON：不得出现 JSON 语法噪声，且各字段齐备。
 func TestMessageRendersCompactText(t *testing.T) {
-	c := &Compaction{Entries: []*ArchiveEntry{{
+	c := &CompactionData{Entries: []*ArchiveEntry{{
 		Range: "turn_1-2", Goal: "定位超时配置", UserAsks: []string{"帮我修一下超时"},
 		Actions: []string{"read_file pkg/llm/config.go", "edit manager.go"},
 		Result:  "成功；曾误改 provider.go 后回滚",
@@ -192,7 +192,7 @@ func TestMessageRendersCompactText(t *testing.T) {
 
 // 空字段不渲染：避免 null / 空行白占 token。
 func TestMessageOmitsEmptyFields(t *testing.T) {
-	c := &Compaction{Entries: []*ArchiveEntry{{
+	c := &CompactionData{Entries: []*ArchiveEntry{{
 		Range: "turn_1-1", Goal: "g", Pointer: "archive://turn_1-1.md",
 	}}}
 	got := c.Message().Content
@@ -207,7 +207,7 @@ func TestMessageOmitsEmptyFields(t *testing.T) {
 // 缺任何一条，"摘要不足时读回原文"这条通道就失效——不说存在模型不知道有
 // 原文可捞；不说读法它会拿指针猜普通路径；不说节制它会把所有指针读一遍。
 func TestMessageTeachesArchiveAccess(t *testing.T) {
-	c := &Compaction{Entries: []*ArchiveEntry{{
+	c := &CompactionData{Entries: []*ArchiveEntry{{
 		Range: "turn_1-2", Goal: "g", Pointer: "archive://turn_1-2.md",
 	}}}
 	got := c.Message().Content
@@ -230,11 +230,11 @@ func TestMessageTeachesArchiveAccess(t *testing.T) {
 }
 
 func TestMessageNilEmpty(t *testing.T) {
-	var nilC *Compaction
+	var nilC *CompactionData
 	if nilC.Message() != nil {
 		t.Fatal("nil compaction should render nil")
 	}
-	if (&Compaction{}).Message() != nil {
+	if (&CompactionData{}).Message() != nil {
 		t.Fatal("empty entries should render nil")
 	}
 }
@@ -413,7 +413,7 @@ func TestRetryCrossingCutoffInvalidates(t *testing.T) {
 	if _, err := m.PrepareRetry("a0"); err != nil {
 		t.Fatalf("prepare retry: %v", err)
 	}
-	if m.Compaction() != nil {
+	if m.GetCompaction() != nil {
 		t.Fatal("compaction should be invalidated")
 	}
 	if _, err := os.Stat(filepath.Join(m.GetDataDir(), CompactionFile)); !os.IsNotExist(err) {
@@ -430,7 +430,7 @@ func TestRetryWithinTailKeepsCompaction(t *testing.T) {
 	if _, err := m.PrepareRetry("a3"); err != nil {
 		t.Fatalf("prepare retry: %v", err)
 	}
-	if m.Compaction() == nil {
+	if m.GetCompaction() == nil {
 		t.Fatal("compaction should be kept")
 	}
 }
@@ -444,14 +444,14 @@ func TestDeleteFromInvalidation(t *testing.T) {
 	if _, err := m.DeleteFrom(ids[8]); err != nil {
 		t.Fatalf("delete within tail: %v", err)
 	}
-	if m.Compaction() == nil {
+	if m.GetCompaction() == nil {
 		t.Fatal("compaction should be kept")
 	}
 	// 删除点进入压缩区：作废
 	if _, err := m.DeleteFrom(ids[2]); err != nil {
 		t.Fatalf("delete crossing: %v", err)
 	}
-	if m.Compaction() != nil {
+	if m.GetCompaction() != nil {
 		t.Fatal("compaction should be invalidated")
 	}
 }
@@ -465,14 +465,14 @@ func TestEditUserMessageInvalidation(t *testing.T) {
 	if err := m.EditUserMessage("u3", "edited"); err != nil {
 		t.Fatalf("edit tail: %v", err)
 	}
-	if m.Compaction() == nil {
+	if m.GetCompaction() == nil {
 		t.Fatal("compaction should be kept")
 	}
 	// 编辑压缩区消息：作废
 	if err := m.EditUserMessage("u0", "edited"); err != nil {
 		t.Fatalf("edit archived: %v", err)
 	}
-	if m.Compaction() != nil {
+	if m.GetCompaction() != nil {
 		t.Fatal("compaction should be invalidated")
 	}
 }

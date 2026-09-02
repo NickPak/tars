@@ -190,7 +190,7 @@ func TestCompressionStatsRecordsExtractModel(t *testing.T) {
 
 	m.MaybeCompress(context.Background(), nil)
 
-	st := m.Compaction().Stats
+	st := m.GetCompaction().Stats
 	if st == nil || st.ExtractModel == "" {
 		t.Fatalf("stats must record the extraction model: %+v", st)
 	}
@@ -202,7 +202,7 @@ func TestMaybeCompressBelowThreshold(t *testing.T) {
 	withLastUsage(m, 1000) // 阈值 0.8×128000，远未达
 
 	m.MaybeCompress(context.Background(), nil)
-	if m.Compaction() != nil {
+	if m.GetCompaction() != nil {
 		t.Fatal("compaction should stay nil below threshold")
 	}
 	if k := compressionKinds(sink); len(k) != 0 {
@@ -215,7 +215,7 @@ func TestMaybeCompressNoUsageSignal(t *testing.T) {
 	appendTurns(t, m, 10) // 无 Usage
 
 	m.MaybeCompress(context.Background(), nil)
-	if m.Compaction() != nil || len(compressionKinds(sink)) != 0 {
+	if m.GetCompaction() != nil || len(compressionKinds(sink)) != 0 {
 		t.Fatal("should not compress without usage signal")
 	}
 }
@@ -229,7 +229,7 @@ func TestMaybeCompressNothingToCompress(t *testing.T) {
 	withLastUsage(m, 200000)
 
 	m.MaybeCompress(context.Background(), nil)
-	if m.Compaction() != nil {
+	if m.GetCompaction() != nil {
 		t.Fatal("compaction should not be written when there is nothing to compress")
 	}
 	if k := compressionKinds(sink); len(k) != 0 {
@@ -247,7 +247,7 @@ func TestMaybeCompressDegradesInsteadOfGivingUp(t *testing.T) {
 
 	m.MaybeCompress(context.Background(), nil)
 
-	comp := m.Compaction()
+	comp := m.GetCompaction()
 	if comp == nil || len(comp.Entries) != 1 {
 		t.Fatalf("compaction should be written under pressure: %+v", comp)
 	}
@@ -284,7 +284,7 @@ func TestMaybeCompressSuccess(t *testing.T) {
 
 	m.MaybeCompress(context.Background(), nil)
 
-	comp := m.Compaction()
+	comp := m.GetCompaction()
 	if comp == nil || comp.CutoffMessageID == "" || len(comp.Entries) != 1 {
 		t.Fatalf("compaction = %+v", comp)
 	}
@@ -321,7 +321,7 @@ func TestMaybeCompressIncremental(t *testing.T) {
 	appendTurnsP(t, m, "a", 10)
 	withLastUsage(m, 200000)
 	m.MaybeCompress(context.Background(), nil)
-	first := m.Compaction()
+	first := m.GetCompaction()
 	if first == nil {
 		t.Fatal("first compression did not happen")
 	}
@@ -332,7 +332,7 @@ func TestMaybeCompressIncremental(t *testing.T) {
 	withLastUsage(m, 300000)
 	m.MaybeCompress(context.Background(), nil)
 
-	comp := m.Compaction()
+	comp := m.GetCompaction()
 	if len(comp.Entries) != 2 {
 		t.Fatalf("entries = %d, want 2", len(comp.Entries))
 	}
@@ -365,7 +365,7 @@ func TestMaybeCompressCircuitBreaker(t *testing.T) {
 	if after := len(compressionKinds(sink)); after != before {
 		t.Fatal("circuit open: MaybeCompress should short-circuit")
 	}
-	if m.Compaction() != nil {
+	if m.GetCompaction() != nil {
 		t.Fatal("failed compression must not write compaction")
 	}
 }
@@ -383,7 +383,7 @@ func TestMaybeCompressRejectsUneconomicalEntries(t *testing.T) {
 	if f == nil || !strings.Contains(f.Error, "not economical") {
 		t.Fatalf("failed event = %+v, want economy rejection", f)
 	}
-	if m.Compaction() != nil {
+	if m.GetCompaction() != nil {
 		t.Fatal("compaction must not be written when entries are bigger than the batch")
 	}
 }

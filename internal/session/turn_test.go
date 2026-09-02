@@ -137,7 +137,7 @@ func TestTurnStartsOnProjectedView(t *testing.T) {
 	appendTurns(t, m, 10)
 	withLastUsage(m, 200000)
 	m.MaybeCompress(context.Background(), nil)
-	if m.Compaction() == nil {
+	if m.GetCompaction() == nil {
 		t.Fatal("compression did not happen")
 	}
 
