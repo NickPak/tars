@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"testing"
 
 	"tars/pkg/ask"
@@ -16,13 +16,13 @@ import (
 func TestClassify_ByLevel(t *testing.T) {
 	call := schema.ToolCall{ID: "tc-1", Name: "mcp__srv__tool", Args: `{"q":"x"}`}
 
-	low := &kernel.Definition{Name: call.Name, Risk: kernel.RiskLevelLow}
+	low := &tool.Definition{Name: call.Name, Risk: tool.RiskLevelLow}
 	if req := Classify(low, call); req != nil {
 		t.Errorf("low risk declaration should not be gated")
 	}
 
-	for _, lv := range []kernel.RiskLevel{kernel.RiskLevelMedium, kernel.RiskLevelHigh} {
-		def := &kernel.Definition{Name: call.Name, Risk: lv}
+	for _, lv := range []tool.RiskLevel{tool.RiskLevelMedium, tool.RiskLevelHigh} {
+		def := &tool.Definition{Name: call.Name, Risk: lv}
 		req := Classify(def, call)
 		if req == nil {
 			t.Fatalf("%s declaration should be gated", lv)
@@ -38,7 +38,7 @@ func TestClassify_ByLevel(t *testing.T) {
 
 func TestClassify_ByLevelSummaryTruncated(t *testing.T) {
 	long := strings.Repeat("x", 400)
-	def := &kernel.Definition{Name: "mcp__a__b", Risk: kernel.RiskLevelMedium}
+	def := &tool.Definition{Name: "mcp__a__b", Risk: tool.RiskLevelMedium}
 	req := Classify(def, schema.ToolCall{ID: "1", Name: def.Name, Args: long})
 	if req == nil {
 		t.Fatal("expected approval request")
@@ -50,10 +50,10 @@ func TestClassify_ByLevelSummaryTruncated(t *testing.T) {
 
 // 声明优先于规则：medium 声明 + 规则同时存在时按级别拦截（RiskKey 无规则后缀）。
 func TestClassify_DeclarationBeatsRules(t *testing.T) {
-	def := &kernel.Definition{
+	def := &tool.Definition{
 		Name: "t",
-		Risk: kernel.RiskLevelMedium,
-		RiskRules: []kernel.RiskRule{
+		Risk: tool.RiskLevelMedium,
+		RiskRules: []tool.RiskRule{
 			{ID: "r1", Reason: "x", ArgsKey: "command", Pattern: regexp.MustCompile(`danger`)},
 		},
 	}
@@ -64,9 +64,9 @@ func TestClassify_DeclarationBeatsRules(t *testing.T) {
 }
 
 func TestClassify_RulesEngine(t *testing.T) {
-	def := &kernel.Definition{
+	def := &tool.Definition{
 		Name: "t",
-		RiskRules: []kernel.RiskRule{
+		RiskRules: []tool.RiskRule{
 			{ID: "r1", Reason: "hit r1", ArgsKey: "command", Pattern: regexp.MustCompile(`danger`)},
 		},
 	}
@@ -105,10 +105,10 @@ func (f *fakeApprover) Approve(_ context.Context, _ event.Sink, _ string, ar *as
 	return f.answer, f.err
 }
 
-func gatedDef() *kernel.Definition {
-	return &kernel.Definition{
+func gatedDef() *tool.Definition {
+	return &tool.Definition{
 		Name: "t",
-		RiskRules: []kernel.RiskRule{
+		RiskRules: []tool.RiskRule{
 			{ID: "r1", Reason: "hit", ArgsKey: "command", Pattern: regexp.MustCompile(`danger`)},
 		},
 	}

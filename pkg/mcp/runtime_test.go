@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"tars/pkg/schema"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 // 子进程服务器复用 registry_test.go 的 TestHelperMCPServer（echo 工具，
@@ -49,7 +49,7 @@ func TestMCPRuntime_EndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	reg := kernel.NewRegistry(nil)
+	reg := tool.NewRegistry(nil)
 	rt := mgr.NewRuntime(reg, newMemToolState())
 
 	// 检索命中
@@ -140,7 +140,7 @@ func TestMCPRuntime_StartupRestore(t *testing.T) {
 	state.MarkToolLoaded("mcp__spike__echo")
 	state.MarkToolLoaded("mcp__ghost__gone") // 服务器不存在
 
-	reg := kernel.NewRegistry(nil)
+	reg := tool.NewRegistry(nil)
 	rt := mgr.NewRuntime(reg, state)
 	if err := rt.Startup(); err != nil {
 		t.Fatalf("Startup: %v", err)

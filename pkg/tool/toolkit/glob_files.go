@@ -7,7 +7,7 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/sandbox"
 )
@@ -21,8 +21,8 @@ type globFilesArgs struct {
 
 // GlobFiles finds files by name pattern, supporting `**` for any-depth
 // matching. It matches path names only — content search belongs to grep_files.
-func (f *FileTools) GlobFiles() *kernel.Definition {
-	return &kernel.Definition{
+func (f *FileTools) GlobFiles() *tool.Definition {
+	return &tool.Definition{
 		Name: "glob_files",
 		Description: "Find files by NAME pattern, e.g. `**/*.py` or `src/**/*.ts`; a pattern without a path " +
 			"separator (e.g. `*.go`) matches at any depth. Returns matching paths relative to the search root, " +

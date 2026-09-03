@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"time"
 
 	"tars/pkg/sandbox"
@@ -30,7 +30,7 @@ const (
 
 // codeInterpreterRiskRules 针对 Python 代码的明显破坏性调用模式。
 // 与工具实现同文件声明（内聚），由策略层通用引擎评估。
-var codeInterpreterRiskRules = []kernel.RiskRule{
+var codeInterpreterRiskRules = []tool.RiskRule{
 	{ID: "py-rmtree", Reason: "递归删除目录（shutil.rmtree）", ArgsKey: "code", Pattern: regexp.MustCompile(`\bshutil\.rmtree\s*\(`)},
 	{ID: "py-remove", Reason: "删除文件（os.remove/os.unlink）", ArgsKey: "code", Pattern: regexp.MustCompile(`\bos\.(remove|unlink)\s*\(`)},
 	{ID: "py-shell-out", Reason: "Python 内执行 shell（os.system/subprocess）", ArgsKey: "code", Pattern: regexp.MustCompile(`\bos\.system\s*\(|\bsubprocess\.`)},
@@ -54,8 +54,8 @@ func NewCodeInterpreter(sb sandbox.SandboxProvider, archive ArchiveProvider) *Co
 }
 
 // Definitions 实现 tool.Carrier。
-func (c *CodeInterpreter) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{c.definition()}
+func (c *CodeInterpreter) Definitions() []*tool.Definition {
+	return []*tool.Definition{c.definition()}
 }
 
 // Close 实现 tool.Carrier：无自有资源（执行环境归装配层回收）。
@@ -66,8 +66,8 @@ func (c *CodeInterpreter) Close() error { return nil }
 // (no network, workspace-only files) is planned in design plan stage 4;
 // until then it runs with the application's permissions and the description
 // says so (fidelity red line: the description must match reality).
-func (c *CodeInterpreter) definition() *kernel.Definition {
-	return &kernel.Definition{
+func (c *CodeInterpreter) definition() *tool.Definition {
+	return &tool.Definition{
 		Name:      "code_interpreter",
 		RiskRules: codeInterpreterRiskRules,
 		Description: "Execute Python 3 code with the system interpreter and return stdout/stderr; non-zero " +

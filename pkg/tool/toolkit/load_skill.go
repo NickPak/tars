@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"tars/pkg/skill"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 // SkillTool 是 load_skill 工具的载体（Carrier）：持有技能运行时
@@ -24,16 +24,16 @@ func NewSkillTool(rt skill.Provider) *SkillTool {
 }
 
 // Definitions 实现 tool.Carrier。
-func (t *SkillTool) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{t.definition()}
+func (t *SkillTool) Definitions() []*tool.Definition {
+	return []*tool.Definition{t.definition()}
 }
 
 // Close 实现 tool.Carrier：无资源。
 func (t *SkillTool) Close() error { return nil }
 
 // definition 返回 load_skill 工具定义。
-func (t *SkillTool) definition() *kernel.Definition {
-	return &kernel.Definition{
+func (t *SkillTool) definition() *tool.Definition {
+	return &tool.Definition{
 		Name: "load_skill",
 		Description: "Load a Skill's SKILL.md into the conversation to learn how to perform a " +
 			"specialized task. The Skill catalog is listed in your system context; call this with the " +

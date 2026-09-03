@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"tars/pkg/prompt"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"time"
 
 	"tars/pkg/event"
@@ -56,7 +56,7 @@ type Session interface {
 // 测试可用最小 fake 替换，不必构造完整注册表。
 type ToolExecutor interface {
 	Schemas() []*schema.ToolSchema
-	Execute(ctx context.Context, calls []schema.ToolCall, onComplete ...kernel.OnToolComplete) []kernel.ToolResult
+	Execute(ctx context.Context, calls []schema.ToolCall, onComplete ...tool.OnToolComplete) []tool.ToolResult
 }
 
 // ReActAgent 是 Agent 的默认实现：标准 ReAct 循环，会话级长命对象
@@ -187,7 +187,7 @@ func (a *ReActAgent) run(ctx context.Context, gen *event.Generator, assistantID 
 				ToolCallID: tc.ID, ToolName: tc.Name, Args: tc.Args,
 			}})
 		}
-		results := a.toolExec.Execute(ctx, msg.ToolCalls, func(tr kernel.ToolResult) {
+		results := a.toolExec.Execute(ctx, msg.ToolCalls, func(tr tool.ToolResult) {
 			// 并发回调（每个工具完成时）：gen.Send 内部加锁，并发安全。
 			gen.Send(event.Event{Kind: event.KindToolResult, ToolResult: &event.ToolResultEvent{
 				SessionID: sessionID, MessageID: msgID,

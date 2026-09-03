@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"testing"
 	"time"
 
@@ -98,20 +98,20 @@ func (s *fakeSession) byRole(r schema.Role) []*schema.Message {
 
 // testCarrier 是测试用的实名载体：持有一组 handler 映射产出的 Definition。
 type testCarrier struct {
-	defs []*kernel.Definition
+	defs []*tool.Definition
 }
 
-func (c *testCarrier) Definitions() []*kernel.Definition { return c.defs }
+func (c *testCarrier) Definitions() []*tool.Definition { return c.defs }
 func (c *testCarrier) Close() error                      { return nil }
 
 // newTestRegistry builds a real tool.Registry (the given custom handlers
-// registered into an empty kernel registry). Registry.Execute already provides
+// registered into an empty registry). Registry.Execute already provides
 // parallel execution, panic recovery, and unknown-tool handling — so tests
 // exercise the production path.
-func newTestRegistry(handlers map[string]kernel.Handler) *kernel.Registry {
-	r := kernel.NewRegistry(nil)
+func newTestRegistry(handlers map[string]tool.Handler) *tool.Registry {
+	r := tool.NewRegistry(nil)
 	for name, h := range handlers {
-		r.Register(&testCarrier{defs: []*kernel.Definition{{
+		r.Register(&testCarrier{defs: []*tool.Definition{{
 			Name:       name,
 			Parameters: map[string]any{"type": "object"},
 			Handler:    h,
@@ -157,7 +157,7 @@ type fakeSkillStatus struct{}
 
 func (fakeSkillStatus) RenderStatus(int) string { return "" }
 
-func newTestAgent(reg *kernel.Registry, sess *fakeSession, maxIter int) *ReActAgent {
+func newTestAgent(reg *tool.Registry, sess *fakeSession, maxIter int) *ReActAgent {
 	cfg := &Config{MaxIterations: maxIter}
 	cfg.Validate()
 	a := NewReAct(cfg, fakeComposer{}, sess, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{})
@@ -232,7 +232,7 @@ func TestRun_OneToolRound(t *testing.T) {
 		}},
 		{Role: schema.RoleAssistant, Content: "done"},
 	}}
-	reg := newTestRegistry(map[string]kernel.Handler{
+	reg := newTestRegistry(map[string]tool.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "abc", nil },
 	})
 	sess := &fakeSession{}
@@ -292,7 +292,7 @@ func TestRun_ToolPanicRecovered(t *testing.T) {
 		}},
 		{Role: schema.RoleAssistant, Content: "ok"},
 	}}
-	reg := newTestRegistry(map[string]kernel.Handler{
+	reg := newTestRegistry(map[string]tool.Handler{
 		"boom": func(ctx context.Context, args json.RawMessage) (string, error) { panic("exploded") },
 	})
 	sess := &fakeSession{}
@@ -314,7 +314,7 @@ func TestRun_MaxIterationsExceeded(t *testing.T) {
 		{ID: "call_1", Name: "echo", Args: "{}"},
 	}}
 	m := &stubProvider{responses: []*schema.Message{tcMsg}}
-	reg := newTestRegistry(map[string]kernel.Handler{
+	reg := newTestRegistry(map[string]tool.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "x", nil },
 	})
 	a := newTestAgent(reg, &fakeSession{}, 2)
@@ -378,7 +378,7 @@ func TestRun_InterleavedLayout(t *testing.T) {
 		}},
 		{Role: schema.RoleAssistant, Content: "final"},
 	}}
-	reg := newTestRegistry(map[string]kernel.Handler{
+	reg := newTestRegistry(map[string]tool.Handler{
 		"echo": func(ctx context.Context, args json.RawMessage) (string, error) { return "ok", nil },
 	})
 	sess := &fakeSession{}

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"testing"
 
 	"tars/pkg/event"
@@ -115,7 +115,7 @@ func TestRun_ToolErrorOutputNoPanic(t *testing.T) {
 		}},
 		{Role: schema.RoleAssistant, Content: "recovered"},
 	}}
-	reg := newTestRegistry(map[string]kernel.Handler{
+	reg := newTestRegistry(map[string]tool.Handler{
 		"broken": func(_ context.Context, _ json.RawMessage) (string, error) {
 			return "permission denied", fmt.Errorf("permission denied")
 		},

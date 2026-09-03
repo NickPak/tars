@@ -10,7 +10,7 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"tars/pkg/schema"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 var _ Provider = (*Runtime)(nil)
@@ -24,7 +24,7 @@ var _ Provider = (*Runtime)(nil)
 // Runtime（会话级视图：检索/物化/已加载状态）。
 type Runtime struct {
 	mgr       *Manager
-	toolReg   *kernel.Registry // 会话级注册表（动态注册的归宿）
+	toolReg   *tool.Registry // 会话级注册表（动态注册的归宿）
 	toolState StateProvider
 }
 
@@ -34,7 +34,7 @@ const mcpConnectTimeout = 60 * time.Second
 
 // NewRuntime 工厂方法：为一次会话产出 MCP 运行时（Manager 进程级单例，
 // Runtime 每会话一个）。
-func (m *Manager) NewRuntime(toolReg *kernel.Registry, toolState StateProvider) *Runtime {
+func (m *Manager) NewRuntime(toolReg *tool.Registry, toolState StateProvider) *Runtime {
 	return &Runtime{
 		mgr:       m,
 		toolReg:   toolReg,
@@ -168,18 +168,18 @@ func (r *Runtime) RenderStatus(int) string {
 type mcpToolCarrier struct {
 	mgr  *Manager
 	hit  ToolHit
-	risk kernel.RiskLevel
+	risk tool.RiskLevel
 }
 
-func newMCPToolCarrier(mgr *Manager, hit ToolHit, risk kernel.RiskLevel) *mcpToolCarrier {
+func newMCPToolCarrier(mgr *Manager, hit ToolHit, risk tool.RiskLevel) *mcpToolCarrier {
 	return &mcpToolCarrier{mgr: mgr, hit: hit, risk: risk}
 }
 
 // Definitions 实现 tool.Carrier：把命中的 MCP 工具包装为 Definition
 // （handler 转发 JSON-RPC call，参数原文透传，文本结果提取回传）。
-func (c *mcpToolCarrier) Definitions() []*kernel.Definition {
+func (c *mcpToolCarrier) Definitions() []*tool.Definition {
 	server, toolName := c.hit.Server, c.hit.Name
-	return []*kernel.Definition{{
+	return []*tool.Definition{{
 		Name:        c.hit.FullName,
 		Description: mcpToolDescription(c.hit),
 		Parameters:  c.hit.InputSchema,
@@ -199,18 +199,18 @@ func (c *mcpToolCarrier) Close() error { return nil }
 
 // serverRiskLevel 读取服务器配置的风险声明，映射到 tool.RiskLevel；
 // 未配置/未知服务器回退 medium（失败安全默认值：宁可多审批一次）。
-func (r *Runtime) serverRiskLevel(server string) kernel.RiskLevel {
+func (r *Runtime) serverRiskLevel(server string) tool.RiskLevel {
 	srv := r.mgr.Server(server)
 	if srv == nil {
-		return kernel.RiskLevelMedium
+		return tool.RiskLevelMedium
 	}
 	switch srv.Risk {
 	case RiskLow:
-		return kernel.RiskLevelLow
+		return tool.RiskLevelLow
 	case RiskHigh:
-		return kernel.RiskLevelHigh
+		return tool.RiskLevelHigh
 	default:
-		return kernel.RiskLevelMedium
+		return tool.RiskLevelMedium
 	}
 }
 

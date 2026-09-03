@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"testing"
 
 	"tars/pkg/sandbox"
@@ -19,7 +19,7 @@ var (
 	testSH *Shell
 )
 
-func call(t *testing.T, def *kernel.Definition, args string) string {
+func call(t *testing.T, def *tool.Definition, args string) string {
 	t.Helper()
 	out, err := def.Handler(context.Background(), json.RawMessage(args))
 	if err != nil {

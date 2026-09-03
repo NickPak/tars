@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/sandbox"
 )
@@ -24,8 +24,8 @@ type grepFilesArgs struct {
 // with line numbers. File-name search belongs to glob_files; the two tool
 // descriptions reference each other as boundary counter-examples, per the
 // design plan.
-func (f *FileTools) GrepFiles() *kernel.Definition {
-	return &kernel.Definition{
+func (f *FileTools) GrepFiles() *tool.Definition {
+	return &tool.Definition{
 		Name: "grep_files",
 		Description: "Search file CONTENTS with a regular expression, returning matching lines as " +
 			"`path:line: content`. Boundary: searches content, not file names — use glob_files to find files " +

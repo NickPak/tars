@@ -2,7 +2,7 @@ package toolkit
 
 import (
 	"encoding/json"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"testing"
 
 	"tars/pkg/schema"
@@ -13,9 +13,9 @@ import (
 // 产出）跑 guard 的通用分类引擎。规则与工具同文件演进时，这里的语料
 // 保证不被改弱。
 
-func builtinDef(t *testing.T, name string) *kernel.Definition {
+func builtinDef(t *testing.T, name string) *tool.Definition {
 	t.Helper()
-	reg := kernel.NewRegistry(nil)
+	reg := tool.NewRegistry(nil)
 	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil, nil)
 	def, ok := reg.FindTool(name)
 	if !ok {

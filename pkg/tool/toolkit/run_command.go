@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"time"
 
 	"tars/pkg/sandbox"
@@ -185,8 +185,8 @@ func NewShell(exec sandbox.Executor, archive ArchiveProvider) *Shell {
 }
 
 // Definitions 实现 tool.Carrier。
-func (s *Shell) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{s.RunCommand()}
+func (s *Shell) Definitions() []*tool.Definition {
+	return []*tool.Definition{s.RunCommand()}
 }
 
 // Close 实现 tool.Carrier：命令均为短命进程（调用即起、超时即杀），
@@ -217,7 +217,7 @@ func (s *Shell) session(root string) *termSession {
 // POSIX sh 兼顾）。规则与工具实现同文件声明——危险性与工具定义内聚，
 // 由策略层（pkg/tool/guard）的通用引擎评估。
 // 注意分隔符截断用 [^|;&]：命中 `cmd1 && dangerous` 链式写法中的危险段。
-var runCommandRiskRules = []kernel.RiskRule{
+var runCommandRiskRules = []tool.RiskRule{
 	// rm 后紧跟的纯字母旗标串中任一含 r（-r/-rf/-fr/--recursive，含分离写法
 	// rm -r -f）；旗标串之外的 -word（如文件名 my-report.txt）不误判
 	{ID: "rm-recursive", Reason: "递归删除（rm -r / rm -rf）", ArgsKey: "command", Pattern: regexp.MustCompile(`(?i)\brm\b(?:\s+-{1,2}[a-z]+)*\s+-{1,2}[a-z]*r[a-z]*`)},
@@ -233,8 +233,8 @@ var runCommandRiskRules = []kernel.RiskRule{
 // RunCommand executes a shell command in a persistent terminal session
 // (working directory and environment preserved across calls), capturing
 // stdout/stderr with an explicit timeout.
-func (s *Shell) RunCommand() *kernel.Definition {
-	return &kernel.Definition{
+func (s *Shell) RunCommand() *tool.Definition {
+	return &tool.Definition{
 		Name:      "run_command",
 		RiskRules: runCommandRiskRules,
 		Description: "Execute a shell command in a PERSISTENT terminal session — the working directory and " +

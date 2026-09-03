@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 type writeFileArgs struct {
@@ -16,8 +16,8 @@ type writeFileArgs struct {
 
 // WriteFile creates a new file or fully overwrites an existing one, creating
 // parent directories as needed. Partial edits are delegated to edit_file.
-func (f *FileTools) WriteFile() *kernel.Definition {
-	return &kernel.Definition{
+func (f *FileTools) WriteFile() *tool.Definition {
+	return &tool.Definition{
 		Name: "write_file",
 		Description: "Create a new file or COMPLETELY OVERWRITE an existing one; parent directories are " +
 			"created automatically. Boundary: for partial modifications of an existing file use edit_file — " +

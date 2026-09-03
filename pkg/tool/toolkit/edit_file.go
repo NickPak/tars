@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 // editFileMaxBytes caps file size before write-back to avoid accidental blowups.
@@ -28,8 +28,8 @@ type editFileArgs struct {
 //
 // Matching is fail-safe: anchors must match character-for-character and be
 // unique, otherwise the file is left untouched and an error is returned.
-func (f *FileTools) EditFile() *kernel.Definition {
-	return &kernel.Definition{
+func (f *FileTools) EditFile() *tool.Definition {
+	return &tool.Definition{
 		Name: "edit_file",
 		Description: "Edit a file using content coordinates (line numbers are NOT accepted — they drift after " +
 			"every edit). Two modes: " +

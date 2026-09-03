@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"tars/pkg/skill"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/mcp"
 )
@@ -26,8 +26,8 @@ func NewDiscoverTool(skillRt skill.Provider, mcpRt mcp.Provider) *DiscoverTool {
 }
 
 // Definitions 实现 tool.Carrier。
-func (t *DiscoverTool) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{t.definition()}
+func (t *DiscoverTool) Definitions() []*tool.Definition {
+	return []*tool.Definition{t.definition()}
 }
 
 // Close 实现 tool.Carrier：无资源。
@@ -43,8 +43,8 @@ func (t *DiscoverTool) Close() error { return nil }
 //     定义一次性下发，防"工具未被定义"的幻觉调用）。
 //
 // 无命中明确返回"未找到"，触发兜底链路（改需求重试 / 核心工具自行实现）。
-func (t *DiscoverTool) definition() *kernel.Definition {
-	return &kernel.Definition{
+func (t *DiscoverTool) definition() *tool.Definition {
+	return &tool.Definition{
 		Name: "discover_tools",
 		Description: "Search available capabilities by natural-language need: installed skills and external " +
 			"MCP tool servers. Returns the top candidates matching the query. For a skill, call load_skill(name) " +

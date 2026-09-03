@@ -2,7 +2,7 @@ package toolkit
 
 import (
 	"fmt"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/sandbox"
 )
@@ -28,8 +28,8 @@ func NewFileTools(fs sandbox.FileSystem, archive ArchiveProvider) *FileTools {
 }
 
 // Definitions 实现 tool.Carrier：产出五个文件工具（字典序，注册顺序稳定）。
-func (f *FileTools) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{
+func (f *FileTools) Definitions() []*tool.Definition {
+	return []*tool.Definition{
 		f.EditFile(),
 		f.GlobFiles(),
 		f.GrepFiles(),

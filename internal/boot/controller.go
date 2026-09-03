@@ -8,7 +8,7 @@ import (
 	"sync"
 	"tars/pkg/ask"
 	"tars/pkg/skill"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 	"tars/pkg/tool/toolkit"
 	"time"
 
@@ -48,7 +48,7 @@ type Controller struct {
 	sandbox    *sandbox.NativeFs
 	prompt     *PromptCompose
 	gate       *guard.Gate
-	toolReg    *kernel.Registry
+	toolReg    *tool.Registry
 	mcpPv      *mcp.Runtime
 	agent      agent.Agent
 }
@@ -79,7 +79,7 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 
 	c.gate = guard.NewGate(askMgr, c.sessionMgr.RiskTable(), sink, c.sessionMgr.GetID())
 
-	c.toolReg = kernel.NewRegistry(c.gate)
+	c.toolReg = tool.NewRegistry(c.gate)
 
 	// sandbox 根在构造时固定（WorkspaceDir 已由 session.NewManager 解析），
 	// 不再经 provider 每次回调；零消息窗口内换目录走 Controller.SetWorkspaceDir。

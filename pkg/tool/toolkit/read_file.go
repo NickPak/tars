@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 type readFileArgs struct {
@@ -17,8 +17,8 @@ type readFileArgs struct {
 // ReadFile reads a text file with line-number prefixes and explicit range
 // notices, per the design plan: large files must be read in segments via
 // offset/limit, and truncation is always announced ("showing lines X-Y of N").
-func (f *FileTools) ReadFile() *kernel.Definition {
-	return &kernel.Definition{
+func (f *FileTools) ReadFile() *tool.Definition {
+	return &tool.Definition{
 		Name: "read_file",
 		Description: "Read the content of a text file. Every line is returned with a line-number prefix " +
 			"(`<number><TAB>content`) as a reading aid — the prefix is NOT part of the file and must never be " +

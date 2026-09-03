@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/ask"
 )
@@ -23,8 +23,8 @@ func NewAskTool(asker ask.AskProvider) *AskTool {
 }
 
 // Definitions 实现 tool.Carrier。
-func (t *AskTool) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{t.definition()}
+func (t *AskTool) Definitions() []*tool.Definition {
+	return []*tool.Definition{t.definition()}
 }
 
 // Close 实现 tool.Carrier：无资源。
@@ -33,8 +33,8 @@ func (t *AskTool) Close() error { return nil }
 // definition 返回 ask_user 工具：模型主动向用户发起结构化询问。
 // handler 阻塞等待答复（ReAct 循环随之暂停），直到用户提交、超时
 // （返回保守默认）或轮被取消。
-func (t *AskTool) definition() *kernel.Definition {
-	return &kernel.Definition{
+func (t *AskTool) definition() *tool.Definition {
+	return &tool.Definition{
 		Name: "ask_user",
 		Description: "Ask the user a STRUCTURED question to align before acting — the agent loop pauses until " +
 			"the user answers. Use when: requirements are ambiguous and a wrong guess wastes effort; multiple " +
@@ -78,7 +78,7 @@ func (t *AskTool) definition() *kernel.Definition {
 				return "", err
 			}
 
-			toolCallID := kernel.CallIDFromCtx(ctx)
+			toolCallID := tool.CallIDFromCtx(ctx)
 
 			if t.asker == nil {
 				return "", errors.New("ask_user requires an interactive session; none available")

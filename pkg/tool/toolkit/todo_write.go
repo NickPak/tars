@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/todo"
 )
@@ -33,8 +33,8 @@ func NewTodoTool(store todo.TodoProvider) *TodoTool {
 }
 
 // Definitions 实现 tool.Carrier。
-func (t *TodoTool) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{t.definition()}
+func (t *TodoTool) Definitions() []*tool.Definition {
+	return []*tool.Definition{t.definition()}
 }
 
 // Close 实现 tool.Carrier：无资源。
@@ -52,8 +52,8 @@ func (t *TodoTool) Close() error { return nil }
 //	→ 返回确认 → 下一次注入状态栏时渲染 todo 区
 //
 // 状态由本工具显式推进，框架不替模型改 TODO。状态栏 todo 区只是其投影。
-func (t *TodoTool) definition() *kernel.Definition {
-	return &kernel.Definition{
+func (t *TodoTool) definition() *tool.Definition {
+	return &tool.Definition{
 		Name: "todo_write",
 		Description: "Create or update the task TODO list. Pass the FULL list every time — this is an " +
 			"atomic overwrite, not a partial update. Use it when a task breaks down into multiple " +

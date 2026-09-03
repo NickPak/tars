@@ -5,17 +5,17 @@ import (
 	"tars/pkg/prompt"
 	"tars/pkg/schema"
 	"tars/pkg/skill"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 type PromptCompose struct {
 	baseMsg *schema.Message
-	toolReg *kernel.Registry
+	toolReg *tool.Registry
 	skillPv *skill.Runtime
 	mcpPv   *mcp.Runtime
 }
 
-func NewPromptCompose(toolReg *kernel.Registry, skillPv *skill.Runtime, mcpPv *mcp.Runtime) *PromptCompose {
+func NewPromptCompose(toolReg *tool.Registry, skillPv *skill.Runtime, mcpPv *mcp.Runtime) *PromptCompose {
 	return &PromptCompose{
 		baseMsg: nil,
 		toolReg: toolReg,

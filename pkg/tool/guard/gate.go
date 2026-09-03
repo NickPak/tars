@@ -3,7 +3,7 @@ package guard
 import (
 	"context"
 	"encoding/json"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/ask"
 	"tars/pkg/event"
@@ -22,7 +22,7 @@ type Gate struct {
 	sessionID string
 }
 
-var _ kernel.PolicyProvider = (*Gate)(nil)
+var _ tool.PolicyProvider = (*Gate)(nil)
 
 // NewGate 创建权限门。risks 为 nil 时内部自建（不跨轮共享）；
 // sink/sessionID 用于审批请求的事件关联。
@@ -45,13 +45,13 @@ func (g *Gate) Shutdown() error {
 // 常允许命中直接放行；无用户通道（非交互）默认拒绝；
 // 用户答复 "allow_always" 记入常允许表并视为放行。
 // 拒绝时 Output 作为正常工具结果回填（理由回模型，据此调整方案）。
-func (g *Gate) Check(ctx context.Context, def *kernel.Definition, call schema.ToolCall) (*kernel.Decision, error) {
+func (g *Gate) Check(ctx context.Context, def *tool.Definition, call schema.ToolCall) (*tool.Decision, error) {
 	req := Classify(def, call)
 	if req == nil {
-		return &kernel.Decision{Allow: true}, nil
+		return &tool.Decision{Allow: true}, nil
 	}
 	if g.risks.Allowed(req.RiskKey) {
-		return &kernel.Decision{Allow: true}, nil
+		return &tool.Decision{Allow: true}, nil
 	}
 	if g.approver == nil {
 		return deny("approval timed out; denied by default"), nil
@@ -65,7 +65,7 @@ func (g *Gate) Check(ctx context.Context, def *kernel.Definition, call schema.To
 		ans.Value = "allow"
 	}
 	if ans.Value == "allow" {
-		return &kernel.Decision{Allow: true}, nil
+		return &tool.Decision{Allow: true}, nil
 	}
 	switch {
 	case ans.Reason != "":
@@ -78,7 +78,7 @@ func (g *Gate) Check(ctx context.Context, def *kernel.Definition, call schema.To
 }
 
 // deny 构造拒绝裁决（approved:false + 理由，与历史行为一致）。
-func deny(reason string) *kernel.Decision {
+func deny(reason string) *tool.Decision {
 	b, _ := json.Marshal(map[string]any{"approved": false, "reason": reason})
-	return &kernel.Decision{Allow: false, Output: string(b)}
+	return &tool.Decision{Allow: false, Output: string(b)}
 }

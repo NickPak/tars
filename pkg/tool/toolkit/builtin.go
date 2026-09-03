@@ -2,7 +2,7 @@ package toolkit
 
 import (
 	"tars/pkg/skill"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/ask"
 	"tars/pkg/mcp"
@@ -10,7 +10,7 @@ import (
 	"tars/pkg/todo"
 )
 
-func RegisterBuiltinTools(registry *kernel.Registry, sandbox sandbox.SandboxProvider, todo todo.TodoProvider, ask ask.AskProvider, skill skill.Provider, mcp mcp.Provider, archive ArchiveProvider) {
+func RegisterBuiltinTools(registry *tool.Registry, sandbox sandbox.SandboxProvider, todo todo.TodoProvider, ask ask.AskProvider, skill skill.Provider, mcp mcp.Provider, archive ArchiveProvider) {
 	registry.Register(NewAskTool(ask))
 	registry.Register(NewCodeInterpreter(sandbox, archive))
 	registry.Register(NewDiscoverTool(skill, mcp))

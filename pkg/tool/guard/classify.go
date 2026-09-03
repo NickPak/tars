@@ -8,7 +8,7 @@ package guard
 
 import (
 	"encoding/json"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 
 	"tars/pkg/ask"
 	"tars/pkg/schema"
@@ -22,8 +22,8 @@ const summaryMaxLen = 300
 // 声明优先：Definition.Risk 为 medium/high 时按整体级别拦截；否则回落到
 // Definition.RiskRules 的逐条模式匹配。参数非法（JSON 解不开/目标字段
 // 缺失或为空）时不按危险拦——交给工具自身报参数错误。
-func Classify(def *kernel.Definition, call schema.ToolCall) *ask.ApprovalRequest {
-	if def.Risk == kernel.RiskLevelMedium || def.Risk == kernel.RiskLevelHigh {
+func Classify(def *tool.Definition, call schema.ToolCall) *ask.ApprovalRequest {
+	if def.Risk == tool.RiskLevelMedium || def.Risk == tool.RiskLevelHigh {
 		return byLevel(call, def.Risk)
 	}
 	if len(def.RiskRules) == 0 {
@@ -57,7 +57,7 @@ func Classify(def *kernel.Definition, call schema.ToolCall) *ask.ApprovalRequest
 // byLevel 按声明的风险级别生成审批请求（MCP 工具用）：审批摘要为参数
 // 截断展示。RiskKey 不含参数——"常允许"按工具名粒度记忆（MCP 工具的
 // 参数各异，按参数记忆会导致每次调用都重新审批）。
-func byLevel(call schema.ToolCall, level kernel.RiskLevel) *ask.ApprovalRequest {
+func byLevel(call schema.ToolCall, level tool.RiskLevel) *ask.ApprovalRequest {
 	return &ask.ApprovalRequest{
 		ToolCallID:     call.ID,
 		ToolName:       call.Name,

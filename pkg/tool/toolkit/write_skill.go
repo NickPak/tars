@@ -9,13 +9,13 @@ import (
 	"strings"
 
 	"tars/pkg/skill"
-	"tars/pkg/tool/kernel"
+	"tars/pkg/tool"
 )
 
 // writeSkillRiskRules 钉住 write_skill 的危险声明：任何非空 content 的
 // 调用都需审批——技能写入影响后续所有会话的 Agent 行为（供应链写入）。
 // 审批摘要恰好展示技能正文前 300 字符，供用户预判内容。
-var writeSkillRiskRules = []kernel.RiskRule{
+var writeSkillRiskRules = []tool.RiskRule{
 	{ID: "write", Reason: "创建/覆盖技能：写入技能库，影响后续所有会话",
 		ArgsKey: "content", Pattern: regexp.MustCompile(`(?s).+`)},
 }
@@ -33,8 +33,8 @@ func NewSkillWriterTool(w skill.Provider) *SkillWriterTool {
 }
 
 // Definitions 实现 tool.Carrier。
-func (t *SkillWriterTool) Definitions() []*kernel.Definition {
-	return []*kernel.Definition{t.definition()}
+func (t *SkillWriterTool) Definitions() []*tool.Definition {
+	return []*tool.Definition{t.definition()}
 }
 
 // Close 实现 tool.Carrier：无资源。
@@ -49,8 +49,8 @@ type writeSkillArgs struct {
 }
 
 // definition 返回 write_skill 工具定义。
-func (t *SkillWriterTool) definition() *kernel.Definition {
-	return &kernel.Definition{
+func (t *SkillWriterTool) definition() *tool.Definition {
+	return &tool.Definition{
 		Name: "write_skill",
 		Description: "Create a new skill or overwrite an existing one in the skill library. Use this when " +
 			"the current session taught you a REUSABLE procedure worth persisting for future tasks (a " +
