@@ -23,20 +23,29 @@ type FileEntry struct {
 // with very deep or large directory trees.
 const maxTreeDepth = 5
 
-// ListWorkspaceFiles returns a recursive file tree of the given session's
-// workspace directory. The workspace dir is per-session: {workDir}/sessions/{id}/workspace/.
-// If the directory doesn't exist yet (new session), an empty slice is returned.
-func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error) {
-	sess, ok := s.app.FindSession(sessionID)
+// workspaceDirOf 解析会话所属项目的生效工作区（项目属性，多会话共享）。
+func (s *AgentService) workspaceDirOf(sessionID string) (string, error) {
+	ctrl, ok := s.app.FindController(sessionID)
 	if !ok {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+	return ctrl.GetSessionMgr().GetWorkspaceDir(), nil
+}
+
+// ListWorkspaceFiles returns a recursive file tree of the given session's
+// workspace directory（工作区是项目级：同项目多会话共享同一目录）。
+// If the directory doesn't exist yet (new project), an empty slice is returned.
+func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error) {
+	wsDir, err := s.workspaceDirOf(sessionID)
+	if err != nil {
+		return nil, err
 	}
 
-	if _, err := os.Stat(sess.WorkspaceDir); os.IsNotExist(err) {
+	if _, err := os.Stat(wsDir); os.IsNotExist(err) {
 		return []FileEntry{}, nil
 	}
 
-	entries, err := scanDir(sess.WorkspaceDir, "", 0)
+	entries, err := scanDir(wsDir, "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("scan workspace: %w", err)
 	}
@@ -46,12 +55,12 @@ func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error)
 // OpenFile opens a file with the OS default application (not hardcoded to any
 // specific editor). The path should be relative to the session's workspace.
 func (s *AgentService) OpenFile(sessionID string, relPath string) error {
-	sess, ok := s.app.FindSession(sessionID)
-	if !ok {
-		return fmt.Errorf("session not found: %s", sessionID)
+	wsDir, err := s.workspaceDirOf(sessionID)
+	if err != nil {
+		return err
 	}
 
-	fullPath := filepath.Join(sess.WorkspaceDir, relPath)
+	fullPath := filepath.Join(wsDir, relPath)
 
 	if _, err := os.Stat(fullPath); err != nil {
 		return fmt.Errorf("path not found: %s", fullPath)
@@ -64,28 +73,41 @@ func (s *AgentService) OpenFile(sessionID string, relPath string) error {
 // directory. On Windows this is Explorer, on macOS Finder, on Linux the
 // default file manager via xdg-open.
 func (s *AgentService) RevealInExplorer(sessionID string) error {
-	sess, ok := s.app.FindSession(sessionID)
-	if !ok {
-		return fmt.Errorf("session not found: %s", sessionID)
+	wsDir, err := s.workspaceDirOf(sessionID)
+	if err != nil {
+		return err
 	}
 
-	if _, err := os.Stat(sess.WorkspaceDir); err != nil {
-		return fmt.Errorf("workspace not found: %s", sess.WorkspaceDir)
+	if _, err := os.Stat(wsDir); err != nil {
+		return fmt.Errorf("workspace not found: %s", wsDir)
 	}
 
-	return openFolderInExplorer(sess.WorkspaceDir)
+	return openFolderInExplorer(wsDir)
+}
+
+// RevealProjectWorkspace opens the OS file manager at the project's workspace
+// directory（项目级入口：零会话项目没有 Controller，直接经项目管理器解析）。
+func (s *AgentService) RevealProjectWorkspace(projectID string) error {
+	wsDir, err := s.app.GetProjectWorkspaceDir(projectID)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(wsDir); err != nil {
+		return fmt.Errorf("workspace not found: %s", wsDir)
+	}
+	return openFolderInExplorer(wsDir)
 }
 
 // RevealFileInExplorer reveals a specific file in the OS file manager
 // (selects the file in Explorer/Finder). The path should be relative to the
 // session's workspace.
 func (s *AgentService) RevealFileInExplorer(sessionID string, relPath string) error {
-	sess, ok := s.app.FindSession(sessionID)
-	if !ok {
-		return fmt.Errorf("session not found: %s", sessionID)
+	wsDir, err := s.workspaceDirOf(sessionID)
+	if err != nil {
+		return err
 	}
 
-	fullPath := filepath.Join(sess.WorkspaceDir, relPath)
+	fullPath := filepath.Join(wsDir, relPath)
 
 	if _, err := os.Stat(fullPath); err != nil {
 		return fmt.Errorf("path not found: %s", fullPath)

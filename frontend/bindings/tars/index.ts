@@ -12,6 +12,7 @@ export {
     ModelChangedEvent,
     ModelInfo,
     ModelPrice,
+    ProjectCreated,
     SessionStats,
     SubmitResult,
     WorkspaceInfo

@@ -3,27 +3,26 @@ package session
 import "path/filepath"
 
 const (
-	SessionDir     = "sessions"
-	DataDir        = ".data"
-	WorkspaceDir   = "workspaces"
-	MetaFile       = "meta.json"
-	MessageFile    = "messages.jsonl"
-	CompactionFile = "compaction.json"
-	ArchiveDir     = "archive"
+	// SessionsDirName 是项目目录下的会话子目录名（项目 = 工作区拥有者，
+	// 会话嵌套其下：projects/<pid>/sessions/<sid>/）。
+	SessionsDirName = "sessions"
+	DataDir         = ".data"
+	MetaFile        = "meta.json"
+	MessageFile     = "messages.jsonl"
+	CompactionFile  = "compaction.json"
+	ArchiveDir      = "archive"
 )
 
-func GetBaseDir(workDir string) string {
-	return filepath.Join(workDir, SessionDir)
+// 以下路径助手一律以项目目录为锚（项目级路径在 internal/project 定义）。
+
+func GetSessionsDir(projectDir string) string {
+	return filepath.Join(projectDir, SessionsDirName)
 }
 
-func GetSessionDir(workDir string, id string) string {
-	return filepath.Join(GetBaseDir(workDir), id)
+func GetSessionDir(projectDir, sessionID string) string {
+	return filepath.Join(GetSessionsDir(projectDir), sessionID)
 }
 
-func GetDataDir(workDir string, id string) string {
-	return filepath.Join(GetSessionDir(workDir, id), DataDir)
-}
-
-func GetWorkspaceDir(workDir string, id string) string {
-	return filepath.Join(GetSessionDir(workDir, id), WorkspaceDir)
+func GetDataDirFromSessionDir(sessionDir string) string {
+	return filepath.Join(sessionDir, DataDir)
 }

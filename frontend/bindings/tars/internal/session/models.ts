@@ -15,10 +15,10 @@ import * as schema$0 from "../../pkg/schema/models.js";
  */
 export class Data {
     "id": string;
+    "projectId": string;
     "title": string;
     "createdAt": number;
     "updatedAt": number;
-    "workspaceDir": string;
     "loadedSkills": { [_ in string]?: {} };
     "loadedTools": { [_ in string]?: {} };
     "messages": (schema$0.Message | null)[];
@@ -28,6 +28,9 @@ export class Data {
         if (!("id" in $$source)) {
             this["id"] = "";
         }
+        if (!("projectId" in $$source)) {
+            this["projectId"] = "";
+        }
         if (!("title" in $$source)) {
             this["title"] = "";
         }
@@ -36,9 +39,6 @@ export class Data {
         }
         if (!("updatedAt" in $$source)) {
             this["updatedAt"] = 0;
-        }
-        if (!("workspaceDir" in $$source)) {
-            this["workspaceDir"] = "";
         }
         if (!("loadedSkills" in $$source)) {
             this["loadedSkills"] = {};

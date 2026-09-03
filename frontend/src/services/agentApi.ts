@@ -11,7 +11,7 @@ import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
 import type * as mcpModels from "../../bindings/tars/pkg/mcp/models";
-import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus } from "../types";
+import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus, Project, ProjectCreated } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, ApprovalEvent, CompressionDoneEvent, CompressionFailedEvent } from "../types";
@@ -103,23 +103,45 @@ function toWireConfig(cfg: AppConfig): configModels.AppConfig {
 }
 
 export const agentApi = {
-  createSession: async (): Promise<Session> => {
-    const sess = await AgentService.CreateSession();
+  /** 创建新项目（含一个默认会话） */
+  createProject: async (): Promise<ProjectCreated> => {
+    const p = await AgentService.CreateProject();
+    if (!p || !p.session) throw new Error("创建项目失败：后端返回空");
+    return p as ProjectCreated;
+  },
+
+  /** 列出全部项目（含各自会话） */
+  listProjects: async (): Promise<Project[]> =>
+    ((await AgentService.ListProjects()) ?? []) as Project[],
+
+  /** 删除项目（级联其下全部会话） */
+  deleteProject: (id: string): Promise<void> =>
+    AgentService.DeleteProject(id),
+
+  /** 显式重命名项目（此后不再跟随会话自动命名） */
+  renameProject: (id: string, title: string): Promise<void> =>
+    AgentService.RenameProject(id, title),
+
+  /** 在系统文件管理器中打开项目的工作区目录 */
+  revealProjectWorkspace: (projectId: string): Promise<void> =>
+    AgentService.RevealProjectWorkspace(projectId),
+
+  /** 在项目中新建会话（Tab，与项目共用工作区） */
+  createSession: async (projectId: string): Promise<Session> => {
+    const sess = await AgentService.CreateSession(projectId);
     if (!sess) throw new Error("创建会话失败：后端返回空");
     return sess as Session;
   },
 
-  listSessions: async (): Promise<Session[]> =>
-    (await AgentService.ListSessions()) as Session[],
+  /** 删除项目内的单个会话（Tab 关闭） */
+  deleteSession: (id: string): Promise<void> =>
+    AgentService.DeleteSession(id),
 
   getSession: async (id: string): Promise<Session> => {
     const sess = await AgentService.GetSession(id);
     if (!sess) throw new Error(`会话不存在：${id}`);
     return sess as Session;
   },
-
-  deleteSession: (id: string): Promise<void> =>
-    AgentService.DeleteSession(id),
 
   renameSession: (id: string, title: string): Promise<void> =>
     AgentService.RenameSession(id, title),

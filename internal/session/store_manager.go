@@ -17,29 +17,27 @@ var (
 	instance *StoreManager
 )
 
-func InitStoreManager(workdir string) {
-	instance = NewStoreManager(workdir)
+func InitStoreManager() {
+	instance = NewStoreManager()
 }
 
 func GetStoreManager() *StoreManager {
 	return instance
 }
 
-type StoreManager struct {
-	workDir string
+// StoreManager 是会话级文件的磁盘权威。全部方法以目录路径为参
+// （项目级路径由 internal/project 解析后传入），自身无状态——
+// "目录即真相"：列表靠扫描，无注册表。
+type StoreManager struct{}
+
+func NewStoreManager() *StoreManager {
+	return &StoreManager{}
 }
 
-func NewStoreManager(workDir string) *StoreManager {
-	return &StoreManager{workDir: workDir}
-}
-
-func (s *StoreManager) GetWorkDir() string {
-	return s.workDir
-}
-
-// ListSession 按创建时间降序列出磁盘上的会话摘要（跳过 meta 损坏/缺失的目录）。
-func (s *StoreManager) ListSession() ([]*Metadata, error) {
-	baseDir := GetBaseDir(s.workDir)
+// ListSessions 按创建时间降序列出一个项目下的会话摘要（扫描
+// <projectDir>/sessions/，跳过 meta 损坏/缺失的目录）。
+func (s *StoreManager) ListSessions(projectDir string) ([]*Metadata, error) {
+	baseDir := GetSessionsDir(projectDir)
 
 	entries, err := os.ReadDir(baseDir)
 	if err != nil {
@@ -54,8 +52,7 @@ func (s *StoreManager) ListSession() ([]*Metadata, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		sessionID := entry.Name()
-		meta, err := s.LoadMetadata(sessionID)
+		meta, err := s.LoadMetadata(GetSessionDir(projectDir, entry.Name()))
 		if err != nil || meta == nil {
 			continue // skip corrupt / missing meta
 		}
@@ -68,23 +65,23 @@ func (s *StoreManager) ListSession() ([]*Metadata, error) {
 	return summaries, nil
 }
 
-// LoadAllSessionData 遍历磁盘会话存储区，加载每个会话的 meta 与消息，
-// 返回恢复好的 Info 列表。单个会话损坏只跳过（Warn 日志），
-// 不影响其余会话。
-func (s *StoreManager) LoadAllSessionData() ([]*Data, error) {
-	summaries, err := s.ListSession()
+// LoadProjectSessionData 加载一个项目下全部会话的 meta 与消息，返回
+// 恢复好的 Data 列表。单个会话损坏只跳过（Warn 日志），不影响其余会话。
+func (s *StoreManager) LoadProjectSessionData(projectDir string) ([]*Data, error) {
+	summaries, err := s.ListSessions(projectDir)
 	if err != nil {
 		return nil, err
 	}
 
 	infos := make([]*Data, 0, len(summaries))
 	for _, sum := range summaries {
-		msgs, err := s.LoadMessages(sum.ID)
+		sessionDir := GetSessionDir(projectDir, sum.ID)
+		msgs, err := s.LoadMessages(sessionDir)
 		if err != nil {
 			slog.Warn("Failed to load session messages", "id", sum.ID, "error", err)
 			continue
 		}
-		comp, err := s.LoadCompaction(sum.ID)
+		comp, err := s.LoadCompaction(sessionDir)
 		if err != nil {
 			// 压缩态损坏回退恒等投影（03 篇安全降级），不影响会话恢复。
 			slog.Warn("Failed to load compaction, fallback to identity projection", "id", sum.ID, "error", err)
@@ -95,18 +92,17 @@ func (s *StoreManager) LoadAllSessionData() ([]*Data, error) {
 			Compaction: comp,
 		})
 	}
-	slog.Info("Loaded sessions from store", "count", len(infos))
 	return infos, nil
 }
 
-func (s *StoreManager) LoadMessages(sessionID string) ([]*schema.Message, error) {
-	path := filepath.Join(GetDataDir(s.workDir, sessionID), MessageFile)
+func (s *StoreManager) LoadMessages(sessionDir string) ([]*schema.Message, error) {
+	path := filepath.Join(GetDataDirFromSessionDir(sessionDir), MessageFile)
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("session store: read messages.jsonl for %s: %w", sessionID, err)
+		return nil, fmt.Errorf("session store: read messages.jsonl: %w", err)
 	}
 	defer f.Close()
 
@@ -119,7 +115,7 @@ func (s *StoreManager) LoadMessages(sessionID string) ([]*schema.Message, error)
 	for dec.More() {
 		m := &schema.Message{}
 		if err := dec.Decode(&m); err != nil {
-			return msgs, fmt.Errorf("session store: decode message in %s: %w", sessionID, err)
+			return msgs, fmt.Errorf("session store: decode message: %w", err)
 		}
 		if idx, ok := seen[m.ID]; ok {
 			msgs[idx] = m
@@ -131,22 +127,23 @@ func (s *StoreManager) LoadMessages(sessionID string) ([]*schema.Message, error)
 	return msgs, nil
 }
 
-// CreateSession 创建新会话：生成 ID、meta 落盘（存储目录随首次写入惰性
-// 创建），返回就绪的 Data。工作目录的创建在 session.Manager.Startup。
-func (s *StoreManager) CreateSession() (*Data, error) {
+// CreateSession 在项目中创建新会话：生成 ID、meta 落盘（存储目录随首次
+// 写入惰性创建），返回就绪的 Data 与其会话目录。
+func (s *StoreManager) CreateSession(projectDir, projectID string) (*Data, string, error) {
 	id := uuid.NewString()
-	data := NewData(id)
+	sessionDir := GetSessionDir(projectDir, id)
+	data := NewData(id, projectID)
 
-	if err := s.SaveMetadata(id, data.Metadata); err != nil {
-		return nil, err
+	if err := s.SaveMetadata(sessionDir, data.Metadata); err != nil {
+		return nil, "", err
 	}
-	return data, nil
+	return data, sessionDir, nil
 }
 
 // DeleteSession 删除会话的磁盘数据。目录不存在视为已删除，直接成功；
 // 删除失败重试 5 次（Windows 偶发文件占用）。
-func (s *StoreManager) DeleteSession(id string) error {
-	dir := GetSessionDir(s.workDir, id)
+func (s *StoreManager) DeleteSession(projectDir, sessionID string) error {
+	dir := GetSessionDir(projectDir, sessionID)
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return nil
@@ -161,20 +158,20 @@ func (s *StoreManager) DeleteSession(id string) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("session store: delete session %s: %w", id, lastErr)
+	return fmt.Errorf("session store: delete session %s: %w", sessionID, lastErr)
 }
 
-func (s *StoreManager) SaveMetadata(sessionID string, meta *Metadata) error {
-	dataDir := GetDataDir(s.workDir, sessionID)
+func (s *StoreManager) SaveMetadata(sessionDir string, meta *Metadata) error {
+	dataDir := GetDataDirFromSessionDir(sessionDir)
 	err := os.MkdirAll(dataDir, 0755)
 	if err != nil {
-		return fmt.Errorf("session store: create data dir for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: create data dir: %w", err)
 	}
 
 	path := filepath.Join(dataDir, MetaFile)
 	f, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("session store: write meta.json for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: write meta.json: %w", err)
 	}
 	defer f.Close()
 
@@ -182,57 +179,43 @@ func (s *StoreManager) SaveMetadata(sessionID string, meta *Metadata) error {
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(meta); err != nil {
-		return fmt.Errorf("session store: encode meta for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: encode meta: %w", err)
 	}
 	return nil
 }
 
-func (s *StoreManager) LoadMetadata(sessionID string) (*Metadata, error) {
-	path := filepath.Join(GetDataDir(s.workDir, sessionID), MetaFile)
+func (s *StoreManager) LoadMetadata(sessionDir string) (*Metadata, error) {
+	path := filepath.Join(GetDataDirFromSessionDir(sessionDir), MetaFile)
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("session store: read meta.json for %s: %w", sessionID, err)
+		return nil, fmt.Errorf("session store: read meta.json: %w", err)
 	}
 	defer f.Close()
 
-	meta := NewMetadata(sessionID)
+	meta := &Metadata{}
 	err = json.NewDecoder(f).Decode(&meta)
 	if err != nil {
-		return nil, fmt.Errorf("session store: decode meta for %s: %w", sessionID, err)
+		return nil, fmt.Errorf("session store: decode meta: %w", err)
 	}
 	return meta, nil
 }
 
-// TouchMetadata 刷新元数据的更新时间（无 metadata 时补一条默认的）。
-func (s *StoreManager) TouchMetadata(sessionID string) error {
-	meta, err := s.LoadMetadata(sessionID)
-	if err != nil {
-		return err
-	}
-	if meta == nil {
-		meta = NewMetadata(sessionID)
-	} else {
-		meta.UpdatedAt = time.Now().UnixMilli()
-	}
-	return s.SaveMetadata(sessionID, meta)
-}
-
 // AppendSaveMessage 追加快照：同一消息 ID 可多次出现（流式过程中的
 // assistant 快照），读取时按 ID 去重取最后一条。
-func (s *StoreManager) AppendSaveMessage(sessionID string, msg ...*schema.Message) error {
-	dataDir := GetDataDir(s.workDir, sessionID)
+func (s *StoreManager) AppendSaveMessage(sessionDir string, msg ...*schema.Message) error {
+	dataDir := GetDataDirFromSessionDir(sessionDir)
 	err := os.MkdirAll(dataDir, 0755)
 	if err != nil {
-		return fmt.Errorf("session store: create data dir for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: create data dir: %w", err)
 	}
 
 	path := filepath.Join(dataDir, MessageFile)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("session store: open messages.jsonl for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: open messages.jsonl: %w", err)
 	}
 	defer f.Close()
 
@@ -241,7 +224,7 @@ func (s *StoreManager) AppendSaveMessage(sessionID string, msg ...*schema.Messag
 
 	for i := range msg {
 		if err := enc.Encode(msg[i]); err != nil {
-			return fmt.Errorf("session store: encode message for %s: %w", sessionID, err)
+			return fmt.Errorf("session store: encode message: %w", err)
 		}
 	}
 	return nil
@@ -250,57 +233,57 @@ func (s *StoreManager) AppendSaveMessage(sessionID string, msg ...*schema.Messag
 // --- 压缩态持久化（plan/context 03 篇：compaction.json + archive/） ---
 
 // SaveCompaction 原子写压缩态（tmp+rename，03 篇 §3：崩溃无中间态）。
-func (s *StoreManager) SaveCompaction(sessionID string, c *CompactionData) error {
-	dataDir := GetDataDir(s.workDir, sessionID)
+func (s *StoreManager) SaveCompaction(sessionDir string, c *CompactionData) error {
+	dataDir := GetDataDirFromSessionDir(sessionDir)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return fmt.Errorf("session store: create data dir for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: create data dir: %w", err)
 	}
 	path := filepath.Join(dataDir, CompactionFile)
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
-		return fmt.Errorf("session store: write compaction for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: write compaction: %w", err)
 	}
 	enc := json.NewEncoder(f)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(c); err != nil {
 		f.Close()
-		return fmt.Errorf("session store: encode compaction for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: encode compaction: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("session store: close compaction for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: close compaction: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("session store: rename compaction for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: rename compaction: %w", err)
 	}
 	return nil
 }
 
 // LoadCompaction 读取压缩态：文件不存在返回 (nil, nil)；
 // 损坏返回 (nil, error)——调用方回退恒等投影（03 篇安全降级）。
-func (s *StoreManager) LoadCompaction(sessionID string) (*CompactionData, error) {
-	path := filepath.Join(GetDataDir(s.workDir, sessionID), CompactionFile)
+func (s *StoreManager) LoadCompaction(sessionDir string) (*CompactionData, error) {
+	path := filepath.Join(GetDataDirFromSessionDir(sessionDir), CompactionFile)
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("session store: read compaction for %s: %w", sessionID, err)
+		return nil, fmt.Errorf("session store: read compaction.json: %w", err)
 	}
 	defer f.Close()
 	c := &CompactionData{}
 	if err := json.NewDecoder(f).Decode(c); err != nil {
-		return nil, fmt.Errorf("session store: decode compaction for %s: %w", sessionID, err)
+		return nil, fmt.Errorf("session store: decode compaction: %w", err)
 	}
 	return c, nil
 }
 
 // DeleteCompaction 删除压缩态（作废）；不存在视为已删除。
-func (s *StoreManager) DeleteCompaction(sessionID string) error {
-	err := os.Remove(filepath.Join(GetDataDir(s.workDir, sessionID), CompactionFile))
+func (s *StoreManager) DeleteCompaction(sessionDir string) error {
+	err := os.Remove(filepath.Join(GetDataDirFromSessionDir(sessionDir), CompactionFile))
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("session store: delete compaction for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: delete compaction: %w", err)
 	}
 	return nil
 }
@@ -308,14 +291,14 @@ func (s *StoreManager) DeleteCompaction(sessionID string) error {
 // WriteArchive 惰性创建归档目录并写入归档文件（data/archive/<rangeLabel>.md，
 // 03 篇 §2），返回文件路径。存储类目录均由 StoreManager 写路径自闭合，
 // 外部调用者无需关心创建。
-func (s *StoreManager) WriteArchive(sessionID, rangeLabel string, content []byte) (string, error) {
-	dir := filepath.Join(GetDataDir(s.workDir, sessionID), ArchiveDir)
+func (s *StoreManager) WriteArchive(sessionDir, rangeLabel string, content []byte) (string, error) {
+	dir := filepath.Join(GetDataDirFromSessionDir(sessionDir), ArchiveDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", fmt.Errorf("session store: create archive dir for %s: %w", sessionID, err)
+		return "", fmt.Errorf("session store: create archive dir: %w", err)
 	}
 	path := filepath.Join(dir, rangeLabel+".md")
 	if err := os.WriteFile(path, content, 0644); err != nil {
-		return "", fmt.Errorf("session store: write archive for %s: %w", sessionID, err)
+		return "", fmt.Errorf("session store: write archive: %w", err)
 	}
 	return path, nil
 }
@@ -323,27 +306,27 @@ func (s *StoreManager) WriteArchive(sessionID, rangeLabel string, content []byte
 // ReadArchive 读取归档原文（data/archive/<name>）。
 // name 经 filepath.Base 归一，无论调用方传什么都不可能穿越出归档目录
 // （纵深防御：调用侧 toolkit 已做白名单校验，此处再兜一层结构性保证）。
-func (s *StoreManager) ReadArchive(sessionID, name string) ([]byte, error) {
-	path := filepath.Join(GetDataDir(s.workDir, sessionID), ArchiveDir, filepath.Base(name))
+func (s *StoreManager) ReadArchive(sessionDir, name string) ([]byte, error) {
+	path := filepath.Join(GetDataDirFromSessionDir(sessionDir), ArchiveDir, filepath.Base(name))
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("session store: read archive for %s: %w", sessionID, err)
+		return nil, fmt.Errorf("session store: read archive: %w", err)
 	}
 	return data, nil
 }
 
 // RewriteMessages 全量覆写消息文件（重试/删除/编辑等截断操作后）。
-func (s *StoreManager) RewriteMessages(sessionID string, msgs []*schema.Message) error {
-	dataDir := GetDataDir(s.workDir, sessionID)
+func (s *StoreManager) RewriteMessages(sessionDir string, msgs []*schema.Message) error {
+	dataDir := GetDataDirFromSessionDir(sessionDir)
 	err := os.MkdirAll(dataDir, 0755)
 	if err != nil {
-		return fmt.Errorf("session store: create data dir for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: create data dir: %w", err)
 	}
 
 	path := filepath.Join(dataDir, MessageFile)
 	f, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("session store: rewrite messages.jsonl for %s: %w", sessionID, err)
+		return fmt.Errorf("session store: rewrite messages.jsonl: %w", err)
 	}
 	defer f.Close()
 
@@ -351,7 +334,7 @@ func (s *StoreManager) RewriteMessages(sessionID string, msgs []*schema.Message)
 	enc.SetEscapeHTML(false)
 	for _, msg := range msgs {
 		if err := enc.Encode(msg); err != nil {
-			return fmt.Errorf("session store: encode message for %s: %w", sessionID, err)
+			return fmt.Errorf("session store: encode message: %w", err)
 		}
 	}
 	return nil

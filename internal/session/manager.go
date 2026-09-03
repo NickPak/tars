@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -20,9 +19,21 @@ import (
 // 以及 Info 的创建与恢复。会话的持久化细节全部封装在本包，
 // 外部（boot）只面对 Info 与本类型的少量方法。
 // Store 为普通对象，由装配层（boot）创建并注入。
+// WorkspaceSource 是项目侧工作区的读取面（project.Project 天然满足，
+// 结构式无 import）：每次调用现解析——工作区换绑（项目级）后同一
+// 实例立即反映新值，同项目的多个会话 Manager 由此共享同一工作区。
+type WorkspaceSource interface {
+	GetWorkspaceDir() string
+}
+
 type Manager struct {
 	// 会话的数据
 	data *Data
+	// dir 是会话目录（projects/<pid>/sessions/<sid>），构造时定死；
+	// 持久化调用一律以它为锚。
+	dir string
+	// ws 是工作区来源（项目）。
+	ws WorkspaceSource
 
 	// risks 是"本会话常允许"的危险操作常允许表（内存态，重启清空），
 	// 由 guard.Gate 消费；会话级载体，跨轮共享。
@@ -59,20 +70,14 @@ const (
 	DefaultMaxEntries     = 120
 )
 
-// NewManager 创建会话存储；workDir 为应用工作目录根，sink 注入每个
-// 创建/恢复出的会话（消息追加时发射事件），nil 时静默。
-//
-// WorkspaceDir 在此解析完毕（旧 meta 缺失时回填默认值并持久化）：
-// Controller 紧接着用 GetWorkspaceDir() 构造 sandbox，根必须在那时就绪。
-func NewManager(data *Data, sink event.Sink, llmMgr *llm.Manager, threshold float64, keepTurns int, minBatch int, maxFailures int) *Manager {
-	if data.WorkspaceDir == "" {
-		data.WorkspaceDir = GetWorkspaceDir(instance.GetWorkDir(), data.ID)
-		if err := instance.SaveMetadata(data.ID, data.Metadata); err != nil {
-			slog.Warn("Failed to persist workspaceDir backfill", "id", data.ID, "error", err)
-		}
-	}
+// NewManager 创建会话存储：dir 为会话目录（持久化锚点），ws 为项目侧
+// 工作区来源（GetWorkspaceDir 现解析）；sink 注入会话（消息追加时发射
+// 事件），nil 时静默。
+func NewManager(data *Data, dir string, ws WorkspaceSource, sink event.Sink, llmMgr *llm.Manager, threshold float64, keepTurns int, minBatch int, maxFailures int) *Manager {
 	return &Manager{
 		data:           data,
+		dir:            dir,
+		ws:             ws,
 		risks:          guard.NewRiskTable(),
 		sink:           sink,
 		llmMgr:         llmMgr,
@@ -87,19 +92,9 @@ func NewManager(data *Data, sink event.Sink, llmMgr *llm.Manager, threshold floa
 	}
 }
 
-// Startup 会话级启动钩子：仅负责工作目录的磁盘创建（路径回填已在
-// NewManager 完成）。策略：存储类目录由 StoreManager 写路径惰性自闭合；
-// 工作目录在初始创建与恢复加载时主动创建一次——Controller.Startup
-// 在这两个生命周期点都会调到这里。
+// Startup 会话级启动钩子（工作区的磁盘创建是项目职责，见
+// project.Manager.Create / Project.GetWorkspaceDir）。
 func (s *Manager) Startup() error {
-	def := GetWorkspaceDir(instance.GetWorkDir(), s.data.ID)
-	// 仅默认位置自动创建——自定义目录（SetWorkspaceDir 指向的用户项目）
-	// 不自动创建，避免掩盖目录已被删除的事实。
-	if s.data.WorkspaceDir == def {
-		if err := os.MkdirAll(def, 0755); err != nil {
-			return fmt.Errorf("session: create workspace dir for %s: %w", s.data.ID, err)
-		}
-	}
 	return nil
 }
 
@@ -118,47 +113,18 @@ func (s *Manager) GetData() *Data {
 	return s.data
 }
 
-func (s *Manager) GetBaseDir() string {
-	return GetBaseDir(instance.GetWorkDir())
-}
-
 func (s *Manager) GetSessionDir() string {
-	return GetSessionDir(instance.GetWorkDir(), s.data.ID)
+	return s.dir
 }
 
 func (s *Manager) GetDataDir() string {
-	return GetDataDir(instance.GetWorkDir(), s.data.ID)
+	return GetDataDirFromSessionDir(s.dir)
 }
 
+// GetWorkspaceDir 返回生效工作区（项目属性，每次现解析——项目内多会话
+// 共享，换绑立即反映）。
 func (s *Manager) GetWorkspaceDir() string {
-	return s.data.WorkspaceDir
-}
-
-// SetWorkspaceDir 设置工作目录。**仅允许在有任何对话消息之前调用**——
-// 一旦有消息即锁定（01 篇配套决策）：
-//
-// 历史消息里含相对旧根的路径与文件内容，改目录后模型照着旧路径继续操作全错，
-// 而它无从察觉。故不追踪、不迁移，直接锁定。
-//
-// 守卫在会话层而非仅靠前端禁用按钮（否则"点开目录"与"发消息"并发时仍会漏），
-// 且不用「轮运行中」而是「有消息」——前者是瞬态（点选与轮启动之间有个窗口），
-// 后者是静态的：SubmitMessage 先 AppendUserMessage 再启动轮（controller），
-// 零消息 ⇒ 从未启动过任何轮，无竞态。
-func (s *Manager) SetWorkspaceDir(dir string) error {
-	if len(s.data.Messages) > 0 {
-		return fmt.Errorf("会话已有对话记录，工作目录已锁定；如需在新目录下工作，请新建会话")
-	}
-	// 自定义目录必须已存在（sandbox 以其为 chdir 目标；不存在时命令执行
-	// 必然失败，提前在此暴露而不是延迟到工具执行时）。
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		return fmt.Errorf("workspace 目录不存在: %s", dir)
-	}
-	s.data.WorkspaceDir = dir
-	s.data.UpdatedAt = time.Now().UnixMilli()
-
-	// 不再广播 workspace:changed：锁定后只在零消息窗口内变更，那次是前端
-	// 主动调用、拿返回值即可同步，广播通道没有订阅者价值。
-	return instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	return s.ws.GetWorkspaceDir()
 }
 
 // RiskTable 返回会话级常允许表（惰性创建；重启清空）。
@@ -192,7 +158,7 @@ func (s *Manager) AppendUserMessage(content string) string {
 
 	v := s.data.UpdateTitle(content)
 	if v {
-		err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+		err := instance.SaveMetadata(s.dir, s.data.Metadata)
 		if err != nil {
 			slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
 		}
@@ -216,7 +182,7 @@ func (s *Manager) PrepareRetry(messageID string) (string, error) {
 		s.invalidateCompactionIfCutoffLost("retry crosses cutoff")
 	}
 
-	wErr := instance.RewriteMessages(s.data.ID, s.data.Messages)
+	wErr := instance.RewriteMessages(s.dir, s.data.Messages)
 	if wErr != nil {
 		return "", wErr
 	}
@@ -232,7 +198,7 @@ func (s *Manager) DeleteFrom(messageID string) (int, error) {
 	}
 
 	s.invalidateCompactionIfCutoffLost("delete crosses cutoff")
-	return idx, instance.RewriteMessages(s.data.ID, s.data.Messages)
+	return idx, instance.RewriteMessages(s.dir, s.data.Messages)
 }
 
 // EditUserMessage 就地编辑一条 user 消息的内容（不触发重新生成）。
@@ -251,14 +217,14 @@ func (s *Manager) EditUserMessage(messageID, content string) error {
 		return err
 	}
 
-	return instance.RewriteMessages(s.data.ID, s.data.Messages)
+	return instance.RewriteMessages(s.dir, s.data.Messages)
 }
 
 // SetTitle 重命名会话（内存 + 磁盘 meta）；事件通知由服务层负责。
 func (s *Manager) SetTitle(title string) error {
 	s.data.SetTitle(title)
 
-	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	err := instance.SaveMetadata(s.dir, s.data.Metadata)
 	if err != nil {
 		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
 	}
@@ -292,7 +258,7 @@ func (s *Manager) AppendMessage(updateAt int64, msg ...*schema.Message) {
 	}
 	s.data.AppendMessage(updateAt, msg...)
 
-	err := instance.AppendSaveMessage(s.data.ID, msg...)
+	err := instance.AppendSaveMessage(s.dir, msg...)
 	if err != nil {
 		slog.Warn("Failed to store message", "id", s.data.ID, "error", err)
 	}
@@ -585,7 +551,7 @@ func (s *Manager) GetCompaction() *CompactionData {
 
 // SetCompaction 写回压缩态：先原子落盘再改内存（03 篇红线）。
 func (s *Manager) SetCompaction(c *CompactionData) error {
-	if err := instance.SaveCompaction(s.data.ID, c); err != nil {
+	if err := instance.SaveCompaction(s.dir, c); err != nil {
 		return err
 	}
 	s.data.Compaction = c
@@ -594,7 +560,7 @@ func (s *Manager) SetCompaction(c *CompactionData) error {
 
 // WriteArchive 写入归档原文（目录创建由 StoreManager 自闭合）。
 func (s *Manager) WriteArchive(rangeLabel string, content []byte) (string, error) {
-	return instance.WriteArchive(s.data.ID, rangeLabel, content)
+	return instance.WriteArchive(s.dir, rangeLabel, content)
 }
 
 // ReadArchive 读取归档原文，供 read_file 的 archive:// 通道消费
@@ -605,14 +571,14 @@ func (s *Manager) WriteArchive(rangeLabel string, content []byte) (string, error
 // messages.jsonl 不可恢复）。故不搬存储、不加工具，只给 read_file
 // 多认一种路径形态。
 func (s *Manager) ReadArchive(name string) ([]byte, error) {
-	return instance.ReadArchive(s.data.ID, name)
+	return instance.ReadArchive(s.dir, name)
 }
 
 // UnmarkSkillLoaded 从已加载技能集合移除并写穿 meta.json
 // （02 篇 §5.1 一致性红线：skill 正文被压缩后调用）。
 func (s *Manager) UnmarkSkillLoaded(name string) {
 	s.data.UnmarkSkillLoaded(name)
-	if err := instance.SaveMetadata(s.data.ID, s.data.Metadata); err != nil {
+	if err := instance.SaveMetadata(s.dir, s.data.Metadata); err != nil {
 		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
 	}
 }
@@ -623,7 +589,7 @@ func (s *Manager) invalidateCompaction(reason string) {
 	if s.data.Compaction == nil {
 		return
 	}
-	if err := instance.DeleteCompaction(s.data.ID); err != nil {
+	if err := instance.DeleteCompaction(s.dir); err != nil {
 		slog.Warn("Failed to delete compaction", "id", s.data.ID, "error", err)
 	}
 	s.data.Compaction = nil
@@ -653,7 +619,7 @@ func EmitMessageAppended(sink event.Sink, sessionID string, m *schema.Message) {
 func (s *Manager) MarkSkillLoaded(name string) {
 	s.data.MarkSkillLoaded(name)
 
-	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	err := instance.SaveMetadata(s.dir, s.data.Metadata)
 	if err != nil {
 		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
 	}
@@ -670,7 +636,7 @@ func (s *Manager) GetLoadedSkills() []string {
 func (s *Manager) MarkToolLoaded(name string) {
 	s.data.MarkToolLoaded(name)
 
-	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	err := instance.SaveMetadata(s.dir, s.data.Metadata)
 	if err != nil {
 		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
 	}
@@ -685,7 +651,7 @@ func (s *Manager) IsToolLoaded(name string) bool {
 func (s *Manager) UnmarkToolLoaded(name string) {
 	s.data.UnmarkToolLoaded(name)
 
-	err := instance.SaveMetadata(s.data.ID, s.data.Metadata)
+	err := instance.SaveMetadata(s.dir, s.data.Metadata)
 	if err != nil {
 		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"tars/internal/boot"
 	"tars/internal/config"
+	"tars/internal/project"
 	"tars/internal/session"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -41,16 +42,44 @@ func (s *AgentService) ServiceShutdown() error {
 	return s.app.Shutdown()
 }
 
-// --- Session management API ---
+// --- Project & session management API ---
 
-func (s *AgentService) CreateSession() (*session.Data, error) {
-	return s.app.CreateSession()
+// ProjectCreated 是 CreateProject 的返回：新项目与其默认会话。
+type ProjectCreated struct {
+	*project.Project
+	Session *session.Data `json:"session"`
 }
 
-func (s *AgentService) ListSessions() ([]*session.Data, error) {
-	return s.app.ListSessions(), nil
+// CreateProject 创建新项目（含一个默认会话，可直接开始对话）。
+func (s *AgentService) CreateProject() (*ProjectCreated, error) {
+	proj, sess, err := s.app.CreateProject()
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectCreated{Project: proj, Session: sess}, nil
 }
 
+// ListProjects 列出全部项目（含各自会话）。
+func (s *AgentService) ListProjects() ([]*boot.ProjectView, error) {
+	return s.app.ListProjects(), nil
+}
+
+// DeleteProject 删除项目（级联其下全部会话数据）。
+func (s *AgentService) DeleteProject(id string) error {
+	return s.app.DeleteProject(id)
+}
+
+// RenameProject 显式重命名项目（此后标题不再跟随会话自动命名）。
+func (s *AgentService) RenameProject(id, title string) error {
+	return s.app.RenameProject(id, title)
+}
+
+// CreateSession 在既有项目中新建会话（会话 Tab，与项目共用工作区）。
+func (s *AgentService) CreateSession(projectID string) (*session.Data, error) {
+	return s.app.CreateSession(projectID)
+}
+
+// DeleteSession 删除项目内的单个会话；删除整个项目用 DeleteProject。
 func (s *AgentService) DeleteSession(id string) error {
 	return s.app.DeleteSession(id)
 }

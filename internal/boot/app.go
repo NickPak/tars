@@ -4,12 +4,15 @@
 package boot
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"sync"
 	"tars/internal/config"
+	"tars/internal/project"
 	"tars/internal/session"
 	"tars/pkg/ask"
 	"tars/pkg/event"
@@ -38,6 +41,7 @@ type App struct {
 	skillMgr *skill.Manager
 	mcpMgr   *mcp.Manager
 	llmMgr   *llm.Manager
+	projMgr  *project.Manager
 	sink     event.Sink
 	askMgr   *ask.Manager
 	mu       sync.RWMutex
@@ -51,6 +55,7 @@ func NewApp(cfg *config.AppConfig, sink event.Sink) *App {
 		cfg:      cfg,
 		skillMgr: skill.NewManager(cfg.WorkDir, cfg.Skills),
 		mcpMgr:   mcp.NewManager(cfg.WorkDir),
+		projMgr:  project.NewManager(cfg.WorkDir),
 		llmMgr:   llm.NewManager(cfg.LLM),
 		askMgr:   ask.NewManager(),
 		sink:     event.NewFanOut(sink, NewTraceSink()),
@@ -67,8 +72,8 @@ func (a *App) Startup() error {
 	}
 	slog.Info("Agent work directory", "path", a.cfg.WorkDir)
 
-	// 初始化会话存储管理器
-	session.InitStoreManager(a.cfg.WorkDir)
+	// 初始化会话存储管理器（无状态，目录参数化）
+	session.InitStoreManager()
 
 	// 启动技能管理器
 	err := a.skillMgr.Startup()
@@ -148,59 +153,201 @@ func (a *App) GetSkillMgr() *skill.Manager { return a.skillMgr }
 // GetMCPMgr 返回 MCP 管理器。
 func (a *App) GetMCPMgr() *mcp.Manager { return a.mcpMgr }
 
-// --- 会话生命周期 ---
+// --- 项目与会话生命周期 ---
 
-// CreateSession 创建新会话：持久化由 session.Store 封装，这里负责
-// Controller 索引与创建事件。
-func (a *App) CreateSession() (*session.Data, error) {
-	sess, err := session.GetStoreManager().CreateSession()
+// ProjectView 是项目的展示视图：项目元信息 + 其下会话。
+type ProjectView struct {
+	*project.Project
+	Sessions []*session.Data `json:"sessions"`
+}
+
+// CreateProject 创建新项目（含一个默认会话）：持久化由 project/session
+// 存储封装，这里负责 Controller 索引与创建事件。
+func (a *App) CreateProject() (*project.Project, *session.Data, error) {
+	proj, err := a.projMgr.Create()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	trace.LogSessionCreated(sess.ID, sess.Title) // todo sink
+	sess, sessionDir, err := session.GetStoreManager().CreateSession(a.projMgr.DirOf(proj), proj.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	trace.LogSessionCreated(sess.ID, sess.Title)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	ctrl := NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
-	err = ctrl.Startup()
+	ctrl := NewController(a.cfg, proj, sessionDir, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
+	if err := ctrl.Startup(); err != nil {
+		return nil, nil, err
+	}
+	a.ctrls[sess.ID] = ctrl
+	return proj, sess, nil
+}
+
+// CreateSession 在既有项目中创建新会话（单项目多会话：会话 Tab）。
+func (a *App) CreateSession(projectID string) (*session.Data, error) {
+	proj, err := a.projMgr.Get(projectID)
+	if err != nil || proj == nil {
+		return nil, fmt.Errorf("project not found: %s", projectID)
+	}
+	sess, sessionDir, err := session.GetStoreManager().CreateSession(a.projMgr.DirOf(proj), proj.ID)
 	if err != nil {
+		return nil, err
+	}
+	trace.LogSessionCreated(sess.ID, sess.Title)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ctrl := NewController(a.cfg, proj, sessionDir, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
+	if err := ctrl.Startup(); err != nil {
 		return nil, err
 	}
 	a.ctrls[sess.ID] = ctrl
 	return sess, nil
 }
 
-// ListSessions 按创建时间升序列出全部会话。
-func (a *App) ListSessions() []*session.Data {
-	a.mu.RLock()
-	out := make([]*session.Data, 0, len(a.ctrls))
-	for _, c := range a.ctrls {
-		out = append(out, c.GetSessionMgr().GetData())
-	}
-	a.mu.RUnlock()
-	session.SortByCreatedAt(out)
-	return out
-}
-
-// DeleteSession 删除会话：先取消运行中的轮，再移除 Controller 索引与磁盘数据。
+// DeleteSession 删除项目内的单个会话（Tab 关闭）；级联删除用 DeleteProject。
 func (a *App) DeleteSession(id string) error {
-	err := a.CancelMessage(id)
-	if err != nil {
+	if err := a.CancelMessage(id); err != nil {
 		return err
 	}
 
 	a.mu.Lock()
 	ctrl, ok := a.ctrls[id]
 	if ok {
-		err = ctrl.Shutdown()
-		if err != nil {
-			slog.Error("Failed to shutdown controller", "session", id, "error", err)
-		}
 		delete(a.ctrls, id)
 	}
 	a.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	if err := ctrl.Shutdown(); err != nil {
+		slog.Error("Failed to shutdown controller", "session", id, "error", err)
+	}
+	return session.GetStoreManager().DeleteSession(a.projMgr.DirOf(ctrl.Project()), id)
+}
 
-	return session.GetStoreManager().DeleteSession(id)
+// ListProjects 按创建时间升序列出全部项目（含各自会话，会话按创建时间升序）。
+// 以磁盘项目列表为准（目录即真相）——零会话项目也可见（空项目态），
+// 不依赖 Controller 索引。
+func (a *App) ListProjects() []*ProjectView {
+	projects, err := a.projMgr.List()
+	if err != nil {
+		slog.Error("Failed to list projects", "error", err)
+		return nil
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	out := make([]*ProjectView, 0, len(projects))
+	for _, p := range projects {
+		v := &ProjectView{Project: p}
+		for _, c := range a.ctrls {
+			if c.Project().ID == p.ID {
+				v.Sessions = append(v.Sessions, c.GetSessionMgr().GetData())
+			}
+		}
+		session.SortByCreatedAt(v.Sessions)
+		out = append(out, v)
+	}
+	slices.SortFunc(out, func(x, y *ProjectView) int { return cmp.Compare(x.CreatedAt, y.CreatedAt) })
+	return out
+}
+
+// GetProjectWorkspaceDir 返回项目的生效工作区路径（自定义或默认目录）。
+func (a *App) GetProjectWorkspaceDir(projectID string) (string, error) {
+	p, err := a.projMgr.Get(projectID)
+	if err != nil || p == nil {
+		return "", fmt.Errorf("project not found: %s", projectID)
+	}
+	return p.GetWorkspaceDir(), nil
+}
+
+// RenameProject 显式重命名项目（此后标题不再跟随会话自动命名）。
+// 优先改 Controller 持有的内存实例（ListProjects 的读取面），
+// 零会话项目回退到磁盘副本。
+func (a *App) RenameProject(id, title string) error {
+	a.mu.RLock()
+	var proj *project.Project
+	for _, c := range a.ctrls {
+		if c.Project().ID == id {
+			proj = c.Project()
+			break
+		}
+	}
+	a.mu.RUnlock()
+
+	var err error
+	if proj == nil {
+		proj, err = a.projMgr.Get(id)
+		if err != nil {
+			return err
+		}
+	}
+	if proj == nil {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	return a.projMgr.SetTitle(proj, title)
+}
+
+// DeleteProject 删除项目：取消运行中的轮、关闭并移除其全部会话的
+// Controller，最后删除磁盘数据（级联会话与默认工作区；自定义工作区
+// 在用户文件系统上，不动）。
+func (a *App) DeleteProject(id string) error {
+	a.mu.Lock()
+	var members []*Controller
+	for sid, c := range a.ctrls {
+		if c.Project().ID == id {
+			members = append(members, c)
+			delete(a.ctrls, sid)
+		}
+	}
+	a.mu.Unlock()
+
+	for _, c := range members {
+		c.Cancel()
+		if err := c.Shutdown(); err != nil {
+			slog.Error("Failed to shutdown controller", "session", c.GetSessionMgr().GetID(), "error", err)
+		}
+	}
+	return a.projMgr.Delete(id)
+}
+
+// SetSessionWorkspace 设置会话所属项目的工作区（项目级：同项目全部会话
+// 共享）。守卫：项目内所有会话均为零消息且无运行中的轮——历史消息里含
+// 旧根路径，改目录后模型照着旧路径操作全错而无从察觉，故锁定不迁移。
+func (a *App) SetSessionWorkspace(sessionID, dir string) error {
+	a.mu.RLock()
+	target, ok := a.ctrls[sessionID]
+	var members []*Controller
+	if ok {
+		for _, c := range a.ctrls {
+			if c.Project().ID == target.Project().ID {
+				members = append(members, c)
+			}
+		}
+	}
+	a.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+	proj := target.Project()
+
+	for _, c := range members {
+		if c.IsRunning() {
+			return fmt.Errorf("turn in progress, cancel it first")
+		}
+		if len(c.GetSessionMgr().GetData().Messages) > 0 {
+			return fmt.Errorf("项目已有对话记录，工作区已锁定；如需在新目录下工作，请新建项目")
+		}
+	}
+	if err := a.projMgr.SetWorkspaceDir(proj, dir); err != nil {
+		return err
+	}
+	for _, c := range members {
+		c.SyncWorkspaceRoot()
+	}
+	slog.Info("Workspace changed", "project", proj.ID, "dir", dir)
+	return nil
 }
 
 func (a *App) RenameSession(id, title string) error {
@@ -220,25 +367,42 @@ func (a *App) GetSession(id string) (*session.Data, error) {
 	return c.GetSessionMgr().GetData(), nil
 }
 
-// RestoreSessions 从磁盘恢复全部会话并依次为每个会话建 Controller
-// （Controller 持有各自的 session.Info）。进程启动时调用一次；
-// 恢复不是创建，不产生 session.created span。
+// RestoreSessions 从磁盘恢复全部项目及其会话并依次建 Controller。
+// 进程启动时调用一次；恢复不是创建，不产生 session.created span。
 func (a *App) RestoreSessions() error {
-	infos, err := session.GetStoreManager().LoadAllSessionData()
+	projects, err := a.projMgr.List()
 	if err != nil {
 		return err
 	}
 	a.mu.Lock()
-	for _, sess := range infos {
-		ctrl := NewController(a.cfg, sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
-		err = ctrl.Startup()
+	defer a.mu.Unlock()
+	for _, proj := range projects {
+		projDir := a.projMgr.DirOf(proj)
+		infos, err := session.GetStoreManager().LoadProjectSessionData(projDir)
 		if err != nil {
-			slog.Error("Failed to startup controller", "session", sess.ID, "error", err)
+			slog.Error("Failed to load project sessions", "project", proj.ID, "error", err)
 			continue
 		}
-		a.ctrls[sess.ID] = ctrl
+		if len(infos) == 0 {
+			// 暂存项目清理：零会话 + 无自定义工作区 + 默认工作区为空 →
+			// 删除（空项目只可能来自 Tab 全关/崩溃残留；有产出物或自定义
+			// 工作区的项目保留——用户数据不擅自清理）。
+			if swept, sErr := a.projMgr.SweepIfEmpty(proj); sErr != nil {
+				slog.Warn("Failed to sweep empty project", "project", proj.ID, "error", sErr)
+			} else if swept {
+				slog.Info("Swept empty project", "project", proj.ID)
+			}
+			continue
+		}
+		for _, sess := range infos {
+			ctrl := NewController(a.cfg, proj, session.GetSessionDir(projDir, sess.ID), sess, a.sink, a.llmMgr, a.skillMgr, a.mcpMgr, a.askMgr)
+			if err := ctrl.Startup(); err != nil {
+				slog.Error("Failed to startup controller", "session", sess.ID, "error", err)
+				continue
+			}
+			a.ctrls[sess.ID] = ctrl
+		}
 	}
-	a.mu.Unlock()
 	return nil
 }
 

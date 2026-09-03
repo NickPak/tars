@@ -1,15 +1,23 @@
 import { create } from "zustand";
 import { agentApi, subscribeAgentEvents } from "../services/agentApi";
-import type { ChatMessage, Session, ModelInfo, SessionStats, WorkspaceInfo, ApprovalEvent, CompressionMark } from "../types";
+import type { ChatMessage, Session, ModelInfo, SessionStats, WorkspaceInfo, ApprovalEvent, CompressionMark, Project } from "../types";
 
 export interface SessionMeta {
   id: string;
+  /** 所属项目 ID（侧边栏条目 = 项目，删除/工作区操作按项目进行） */
+  projectId: string;
   title: string;
+  createdAt: number;
   updatedAt: number;
 }
 
 interface ChatState {
+  /** 全部项目（侧边栏列表） */
+  projects: Project[];
+  /** 全部会话的扁平索引（含 projectId；Tab 条按 activeProjectId 过滤） */
   sessions: SessionMeta[];
+  /** 当前激活项目（Tab 条的作用域） */
+  activeProjectId: string | null;
   activeId: string | null;
   messages: ChatMessage[];
   isStreaming: boolean;
@@ -32,11 +40,25 @@ interface ChatState {
 
   /** 加载会话列表并订阅流式事件，返回清理函数 */
   init: () => () => void;
-  /** 切换到空白新会话（首次发送时才真正创建） */
+  /** 切换到空白新项目（首次发送时才真正创建） */
   newSession: () => void;
   selectSession: (id: string) => Promise<void>;
-  deleteSession: (id: string) => Promise<void>;
+  /** 选中项目（侧边栏点击）：激活其最近会话 */
+  selectProject: (projectId: string) => Promise<void>;
+  /** 删除项目（侧边栏，级联其下全部会话） */
+  deleteProject: (projectId: string) => Promise<void>;
+  /** 显式重命名项目（侧边栏） */
+  renameProject: (projectId: string, title: string) => Promise<void>;
+  /** 在当前项目中新建会话 Tab */
+  addSessionTab: () => Promise<void>;
+  /** 关闭会话 Tab（删除该会话；项目保留） */
+  closeSessionTab: (id: string) => Promise<void>;
+  /** 重命名会话（Tab 右键菜单；项目显式标题优先于它展示） */
   renameSession: (id: string, title: string) => Promise<void>;
+  /** 关闭当前项目中除指定会话外的全部 Tab */
+  closeOtherTabs: (id: string) => Promise<void>;
+  /** 关闭当前项目的全部 Tab（项目保留为空项目态） */
+  closeAllTabs: () => Promise<void>;
   send: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
   /** 重试生成最后一条 assistant 回复（先回撤已渲染内容，再重新流式） */
@@ -60,8 +82,8 @@ interface ChatState {
   setActiveModel: (id: string) => Promise<void>;
 }
 
-function toMeta(c: Session): SessionMeta {
-  return { id: c.id, title: c.title, updatedAt: c.updatedAt };
+function toMeta(projectId: string, c: Session): SessionMeta {
+  return { id: c.id, projectId, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt };
 }
 
 function errText(e: unknown): string {
@@ -126,7 +148,9 @@ function resolveBubble(
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
+  projects: [],
   sessions: [],
+  activeProjectId: null,
   activeId: null,
   messages: [],
   isStreaming: false,
@@ -141,11 +165,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   init: () => {
     agentApi
-      .listSessions()
+      .listProjects()
       .then((list) => {
-        const sessions = (list ?? []).map(toMeta);
-        sessions.sort((a, b) => b.updatedAt - a.updatedAt);
-        set({ sessions });
+        // 侧边栏条目 = 项目；标题取项目内最近会话的自动命名（展示层推导）
+        const projects = list ?? [];
+        const sessions: SessionMeta[] = [];
+        for (const p of projects) {
+          for (const sess of p.sessions ?? []) {
+            sessions.push(toMeta(p.id, sess));
+          }
+        }
+        set({ projects, sessions });
       })
       .catch((e) => set({ backendError: errText(e) }));
 
@@ -288,12 +318,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   newSession: () => {
     if (get().isStreaming) return;
-    set({ activeId: null, messages: [], workspace: null, stats: null, pendingApprovals: {} });
+    set({ activeId: null, activeProjectId: null, messages: [], workspace: null, stats: null, pendingApprovals: {} });
   },
 
   selectSession: async (id) => {
     if (get().isStreaming || id === get().activeId) return;
-    set({ activeId: id, messages: [], workspace: null, stats: null, pendingApprovals: {}, compressionMarks: [] });
+    const meta = get().sessions.find((c) => c.id === id);
+    set({ activeId: id, activeProjectId: meta?.projectId ?? get().activeProjectId, messages: [], workspace: null, stats: null, pendingApprovals: {}, compressionMarks: [] });
     try {
       const sess = await agentApi.getSession(id);
       set({ messages: mergeToolOutputs(sess.messages ?? []) });
@@ -310,23 +341,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
     void get().refreshStats();
   },
 
-  deleteSession: async (id) => {
+  selectProject: async (projectId) => {
+    if (get().isStreaming || projectId === get().activeProjectId) return;
+    // 激活项目内最近创建的会话；无会话则停在空项目态（Tab 条只剩【+】）
+    const tabs = get()
+      .sessions.filter((c) => c.projectId === projectId)
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const target = tabs[tabs.length - 1];
+    if (target) {
+      await get().selectSession(target.id);
+    } else {
+      set({ activeProjectId: projectId, activeId: null, messages: [], workspace: null, stats: null, pendingApprovals: {}, compressionMarks: [] });
+    }
+  },
+
+  deleteProject: async (projectId) => {
     try {
-      await agentApi.deleteSession(id);
+      await agentApi.deleteProject(projectId);
       set((s) => ({
-        sessions: s.sessions.filter((c) => c.id !== id),
-        ...(s.activeId === id ? { activeId: null, messages: [] } : {}),
+        projects: s.projects.filter((p) => p.id !== projectId),
+        sessions: s.sessions.filter((c) => c.projectId !== projectId),
+        ...(s.activeProjectId === projectId
+          ? { activeId: null, activeProjectId: null, messages: [], workspace: null, stats: null }
+          : {}),
       }));
     } catch (e) {
       set({ backendError: errText(e) });
     }
   },
 
-  answerAsk: async (toolCallId, value, reason = "") => {
+  addSessionTab: async () => {
+    const pid = get().activeProjectId;
+    if (!pid || get().isStreaming) return;
     try {
-      await agentApi.answerAskUser(toolCallId, value, reason);
+      const sess = await agentApi.createSession(pid);
+      set((s) => ({ sessions: [...s.sessions, toMeta(pid, sess)] }));
+      await get().selectSession(sess.id);
     } catch (e) {
       set({ backendError: errText(e) });
+    }
+  },
+
+  closeSessionTab: async (id) => {
+    // 流式中的活动 Tab 不可关（后端同样会拒绝删除运行中的会话）
+    if (get().isStreaming && get().activeId === id) return;
+    const meta = get().sessions.find((c) => c.id === id);
+    if (!meta) return;
+    try {
+      await agentApi.deleteSession(id);
+    } catch (e) {
+      set({ backendError: errText(e) });
+      return;
+    }
+    set((s) => ({ sessions: s.sessions.filter((c) => c.id !== id) }));
+    if (get().activeId === id) {
+      // 切到同项目相邻 Tab；没有则停在空项目态
+      set({ activeId: null, messages: [], workspace: null, stats: null, pendingApprovals: {}, compressionMarks: [] });
+      const rest = get()
+        .sessions.filter((c) => c.projectId === meta.projectId)
+        .sort((a, b) => a.createdAt - b.createdAt);
+      const next = rest[rest.length - 1];
+      if (next) await get().selectSession(next.id);
     }
   },
 
@@ -343,20 +418,99 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  closeOtherTabs: async (id) => {
+    const pid = get().activeProjectId;
+    if (!pid || get().isStreaming) return;
+    const others = get().sessions.filter((c) => c.projectId === pid && c.id !== id);
+    for (const t of others) {
+      try {
+        await agentApi.deleteSession(t.id);
+      } catch (e) {
+        set({ backendError: errText(e) });
+        return;
+      }
+    }
+    set((s) => ({
+      sessions: s.sessions.filter((c) => c.projectId !== pid || c.id === id),
+    }));
+    if (get().activeId !== id) await get().selectSession(id);
+  },
+
+  closeAllTabs: async () => {
+    const pid = get().activeProjectId;
+    if (!pid || get().isStreaming) return;
+    const all = get().sessions.filter((c) => c.projectId === pid);
+    for (const t of all) {
+      try {
+        await agentApi.deleteSession(t.id);
+      } catch (e) {
+        set({ backendError: errText(e) });
+        return;
+      }
+    }
+    // 空项目态：项目保留，Tab 条只剩【+】
+    set((s) => ({
+      sessions: s.sessions.filter((c) => c.projectId !== pid),
+      activeId: null,
+      messages: [],
+      workspace: null,
+      stats: null,
+      pendingApprovals: {},
+      compressionMarks: [],
+    }));
+  },
+
+  answerAsk: async (toolCallId, value, reason = "") => {
+    try {
+      await agentApi.answerAskUser(toolCallId, value, reason);
+    } catch (e) {
+      set({ backendError: errText(e) });
+    }
+  },
+
+  renameProject: async (projectId, title) => {
+    try {
+      await agentApi.renameProject(projectId, title);
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === projectId ? { ...p, title } : p,
+        ),
+      }));
+    } catch (e) {
+      set({ backendError: errText(e) });
+    }
+  },
+
   send: async (text) => {
     const content = text.trim();
     if (!content || get().isStreaming) return;
 
-    // 新会话：首次发送时才请求后端创建
+    // 无活动会话时首次发送才落盘：有激活项目则在其中补建会话（Tab 全关
+    // 后的空项目态），否则创建新项目（含默认会话）
     let sessId = get().activeId;
     if (!sessId) {
       try {
-        const sess = await agentApi.createSession();
-        sessId = sess.id;
-        set((s) => ({
-          sessions: [toMeta(sess), ...s.sessions],
-          activeId: sessId,
-        }));
+        const pid = get().activeProjectId;
+        if (pid) {
+          const sess = await agentApi.createSession(pid);
+          sessId = sess.id;
+          set((s) => ({
+            sessions: [...s.sessions, toMeta(pid, sess)],
+            activeId: sessId,
+          }));
+        } else {
+          const proj = await agentApi.createProject();
+          sessId = proj.session.id;
+          set((s) => ({
+            projects: [
+              ...s.projects,
+              { id: proj.id, workspaceDir: proj.workspaceDir, createdAt: proj.createdAt, updatedAt: proj.updatedAt, sessions: [proj.session] },
+            ],
+            sessions: [toMeta(proj.id, proj.session), ...s.sessions],
+            activeId: sessId,
+            activeProjectId: proj.id,
+          }));
+        }
       } catch (e) {
         set({ backendError: errText(e) });
         return;
@@ -499,11 +653,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const dir = await agentApi.openDirectoryDialog();
       if (!dir) return; // 用户取消
       if (!activeId) {
-        // 无活动会话时先创建
-        const sess = await agentApi.createSession();
+        // 无活动会话时先创建项目（再为其设置自定义工作区）
+        const proj = await agentApi.createProject();
+        const sess = proj.session;
         set((s) => ({
-          sessions: [{ id: sess.id, title: sess.title, updatedAt: sess.updatedAt }, ...s.sessions],
+          projects: [
+            ...s.projects,
+            { id: proj.id, workspaceDir: proj.workspaceDir, createdAt: proj.createdAt, updatedAt: proj.updatedAt, sessions: [sess] },
+          ],
+          sessions: [toMeta(proj.id, sess), ...s.sessions],
           activeId: sess.id,
+          activeProjectId: proj.id,
         }));
         await agentApi.setWorkspaceDir(sess.id, dir);
         const ws = await agentApi.getWorkspaceInfo(sess.id);

@@ -61,14 +61,22 @@ func newCompressingManager(t *testing.T, ext Extractor) (*Manager, *recordingSin
 	return newManagerWithSink(t, sink, ext)
 }
 
+// fakeWorkspace 是 WorkspaceSource 的测试实现（工作区是项目属性，
+// 会话测试用一个固定目录冒充项目侧解析结果）。
+type fakeWorkspace struct{ dir string }
+
+func (f fakeWorkspace) GetWorkspaceDir() string { return f.dir }
+
 func newManagerWithSink(t *testing.T, sink event.Sink, ext Extractor) (*Manager, *recordingSink) {
 	t.Helper()
-	InitStoreManager(t.TempDir())
-	data, err := GetStoreManager().CreateSession()
+	InitStoreManager()
+	projectDir := t.TempDir()
+	data, sessionDir, err := GetStoreManager().CreateSession(projectDir, "proj-test")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	m := NewManager(data, sink, testLLMManager(t, 128000),
+	m := NewManager(data, sessionDir, fakeWorkspace{dir: filepath.Join(projectDir, "workspace")},
+		sink, testLLMManager(t, 128000),
 		testThreshold, testKeepTurns, testMinBatch, testMaxFailures)
 	if ext != nil {
 		m.extractor = ext // 包内测试直接注入，避免为测试增设装配面
@@ -371,7 +379,7 @@ func TestCompactionPersistenceRoundtrip(t *testing.T) {
 	ids := appendTurns(t, m, 4)
 	applyTestCompaction(t, m, ids[5])
 
-	loaded, err := GetStoreManager().LoadCompaction(m.GetID())
+	loaded, err := GetStoreManager().LoadCompaction(m.GetSessionDir())
 	if err != nil || loaded == nil {
 		t.Fatalf("load compaction: %v", err)
 	}
@@ -379,8 +387,10 @@ func TestCompactionPersistenceRoundtrip(t *testing.T) {
 		t.Fatalf("loaded = %+v", loaded)
 	}
 
-	// 全量恢复路径：LoadAllSessionData 应带回压缩态并应用投影
-	datas, err := GetStoreManager().LoadAllSessionData()
+	// 全量恢复路径：LoadProjectSessionData 应带回压缩态并应用投影
+	// （<projectDir>/sessions/<sid> → 上两级即项目目录）
+	projectDir := filepath.Dir(filepath.Dir(m.GetSessionDir()))
+	datas, err := GetStoreManager().LoadProjectSessionData(projectDir)
 	if err != nil || len(datas) != 1 {
 		t.Fatalf("load all: %v, %d", err, len(datas))
 	}
@@ -398,7 +408,7 @@ func TestLoadCompactionCorrupt(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{broken"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	c, err := GetStoreManager().LoadCompaction(m.GetID())
+	c, err := GetStoreManager().LoadCompaction(m.GetSessionDir())
 	if err == nil || c != nil {
 		t.Fatalf("corrupt compaction: got (%v, %v), want (nil, err)", c, err)
 	}
@@ -488,7 +498,7 @@ func TestUnmarkSkillLoaded(t *testing.T) {
 		t.Fatal("skill should be unmarked")
 	}
 	// meta.json 写穿
-	meta, err := GetStoreManager().LoadMetadata(m.GetID())
+	meta, err := GetStoreManager().LoadMetadata(m.GetSessionDir())
 	if err != nil || meta == nil {
 		t.Fatalf("load meta: %v", err)
 	}

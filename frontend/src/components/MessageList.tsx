@@ -571,10 +571,13 @@ function MessageStatusBar({
     });
   };
 
-  // 本次缓存命中率 = cachedTokens / promptTokens（undefined 表示模型未返回缓存数据）
+  // 本次缓存命中率 = cachedTokens / promptTokens。字段为 0 时被后端
+  // omitempty 丢弃（序列化层面无法区分"0% 命中"与"模型未报告"）——
+  // 统一按 0 计并始终显示：隐藏会让指标看起来时有时无，且与底部状态栏
+  // "平均命中"（始终显示）口径一致。
   const hitRate =
-    usage && usage.promptTokens > 0 && usage.cachedTokens !== undefined
-      ? usage.cachedTokens / usage.promptTokens
+    usage && usage.promptTokens > 0
+      ? (usage.cachedTokens ?? 0) / usage.promptTokens
       : undefined;
 
   // 本次费用 = prompt × 输入价 + completion × 输出价。

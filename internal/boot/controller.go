@@ -14,6 +14,7 @@ import (
 
 	"tars/internal/agent"
 	"tars/internal/config"
+	"tars/internal/project"
 	"tars/internal/session"
 	"tars/pkg/event"
 	"tars/pkg/llm"
@@ -39,6 +40,7 @@ import (
 // 有多少订阅者（UI/trace/…）、如何组合，由外部决定。
 type Controller struct {
 	cfg        *config.AppConfig
+	proj       *project.Project
 	sink       event.Sink
 	llmMgr     *llm.Manager
 	mu         sync.Mutex
@@ -56,9 +58,11 @@ type Controller struct {
 
 // NewController 组装会话级组件：事件出口、TODO 状态机、交互通道、
 // 工具执行器（构造器注入依赖 + 权限门 Gate）。
-func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, llmMgr *llm.Manager, skillMgr *skill.Manager, mcpMgr *mcp.Manager, askMgr *ask.Manager) *Controller {
+// proj 是会话所属项目（工作区来源）；sessionDir 是会话存储目录。
+func NewController(cfg *config.AppConfig, proj *project.Project, sessionDir string, data *session.Data, sink event.Sink, llmMgr *llm.Manager, skillMgr *skill.Manager, mcpMgr *mcp.Manager, askMgr *ask.Manager) *Controller {
 	c := &Controller{
 		cfg:        cfg,
+		proj:       proj,
 		sink:       sink,
 		llmMgr:     llmMgr,
 		mu:         sync.Mutex{},
@@ -74,7 +78,7 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 		agent:      nil,
 	}
 
-	c.sessionMgr = session.NewManager(data, sink, llmMgr, cfg.Agent.CompressionThreshold, cfg.Agent.CompressionKeepTurns, cfg.Agent.CompressionMinBatch, cfg.Agent.CompressionMaxFailures)
+	c.sessionMgr = session.NewManager(data, sessionDir, proj, sink, llmMgr, cfg.Agent.CompressionThreshold, cfg.Agent.CompressionKeepTurns, cfg.Agent.CompressionMinBatch, cfg.Agent.CompressionMaxFailures)
 
 	c.todoMgr = todo.NewManager(c.sessionMgr.GetSessionDir())
 
@@ -207,15 +211,13 @@ func (c *Controller) Shutdown() error {
 // GetSessionMgr 返回本 Controller 持有的会话。
 func (c *Controller) GetSessionMgr() *session.Manager { return c.sessionMgr }
 
-// SetWorkspaceDir 会话层守卫 + sandbox 根同步（零消息窗口内，见
-// session.Manager.SetWorkspaceDir 的锁定语义）。sandbox 根是固定值，
-// 不跟随 provider——成功换目录后必须显式通知。
-func (c *Controller) SetWorkspaceDir(dir string) error {
-	if err := c.sessionMgr.SetWorkspaceDir(dir); err != nil {
-		return err
-	}
+// Project 返回会话所属项目（工作区的拥有者）。
+func (c *Controller) Project() *project.Project { return c.proj }
+
+// SyncWorkspaceRoot 项目工作区换绑后由 App 调用：sandbox 根同步到最新值
+// （sandbox 根是固定值，不跟随 provider——成功换目录后必须显式通知）。
+func (c *Controller) SyncWorkspaceRoot() {
 	c.sandbox.SetRoot(c.sessionMgr.GetWorkspaceDir())
-	return nil
 }
 
 // SubmitMessage 提交一条用户消息并启动一轮对话：消息准备（追加 user 消息，

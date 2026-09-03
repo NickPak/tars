@@ -4,6 +4,7 @@ import MessageList from "./components/MessageList";
 import ChatInput from "./components/ChatInput";
 import TopBar from "./components/TopBar";
 import TopicBar from "./components/TopicBar";
+import SessionTabs from "./components/SessionTabs";
 import WorkspacePanel from "./components/WorkspacePanel";
 import StatusBar from "./components/StatusBar";
 import SettingsPanel from "./components/SettingsPanel";
@@ -70,6 +71,7 @@ export default function App() {
       <TopBar />
       <Sidebar />
       <main className="chat-pane">
+        <SessionTabs />
         <TopicBar />
         {backendError && (
           <div className="backend-error" role="alert">

@@ -20,25 +20,27 @@ const (
 )
 
 // Metadata 是磁盘上的会话摘要。
+// 工作区是项目属性（project.json），不在此——会话经 WorkspaceSource
+// 向所属项目现取（多会话共享同一工作区）。
 type Metadata struct {
 	ID           string              `json:"id"`
+	ProjectID    string              `json:"projectId"`
 	Title        string              `json:"title"`
 	CreatedAt    int64               `json:"createdAt"`
 	UpdatedAt    int64               `json:"updatedAt"`
-	WorkspaceDir string              `json:"workspaceDir"`
 	LoadedSkills map[string]struct{} `json:"loadedSkills"`
 	LoadedTools  map[string]struct{} `json:"loadedTools"`
 }
 
-func NewMetadata(id string) *Metadata {
+func NewMetadata(id, projectID string) *Metadata {
 	now := time.Now().UnixMilli()
 
 	return &Metadata{
 		ID:           id,
+		ProjectID:    projectID,
 		Title:        DefaultSessionTitle,
 		CreatedAt:    now,
 		UpdatedAt:    now,
-		WorkspaceDir: GetWorkspaceDir(instance.GetWorkDir(), id),
 		LoadedSkills: make(map[string]struct{}),
 		LoadedTools:  make(map[string]struct{}),
 	}
@@ -54,14 +56,14 @@ type Data struct {
 
 // NewData 创建新会话的内存态；store/sink 由 Store.Create 注入。
 // 恢复路径不经此函数（Store.RestoreAll 直接字面量构造）。
-func NewData(id string) *Data {
+func NewData(id, projectID string) *Data {
 	return &Data{
-		Metadata: NewMetadata(id),
+		Metadata: NewMetadata(id, projectID),
 		Messages: make([]*schema.Message, 0, 16),
 	}
 }
 
-// SortByCreatedAt 按创建时间升序排序会话列表（boot.App.ListSessions 使用）。
+// SortByCreatedAt 按创建时间升序排序会话列表（boot.App.ListProjects 使用）。
 func SortByCreatedAt(list []*Data) {
 	slices.SortFunc(list, func(a, b *Data) int {
 		return cmp.Compare(a.CreatedAt, b.CreatedAt)

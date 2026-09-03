@@ -9,144 +9,44 @@ import (
 	"tars/pkg/event"
 )
 
-// 策略（目录创建两处各归其位）：
-//   - 存储类目录：StoreManager 写路径惰性自闭合（外部无需关心）；
-//   - 非存储类目录（工作目录）：session.Manager.Startup 在初始创建与恢复
-//     加载两个生命周期点集中检测与创建。
+// 工作区语义（2026-09 项目化改造后）：
+//   - 工作区是项目属性（internal/project）：会话 Manager 经 WorkspaceSource
+//     现取，不持有、不持久化、不创建；
+//   - 会话存储目录 = projects/<pid>/sessions/<sid>/（CreateSession 的 meta
+//     落盘即证据）；
+//   - 零消息锁定守卫在 App 层（项目级：同项目全部会话共享同一工作区，
+//     单个会话无权单独改）。
 
-// CreateSession 只写 meta（存储目录随写入惰性创建），不创建工作目录——
-// 工作目录是 Manager.Startup 的职责。
-func TestCreateSessionDoesNotCreateWorkspaceDir(t *testing.T) {
-	InitStoreManager(t.TempDir())
-	data, err := GetStoreManager().CreateSession()
+// CreateSession 把 meta 落盘到项目嵌套目录（projects/<pid>/sessions/<sid>/
+// .data/meta.json），不碰工作区——工作区创建是项目层的职责。
+func TestCreateSessionLayout(t *testing.T) {
+	InitStoreManager()
+	projectDir := t.TempDir()
+	data, sessionDir, err := GetStoreManager().CreateSession(projectDir, "proj-1")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	def := GetWorkspaceDir(GetStoreManager().GetWorkDir(), data.ID)
-	if _, err := os.Stat(def); !os.IsNotExist(err) {
-		t.Fatal("CreateSession should NOT create workspace dir (Manager.Startup's job)")
+	if data.ProjectID != "proj-1" {
+		t.Fatalf("ProjectID = %q, want proj-1", data.ProjectID)
 	}
-	// meta 已落盘（存储目录随首次写入创建）
-	if _, err := os.Stat(filepath.Join(GetDataDir(GetStoreManager().GetWorkDir(), data.ID), MetaFile)); err != nil {
-		t.Fatalf("meta.json should exist: %v", err)
+	wantDir := GetSessionDir(projectDir, data.ID)
+	if sessionDir != wantDir {
+		t.Fatalf("sessionDir = %q, want %q", sessionDir, wantDir)
 	}
-}
-
-// Manager.Startup 创建工作目录（创建路径：CreateSession → NewManager → Startup）。
-func TestStartupCreatesWorkspaceDir(t *testing.T) {
-	m := newTestManager(t)
-	def := GetWorkspaceDir(GetStoreManager().GetWorkDir(), m.GetID())
-	if err := os.RemoveAll(def); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Startup(); err != nil {
-		t.Fatalf("startup: %v", err)
-	}
-	if info, err := os.Stat(def); err != nil || !info.IsDir() {
-		t.Fatalf("workspace dir should exist after Startup: %v", err)
+	metaPath := filepath.Join(GetDataDirFromSessionDir(sessionDir), MetaFile)
+	if _, err := os.Stat(metaPath); err != nil {
+		t.Fatalf("meta.json should exist at project-nested path: %v", err)
 	}
 }
 
-// 旧 meta（WorkspaceDir 为空）：Startup 回填默认路径、建目录并持久化。
-func TestStartupBackfillsLegacyWorkspaceDir(t *testing.T) {
+// Manager.GetWorkspaceDir 只是 WorkspaceSource 的直通：项目换绑工作区后
+// 同一 Manager 立即看到新值（多会话共享的结构性保障）。
+func TestGetWorkspaceDirDelegatesToSource(t *testing.T) {
 	m := newTestManager(t)
-	sm := GetStoreManager()
-	meta, err := sm.LoadMetadata(m.GetID())
-	if err != nil || meta == nil {
-		t.Fatalf("load meta: %v", err)
-	}
-	meta.WorkspaceDir = ""
-	if err := sm.SaveMetadata(m.GetID(), meta); err != nil {
-		t.Fatal(err)
-	}
-	def := GetWorkspaceDir(sm.GetWorkDir(), m.GetID())
-	if err := os.RemoveAll(def); err != nil {
-		t.Fatal(err)
-	}
-
-	m2 := NewManager(&Data{Metadata: meta}, event.Discard, testLLMManager(t, 128000),
-		testThreshold, testKeepTurns, testMinBatch, testMaxFailures)
-	if err := m2.Startup(); err != nil {
-		t.Fatalf("startup: %v", err)
-	}
-	if m2.GetWorkspaceDir() != def {
-		t.Fatalf("WorkspaceDir = %q, want default %q", m2.GetWorkspaceDir(), def)
-	}
-	if _, err := os.Stat(def); err != nil {
-		t.Fatalf("workspace dir should be created: %v", err)
-	}
-	meta2, err := sm.LoadMetadata(m.GetID())
-	if err != nil || meta2 == nil {
-		t.Fatalf("reload meta: %v", err)
-	}
-	if meta2.WorkspaceDir != def {
-		t.Fatal("backfill not persisted to meta.json")
-	}
-}
-
-// 自定义工作目录（用户项目）不自动创建——目录已删除时保持原值，
-// 避免掩盖"项目目录已被删除"的事实。
-func TestStartupDoesNotCreateCustomWorkspaceDir(t *testing.T) {
-	m := newTestManager(t)
-	custom := filepath.Join(t.TempDir(), "deleted-project")
-	m.data.WorkspaceDir = custom
-
-	if err := m.Startup(); err != nil {
-		t.Fatalf("startup: %v", err)
-	}
-	if _, err := os.Stat(custom); !os.IsNotExist(err) {
-		t.Fatal("custom workspace dir must not be auto-created")
-	}
-	if m.GetWorkspaceDir() != custom {
-		t.Fatal("custom workspace dir should be kept as-is")
-	}
-}
-
-// 自定义目录必须已存在才能设置（chdir 失败的提前暴露）。
-func TestSetWorkspaceDirRequiresExistingDir(t *testing.T) {
-	m := newTestManager(t)
-	if err := m.SetWorkspaceDir(filepath.Join(t.TempDir(), "nonexistent")); err == nil {
-		t.Fatal("SetWorkspaceDir should reject nonexistent dir")
-	}
-	existing := t.TempDir()
-	if err := m.SetWorkspaceDir(existing); err != nil {
-		t.Fatalf("SetWorkspaceDir with existing dir: %v", err)
-	}
-	if m.GetWorkspaceDir() != existing {
-		t.Fatalf("WorkspaceDir = %q, want %q", m.GetWorkspaceDir(), existing)
-	}
-}
-
-// 锁定：有任何对话消息后禁止再改工作目录（后端权威守卫）。
-// 原因：历史消息里含相对旧根的路径与内容，改目录后模型照旧路径操作全错。
-// 用「有消息」而非「轮运行中」——零消息 ⇒ 从未启动过轮（SubmitMessage 先追加
-// 消息再启动），静态无竞态。
-func TestSetWorkspaceDirLocksAfterFirstMessage(t *testing.T) {
-	m := newTestManager(t)
-	dir1, dir2 := t.TempDir(), t.TempDir()
-
-	// 零消息窗口内：可改，且可反复改
-	if err := m.SetWorkspaceDir(dir1); err != nil {
-		t.Fatalf("set before any message: %v", err)
-	}
-	if err := m.SetWorkspaceDir(dir2); err != nil {
-		t.Fatalf("change within the pre-message window: %v", err)
-	}
-	if m.GetWorkspaceDir() != dir2 {
-		t.Fatalf("WorkspaceDir = %q, want %q", m.GetWorkspaceDir(), dir2)
-	}
-
-	// 第一条消息落地 → 锁定
-	m.AppendUserMessage("hi")
-	if err := m.SetWorkspaceDir(dir1); err == nil {
-		t.Fatal("SetWorkspaceDir must be rejected once the session has messages")
-	}
-	if m.GetWorkspaceDir() != dir2 {
-		t.Fatalf("WorkspaceDir changed after lock: %q", m.GetWorkspaceDir())
-	}
-	// 连"改回默认"也禁止（锁定后任何变更都拒绝）
-	if err := m.SetWorkspaceDir(""); err == nil {
-		t.Fatal("reset to default must also be locked")
+	ws := t.TempDir()
+	m.ws = fakeWorkspace{dir: ws}
+	if m.GetWorkspaceDir() != ws {
+		t.Fatalf("GetWorkspaceDir = %q, want %q", m.GetWorkspaceDir(), ws)
 	}
 }
 
@@ -197,7 +97,7 @@ func TestAppendUserMessagePersists(t *testing.T) {
 	if id == "" {
 		t.Fatal("empty message id")
 	}
-	msgs, err := GetStoreManager().LoadMessages(m.GetID())
+	msgs, err := GetStoreManager().LoadMessages(m.GetSessionDir())
 	if err != nil {
 		t.Fatalf("load messages: %v", err)
 	}

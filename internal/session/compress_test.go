@@ -404,7 +404,7 @@ func TestMaybeCompressUnmarksArchivedSkill(t *testing.T) {
 	if m.IsSkillLoaded("pptx") {
 		t.Fatal("skill should be unmarked after its body was archived")
 	}
-	meta, err := GetStoreManager().LoadMetadata(m.GetID())
+	meta, err := GetStoreManager().LoadMetadata(m.GetSessionDir())
 	if err != nil || meta == nil {
 		t.Fatalf("load meta: %v", err)
 	}

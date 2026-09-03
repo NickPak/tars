@@ -370,6 +370,28 @@ export interface Skill {
   enabled: boolean;
 }
 
+/** 项目（工作区的拥有者，下辖多个会话） */
+export interface Project {
+  id: string;
+  /** 用户显式命名的标题；空 = 未命名（展示层从最近会话推导） */
+  title?: string;
+  /** 自定义工作区绝对路径；空 = 项目级默认目录 */
+  workspaceDir?: string;
+  createdAt: number;
+  updatedAt: number;
+  /** 项目下的会话 */
+  sessions: Session[];
+}
+
+/** 创建项目的返回：项目 + 默认会话 */
+export interface ProjectCreated {
+  id: string;
+  workspaceDir?: string;
+  createdAt: number;
+  updatedAt: number;
+  session: Session;
+}
+
 /** 会话工作区的 AGENTS.md 发现状态 */
 export interface AgentsMdStatus {
   exists: boolean;

@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as session$0 from "./internal/session/models.js";
+
 /**
  * AgentsMdStatus 是会话工作区的 AGENTS.md 发现状态（项目指令记忆的可发现性入口）。
  */
@@ -210,6 +214,58 @@ export class ModelPrice {
 }
 
 /**
+ * ProjectCreated 是 CreateProject 的返回：新项目与其默认会话。
+ */
+export class ProjectCreated {
+    "id": string;
+
+    /**
+     * Title 是用户显式命名的项目标题；空 = 未命名（展示层从项目内最近
+     * 会话的标题推导）。显式优先：一旦命名，不再跟随会话自动命名。
+     */
+    "title"?: string;
+
+    /**
+     * WorkspaceDir 是用户显式设置的自定义工作区绝对路径；空 = 使用
+     * 项目级默认目录（GetWorkspaceDir 解析）。
+     */
+    "workspaceDir"?: string;
+    "createdAt": number;
+    "updatedAt": number;
+    "session": session$0.Data | null;
+
+    /** Creates a new ProjectCreated instance. */
+    constructor($$source: Partial<ProjectCreated> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = 0;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = 0;
+        }
+        if (!("session" in $$source)) {
+            this["session"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProjectCreated instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProjectCreated {
+        const $$createField5_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("session" in $$parsedSource) {
+            $$parsedSource["session"] = $$createField5_0($$parsedSource["session"]);
+        }
+        return new ProjectCreated($$parsedSource as Partial<ProjectCreated>);
+    }
+}
+
+/**
  * SessionStats 是会话级聚合统计，供底部状态栏展示。
  * 轮次级指标（本次命中率/本次费用/tokens/耗时）随每条 assistant 消息的
  * Usage/ElapsedMs 持久化，由前端在消息底部直接渲染，不在此聚合。
@@ -361,7 +417,7 @@ export class SessionStats {
      * Creates a new SessionStats instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionStats {
-        const $$createField17_0 = $$createType4;
+        const $$createField17_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("modelPrices" in $$parsedSource) {
             $$parsedSource["modelPrices"] = $$createField17_0($$parsedSource["modelPrices"]);
@@ -438,5 +494,7 @@ export class WorkspaceInfo {
 const $$createType0 = FileEntry.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = ModelInfo.createFrom;
-const $$createType3 = ModelPrice.createFrom;
-const $$createType4 = $Create.Map($Create.Any, $$createType3);
+const $$createType3 = session$0.Data.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = ModelPrice.createFrom;
+const $$createType6 = $Create.Map($Create.Any, $$createType5);

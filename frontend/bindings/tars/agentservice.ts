@@ -7,6 +7,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as boot$0 from "./internal/boot/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as config$0 from "./internal/config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -47,9 +50,21 @@ export function CreateAgentsMd(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(1549284599, sessionID);
 }
 
-export function CreateSession(): $CancellablePromise<session$0.Data | null> {
-    return $Call.ByID(98051076).then(($result: any) => {
+/**
+ * CreateProject 创建新项目（含一个默认会话，可直接开始对话）。
+ */
+export function CreateProject(): $CancellablePromise<$models.ProjectCreated | null> {
+    return $Call.ByID(2602385197).then(($result: any) => {
         return $$createType1($result);
+    });
+}
+
+/**
+ * CreateSession 在既有项目中新建会话（会话 Tab，与项目共用工作区）。
+ */
+export function CreateSession(projectID: string): $CancellablePromise<session$0.Data | null> {
+    return $Call.ByID(98051076, projectID).then(($result: any) => {
+        return $$createType3($result);
     });
 }
 
@@ -62,6 +77,16 @@ export function DeleteMessage(sessionID: string, messageID: string): $Cancellabl
     return $Call.ByID(1792683014, sessionID, messageID);
 }
 
+/**
+ * DeleteProject 删除项目（级联其下全部会话数据）。
+ */
+export function DeleteProject(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3732041524, id);
+}
+
+/**
+ * DeleteSession 删除项目内的单个会话；删除整个项目用 DeleteProject。
+ */
 export function DeleteSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(3827341809, id);
 }
@@ -87,7 +112,7 @@ export function ExportSession(sessionID: string): $CancellablePromise<string> {
  */
 export function GetAgentsMdStatus(sessionID: string): $CancellablePromise<$models.AgentsMdStatus | null> {
     return $Call.ByID(2029247233, sessionID).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -96,7 +121,7 @@ export function GetAgentsMdStatus(sessionID: string): $CancellablePromise<$model
  */
 export function GetAppConfig(): $CancellablePromise<config$0.AppConfig | null> {
     return $Call.ByID(3243841041).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -106,13 +131,13 @@ export function GetAppConfig(): $CancellablePromise<config$0.AppConfig | null> {
  */
 export function GetModelInfo(): $CancellablePromise<$models.ModelInfo | null> {
     return $Call.ByID(708754981).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
 export function GetSession(id: string): $CancellablePromise<session$0.Data | null> {
     return $Call.ByID(2463902692, id).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
@@ -121,7 +146,7 @@ export function GetSession(id: string): $CancellablePromise<session$0.Data | nul
  */
 export function GetSessionStats(sessionID: string): $CancellablePromise<$models.SessionStats | null> {
     return $Call.ByID(520403183, sessionID).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
     });
 }
 
@@ -130,7 +155,7 @@ export function GetSessionStats(sessionID: string): $CancellablePromise<$models.
  */
 export function GetWorkspaceInfo(sessionID: string): $CancellablePromise<$models.WorkspaceInfo | null> {
     return $Call.ByID(3454358245, sessionID).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType13($result);
     });
 }
 
@@ -147,7 +172,7 @@ export function InstallSkill(srcPath: string, category: string, overwrite: boole
  */
 export function ListMCPServers(): $CancellablePromise<(mcp$0.ServerInfo | null)[]> {
     return $Call.ByID(2900398080).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
     });
 }
 
@@ -156,7 +181,7 @@ export function ListMCPServers(): $CancellablePromise<(mcp$0.ServerInfo | null)[
  */
 export function ListMCPTools(server: string): $CancellablePromise<(mcp$0.ToolInfo | null)[]> {
     return $Call.ByID(1929838067, server).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType19($result);
     });
 }
 
@@ -166,13 +191,16 @@ export function ListMCPTools(server: string): $CancellablePromise<(mcp$0.ToolInf
  */
 export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
     return $Call.ByID(425219254).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType20($result);
     });
 }
 
-export function ListSessions(): $CancellablePromise<(session$0.Data | null)[]> {
-    return $Call.ByID(3651696153).then(($result: any) => {
-        return $$createType19($result);
+/**
+ * ListProjects 列出全部项目（含各自会话）。
+ */
+export function ListProjects(): $CancellablePromise<(boot$0.ProjectView | null)[]> {
+    return $Call.ByID(60175774).then(($result: any) => {
+        return $$createType23($result);
     });
 }
 
@@ -181,18 +209,18 @@ export function ListSessions(): $CancellablePromise<(session$0.Data | null)[]> {
  */
 export function ListSkills(): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(2331056158).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType26($result);
     });
 }
 
 /**
  * ListWorkspaceFiles returns a recursive file tree of the given session's
- * workspace directory. The workspace dir is per-session: {workDir}/sessions/{id}/workspace/.
- * If the directory doesn't exist yet (new session), an empty slice is returned.
+ * workspace directory（工作区是项目级：同项目多会话共享同一目录）。
+ * If the directory doesn't exist yet (new project), an empty slice is returned.
  */
 export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(2376334908, sessionID).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType28($result);
     });
 }
 
@@ -247,6 +275,13 @@ export function RemoveMCPServer(name: string): $CancellablePromise<void> {
     return $Call.ByID(695157915, name);
 }
 
+/**
+ * RenameProject 显式重命名项目（此后标题不再跟随会话自动命名）。
+ */
+export function RenameProject(id: string, title: string): $CancellablePromise<void> {
+    return $Call.ByID(3088019471, id, title);
+}
+
 export function RenameSession(id: string, title: string): $CancellablePromise<void> {
     return $Call.ByID(1629291394, id, title);
 }
@@ -279,6 +314,14 @@ export function RevealInExplorer(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
+ * RevealProjectWorkspace opens the OS file manager at the project's workspace
+ * directory（项目级入口：零会话项目没有 Controller，直接经项目管理器解析）。
+ */
+export function RevealProjectWorkspace(projectID: string): $CancellablePromise<void> {
+    return $Call.ByID(3116010363, projectID);
+}
+
+/**
  * SaveAppConfig 校验并保存配置：写回 config.yaml（保留注释与 apiKey 引用），
  * 并热更新内存配置与模型注册表（model/agent/trace 立即生效，
  * workDir 需重启生效——工作目录涉及存量会话数据搬迁）。
@@ -295,7 +338,7 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
  */
 export function SearchSkills(query: string): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(1567288730, query).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType26($result);
     });
 }
 
@@ -333,13 +376,10 @@ export function SetSkillEnabled(name: string, enabled: boolean): $CancellablePro
 }
 
 /**
- * SetWorkspaceDir sets a custom workspace directory for the given session.
- * 仅零消息窗口内生效：一旦产生对话消息即锁定（session.Manager 权威守卫），
- * 不存在"重置为默认"入口——该功能从未工作过（空串过不了 os.Stat 校验），
- * 已于 2026-09-01 删除。
- * 
- * 两道守卫：轮运行中禁止（瞬态防并发）；已有对话消息禁止（静态防"锁定后
- * 仍能改"——历史消息里的相对路径会静默失效，模型无从察觉）。
+ * SetWorkspaceDir sets a custom workspace directory for the given session's
+ * PROJECT（工作区是项目属性：同项目全部会话共享）。守卫在 App 层：
+ * 项目内所有会话零消息且无运行中的轮才允许；锁定后不迁移。
+ * 不存在"重置为默认"入口。
  */
 export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePromise<void> {
     return $Call.ByID(3610152448, sessionID, dir);
@@ -351,7 +391,7 @@ export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePro
  */
 export function SkillCategories(): $CancellablePromise<string[]> {
     return $Call.ByID(692754289).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType29($result);
     });
 }
 
@@ -360,7 +400,7 @@ export function SkillCategories(): $CancellablePromise<string[]> {
  */
 export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<$models.SubmitResult | null> {
     return $Call.ByID(382211931, sessionID, content).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType31($result);
     });
 }
 
@@ -381,31 +421,35 @@ export function UpsertMCPServer(name: string, cfg: mcp$0.ServerConfig | null): $
 }
 
 // Private type creation functions
-const $$createType0 = session$0.Data.createFrom;
+const $$createType0 = $models.ProjectCreated.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.AgentsMdStatus.createFrom;
+const $$createType2 = session$0.Data.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = config$0.AppConfig.createFrom;
+const $$createType4 = $models.AgentsMdStatus.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $models.ModelInfo.createFrom;
+const $$createType6 = config$0.AppConfig.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $models.SessionStats.createFrom;
+const $$createType8 = $models.ModelInfo.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $models.WorkspaceInfo.createFrom;
+const $$createType10 = $models.SessionStats.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = mcp$0.ServerInfo.createFrom;
+const $$createType12 = $models.WorkspaceInfo.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = mcp$0.ToolInfo.createFrom;
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = $Create.Array($$createType6);
-const $$createType19 = $Create.Array($$createType1);
-const $$createType20 = skill$0.SkillMeta.createFrom;
-const $$createType21 = $Create.Nullable($$createType20);
-const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = $models.FileEntry.createFrom;
-const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = $Create.Array($Create.Any);
-const $$createType26 = $models.SubmitResult.createFrom;
-const $$createType27 = $Create.Nullable($$createType26);
+const $$createType14 = mcp$0.ServerInfo.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = mcp$0.ToolInfo.createFrom;
+const $$createType18 = $Create.Nullable($$createType17);
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = $Create.Array($$createType8);
+const $$createType21 = boot$0.ProjectView.createFrom;
+const $$createType22 = $Create.Nullable($$createType21);
+const $$createType23 = $Create.Array($$createType22);
+const $$createType24 = skill$0.SkillMeta.createFrom;
+const $$createType25 = $Create.Nullable($$createType24);
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = $models.FileEntry.createFrom;
+const $$createType28 = $Create.Array($$createType27);
+const $$createType29 = $Create.Array($Create.Any);
+const $$createType30 = $models.SubmitResult.createFrom;
+const $$createType31 = $Create.Nullable($$createType30);
