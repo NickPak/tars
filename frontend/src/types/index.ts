@@ -370,6 +370,13 @@ export interface Skill {
   enabled: boolean;
 }
 
+/** 会话工作区的 AGENTS.md 发现状态 */
+export interface AgentsMdStatus {
+  exists: boolean;
+  /** AGENTS.md 完整路径（未找到时为预期路径） */
+  path: string;
+}
+
 /** 与 Go 端 main.go 中注册的事件名保持一致 */
 export const AgentEvents = {
   Chunk: "agent:chunk",

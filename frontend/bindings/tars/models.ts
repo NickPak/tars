@@ -6,6 +6,38 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * AgentsMdStatus 是会话工作区的 AGENTS.md 发现状态（项目指令记忆的可发现性入口）。
+ */
+export class AgentsMdStatus {
+    "exists": boolean;
+
+    /**
+     * Path 是 AGENTS.md 的完整路径（未找到时为预期路径，供 tooltip 展示）。
+     */
+    "path": string;
+
+    /** Creates a new AgentsMdStatus instance. */
+    constructor($$source: Partial<AgentsMdStatus> = {}) {
+        if (!("exists" in $$source)) {
+            this["exists"] = false;
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AgentsMdStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AgentsMdStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AgentsMdStatus($$parsedSource as Partial<AgentsMdStatus>);
+    }
+}
+
+/**
  * FileEntry represents a single file or directory in the workspace file tree.
  */
 export class FileEntry {

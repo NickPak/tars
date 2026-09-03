@@ -51,6 +51,13 @@ type Session interface {
 	GetWorkspaceDir() string
 }
 
+// MemoryBlock 是"History 之后、状态栏之前"的记忆块提供者（消费侧窄
+// 接口，pkg/memory.Runtime 天然满足）。返回 nil 表示本轮省略记忆块；
+// 消息只进内存视图、不写回会话（与状态栏同约定）。
+type MemoryBlock interface {
+	RenderMemoryBlock() *schema.Message
+}
+
 // ToolExecutor 是 agent 循环对工具系统的最小依赖面（消费侧窄接口）：
 // 发 schema 给模型 + 并行执行工具调用。由 *tool.Registry 实现；
 // 测试可用最小 fake 替换，不必构造完整注册表。
@@ -72,18 +79,21 @@ type ReActAgent struct {
 	prompt    prompt.Composer
 	session   Session
 	toolExec  ToolExecutor
+	memory    MemoryBlock
 	statusBar *StatusBar
 }
 
 var _ Agent = (*ReActAgent)(nil)
 
 // NewReAct 创建一个 ReAct 循环的 agent（会话级，由 Controller 持有复用）。
-func NewReAct(cfg *Config, prompt prompt.Composer, session Session, toolExec ToolExecutor, env EnvInfo, sections ...StatusSection) *ReActAgent {
+// memory 为 nil 时不注入记忆块。
+func NewReAct(cfg *Config, prompt prompt.Composer, session Session, toolExec ToolExecutor, env EnvInfo, memory MemoryBlock, sections ...StatusSection) *ReActAgent {
 	return &ReActAgent{
 		cfg:       cfg,
 		prompt:    prompt,
 		session:   session,
 		toolExec:  toolExec,
+		memory:    memory,
 		statusBar: NewStatusBar(session, env, sections...),
 	}
 }
@@ -126,14 +136,19 @@ func (a *ReActAgent) run(ctx context.Context, gen *event.Generator, assistantID 
 		//    压缩器由会话侧持有（Session.MaybeCompress），未装配时为空操作。
 		a.session.MaybeCompress(ctx, provider)
 
-		// 1. 构建 LLM 输入：system（动态）+ 会话历史 + 状态栏。
-		//    状态栏追加到内存上下文尾部（不改 system 前缀，保住 KV Cache），
-		//    只在内存中存在——不写回会话，宿主不会持久化。
+		// 1. 构建 LLM 输入：system（动态）+ 会话历史 + [记忆块?] + 状态栏。
+		//    记忆块与状态栏追加到内存上下文尾部（不改 system 前缀，保住
+		//    KV Cache），只在内存中存在——不写回会话，宿主不会持久化。
 		history := a.session.History()
 		sys := a.prompt.GetSystemMessage()
-		msgs := make([]*schema.Message, 0, len(sys)+len(history)+1)
+		msgs := make([]*schema.Message, 0, len(sys)+len(history)+2)
 		msgs = append(msgs, sys...)
 		msgs = append(msgs, history...)
+		if a.memory != nil {
+			if mb := a.memory.RenderMemoryBlock(); mb != nil {
+				msgs = append(msgs, mb)
+			}
+		}
 		msgs = append(msgs, a.statusBar.Render(ctx, iter))
 
 		// 迭代消息 ID：首轮沿用轮锚点 assistantID（前端占位回填不变），

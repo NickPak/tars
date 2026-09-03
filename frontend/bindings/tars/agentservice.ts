@@ -39,6 +39,14 @@ export function CancelMessage(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(813006285, sessionID);
 }
 
+/**
+ * CreateAgentsMd 在工作区根写入 AGENTS.md 骨架模板；已存在时拒绝
+ * （防覆盖用户内容——创建动作必须显式且幂等失败可见）。
+ */
+export function CreateAgentsMd(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(1549284599, sessionID);
+}
+
 export function CreateSession(): $CancellablePromise<session$0.Data | null> {
     return $Call.ByID(98051076).then(($result: any) => {
         return $$createType1($result);
@@ -75,11 +83,20 @@ export function ExportSession(sessionID: string): $CancellablePromise<string> {
 }
 
 /**
+ * GetAgentsMdStatus 报告会话工作区根是否存在 AGENTS.md。
+ */
+export function GetAgentsMdStatus(sessionID: string): $CancellablePromise<$models.AgentsMdStatus | null> {
+    return $Call.ByID(2029247233, sessionID).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * GetAppConfig 返回当前配置（密钥原样返回，前端用眼睛按钮控制显示）。
  */
 export function GetAppConfig(): $CancellablePromise<config$0.AppConfig | null> {
     return $Call.ByID(3243841041).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -89,7 +106,7 @@ export function GetAppConfig(): $CancellablePromise<config$0.AppConfig | null> {
  */
 export function GetModelInfo(): $CancellablePromise<$models.ModelInfo | null> {
     return $Call.ByID(708754981).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -104,7 +121,7 @@ export function GetSession(id: string): $CancellablePromise<session$0.Data | nul
  */
 export function GetSessionStats(sessionID: string): $CancellablePromise<$models.SessionStats | null> {
     return $Call.ByID(520403183, sessionID).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
@@ -113,7 +130,7 @@ export function GetSessionStats(sessionID: string): $CancellablePromise<$models.
  */
 export function GetWorkspaceInfo(sessionID: string): $CancellablePromise<$models.WorkspaceInfo | null> {
     return $Call.ByID(3454358245, sessionID).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
     });
 }
 
@@ -130,7 +147,7 @@ export function InstallSkill(srcPath: string, category: string, overwrite: boole
  */
 export function ListMCPServers(): $CancellablePromise<(mcp$0.ServerInfo | null)[]> {
     return $Call.ByID(2900398080).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType14($result);
     });
 }
 
@@ -139,7 +156,7 @@ export function ListMCPServers(): $CancellablePromise<(mcp$0.ServerInfo | null)[
  */
 export function ListMCPTools(server: string): $CancellablePromise<(mcp$0.ToolInfo | null)[]> {
     return $Call.ByID(1929838067, server).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType17($result);
     });
 }
 
@@ -149,13 +166,13 @@ export function ListMCPTools(server: string): $CancellablePromise<(mcp$0.ToolInf
  */
 export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
     return $Call.ByID(425219254).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType18($result);
     });
 }
 
 export function ListSessions(): $CancellablePromise<(session$0.Data | null)[]> {
     return $Call.ByID(3651696153).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType19($result);
     });
 }
 
@@ -164,7 +181,7 @@ export function ListSessions(): $CancellablePromise<(session$0.Data | null)[]> {
  */
 export function ListSkills(): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(2331056158).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType22($result);
     });
 }
 
@@ -175,7 +192,7 @@ export function ListSkills(): $CancellablePromise<(skill$0.SkillMeta | null)[]> 
  */
 export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(2376334908, sessionID).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType24($result);
     });
 }
 
@@ -278,7 +295,7 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
  */
 export function SearchSkills(query: string): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(1567288730, query).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType22($result);
     });
 }
 
@@ -334,7 +351,7 @@ export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePro
  */
 export function SkillCategories(): $CancellablePromise<string[]> {
     return $Call.ByID(692754289).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType25($result);
     });
 }
 
@@ -343,7 +360,7 @@ export function SkillCategories(): $CancellablePromise<string[]> {
  */
 export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<$models.SubmitResult | null> {
     return $Call.ByID(382211931, sessionID, content).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType27($result);
     });
 }
 
@@ -366,27 +383,29 @@ export function UpsertMCPServer(name: string, cfg: mcp$0.ServerConfig | null): $
 // Private type creation functions
 const $$createType0 = session$0.Data.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = config$0.AppConfig.createFrom;
+const $$createType2 = $models.AgentsMdStatus.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.ModelInfo.createFrom;
+const $$createType4 = config$0.AppConfig.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $models.SessionStats.createFrom;
+const $$createType6 = $models.ModelInfo.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $models.WorkspaceInfo.createFrom;
+const $$createType8 = $models.SessionStats.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = mcp$0.ServerInfo.createFrom;
+const $$createType10 = $models.WorkspaceInfo.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = mcp$0.ToolInfo.createFrom;
-const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = $Create.Array($$createType4);
-const $$createType17 = $Create.Array($$createType1);
-const $$createType18 = skill$0.SkillMeta.createFrom;
-const $$createType19 = $Create.Nullable($$createType18);
-const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $models.FileEntry.createFrom;
+const $$createType12 = mcp$0.ServerInfo.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = mcp$0.ToolInfo.createFrom;
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = $Create.Array($$createType6);
+const $$createType19 = $Create.Array($$createType1);
+const $$createType20 = skill$0.SkillMeta.createFrom;
+const $$createType21 = $Create.Nullable($$createType20);
 const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = $Create.Array($Create.Any);
-const $$createType24 = $models.SubmitResult.createFrom;
-const $$createType25 = $Create.Nullable($$createType24);
+const $$createType23 = $models.FileEntry.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = $Create.Array($Create.Any);
+const $$createType26 = $models.SubmitResult.createFrom;
+const $$createType27 = $Create.Nullable($$createType26);

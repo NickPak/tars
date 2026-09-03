@@ -11,7 +11,7 @@ import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
 import type * as mcpModels from "../../bindings/tars/pkg/mcp/models";
-import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo } from "../types";
+import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, ApprovalEvent, CompressionDoneEvent, CompressionFailedEvent } from "../types";
@@ -157,6 +157,14 @@ export const agentApi = {
   /** 在系统文件管理器中显示指定文件（选中该文件） */
   revealFileInExplorer: (sessionId: string, relPath: string): Promise<void> =>
     AgentService.RevealFileInExplorer(sessionId, relPath),
+
+  /** 查询会话工作区的 AGENTS.md 状态 */
+  getAgentsMdStatus: async (sessionId: string): Promise<AgentsMdStatus | null> =>
+    (await AgentService.GetAgentsMdStatus(sessionId)) as AgentsMdStatus | null,
+
+  /** 在工作区根创建 AGENTS.md 骨架模板（已存在时后端拒绝） */
+  createAgentsMd: (sessionId: string): Promise<void> =>
+    AgentService.CreateAgentsMd(sessionId),
 
   // --- 工作区管理 ---
 

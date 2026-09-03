@@ -102,7 +102,7 @@ type testCarrier struct {
 }
 
 func (c *testCarrier) Definitions() []*tool.Definition { return c.defs }
-func (c *testCarrier) Close() error                      { return nil }
+func (c *testCarrier) Close() error                    { return nil }
 
 // newTestRegistry builds a real tool.Registry (the given custom handlers
 // registered into an empty registry). Registry.Execute already provides
@@ -160,7 +160,7 @@ func (fakeSkillStatus) RenderStatus(int) string { return "" }
 func newTestAgent(reg *tool.Registry, sess *fakeSession, maxIter int) *ReActAgent {
 	cfg := &Config{MaxIterations: maxIter}
 	cfg.Validate()
-	a := NewReAct(cfg, fakeComposer{}, sess, reg, nil, fakeSkillStatus{}, &mockMCPRuntime{})
+	a := NewReAct(cfg, fakeComposer{}, sess, reg, nil, nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		panic(err)
 	}
@@ -470,7 +470,7 @@ func TestRun_TimeoutNotMisreportedAsOverflow(t *testing.T) {
 	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
 	cfg.Validate()
 	a := NewReAct(cfg, fakeComposer{}, &fakeSession{},
-		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
+		newTestRegistry(nil), nil, nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +491,7 @@ func TestRun_IterationTimeout(t *testing.T) {
 	cfg := &Config{MaxIterations: 5, IterationTimeout: 50 * time.Millisecond}
 	cfg.Validate()
 	a := NewReAct(cfg, fakeComposer{}, &fakeSession{},
-		newTestRegistry(nil), nil, fakeSkillStatus{}, &mockMCPRuntime{})
+		newTestRegistry(nil), nil, nil, fakeSkillStatus{}, &mockMCPRuntime{})
 	if err := a.Startup(); err != nil {
 		t.Fatal(err)
 	}
@@ -507,4 +507,60 @@ func TestRun_IterationTimeout(t *testing.T) {
 	if time.Since(start) > 2*time.Second {
 		t.Fatal("iteration timeout did not fire promptly")
 	}
+}
+
+// fakeMemoryBlock 是 MemoryBlock 的测试实现（固定返回一条消息）。
+type fakeMemoryBlock struct{ msg *schema.Message }
+
+func (f fakeMemoryBlock) RenderMemoryBlock() *schema.Message { return f.msg }
+
+// iterationMessages 从事件中取首轮组装的完整消息序列。
+func iterationMessages(sink *recordingSink) []*schema.Message {
+	for _, e := range sink.events {
+		if e.Kind == event.KindIterationStart {
+			return e.Iteration.Messages
+		}
+	}
+	return nil
+}
+
+// 记忆块注入位置：History 之后、状态栏之前；nil 块省略（接缝 B 契约）。
+func TestRun_MemoryBlockAssembly(t *testing.T) {
+	end := &stubProvider{responses: []*schema.Message{{Role: schema.RoleAssistant, Content: "done"}}}
+
+	t.Run("inserted between history and status bar", func(t *testing.T) {
+		cfg := &Config{MaxIterations: 1}
+		cfg.Validate()
+		mem := fakeMemoryBlock{msg: &schema.Message{Role: schema.RoleUser, Content: "<project_memory>rules</project_memory>"}}
+		a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, newTestRegistry(nil), nil, mem, fakeSkillStatus{}, &mockMCPRuntime{})
+		sink := &recordingSink{}
+		if _, _, err := runTurn(a, context.Background(), sink, "hi", end); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		msgs := iterationMessages(sink)
+		// fakeSession 无历史（runTurn 不回写 user 消息）：期望 [memory, statusbar]
+		if len(msgs) != 2 {
+			t.Fatalf("expected [memory, statusbar], got %d messages", len(msgs))
+		}
+		if !strings.Contains(msgs[0].Content, "<project_memory>") {
+			t.Errorf("msgs[0] should be the memory block: %q", msgs[0].Content)
+		}
+		if !strings.Contains(msgs[1].Content, "<agent_status") {
+			t.Errorf("msgs[1] should be the status bar: %q", msgs[1].Content)
+		}
+	})
+
+	t.Run("nil block omitted", func(t *testing.T) {
+		cfg := &Config{MaxIterations: 1}
+		cfg.Validate()
+		a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, newTestRegistry(nil), nil, fakeMemoryBlock{}, fakeSkillStatus{}, &mockMCPRuntime{})
+		sink := &recordingSink{}
+		if _, _, err := runTurn(a, context.Background(), sink, "hi", end); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		msgs := iterationMessages(sink)
+		if len(msgs) != 1 {
+			t.Fatalf("nil memory block must be omitted (status bar only), got %d messages", len(msgs))
+		}
+	})
 }

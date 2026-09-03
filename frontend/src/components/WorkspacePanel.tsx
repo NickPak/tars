@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   PanelRightClose,
   FileText,
@@ -14,13 +14,14 @@ import {
   ArrowDownZA,
   MoreHorizontal,
   ChevronRight,
+  Plus,
 } from "lucide-react";
 import { useLayoutStore } from "../store/layoutStore";
 import { useChatStore } from "../store/chatStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { agentApi, subscribeFileChanges } from "../services/agentApi";
 import ResizeHandle from "./ResizeHandle";
-import type { FileEntry } from "../types";
+import type { AgentsMdStatus, FileEntry } from "../types";
 
 /**
  * 右侧工作区面板 —— 模仿 DeepSeek-Reasonix 的"项目"面板设计：
@@ -116,9 +117,98 @@ export default function WorkspacePanel() {
       </div>
 
       <div className="workspace-body">
+        <AgentsMdRow />
         <FilesTab />
       </div>
     </aside>
+  );
+}
+
+/**
+ * AGENTS.md 状态行 —— 项目指令记忆的可发现性入口：
+ * 已发现 → "打开目录"（文件管理器打开所在目录，即工作区根）；
+ * 未找到 → "创建"（写入骨架模板）。状态跟随会话/工作区切换与文件变更刷新。
+ */
+function AgentsMdRow() {
+  const activeId = useChatStore((s) => s.activeId);
+  const workspacePath = useChatStore((s) => s.workspace?.path);
+  const setBackendError = useChatStore((s) => s.setBackendError);
+  const refreshTree = useWorkspaceStore((s) => s.refresh);
+  const [status, setStatus] = useState<AgentsMdStatus | null>(null);
+
+  const load = useCallback(() => {
+    if (!activeId) {
+      setStatus(null);
+      return;
+    }
+    agentApi
+      .getAgentsMdStatus(activeId)
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, [activeId]);
+
+  useEffect(() => {
+    load();
+  }, [load, workspacePath]);
+
+  // Agent 可能经 write_file 创建/删除 AGENTS.md：跟随文件树同一刷新信号
+  useEffect(() => {
+    if (!activeId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeFileChanges(activeId, () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(load, 300);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [activeId, load]);
+
+  if (!activeId || !status) return null;
+
+  const handleCreate = () => {
+    agentApi
+      .createAgentsMd(activeId)
+      .then(() => {
+        load();
+        void refreshTree();
+      })
+      .catch((e) => {
+        setBackendError(`创建 AGENTS.md 失败: ${e instanceof Error ? e.message : String(e)}`);
+      });
+  };
+
+  return (
+    <div className="ws-agentsmd" title={status.path}>
+      <FileText size={13} className="ws-file-icon" />
+      <span className="ws-agentsmd-name">AGENTS.md</span>
+      {status.exists ? (
+        <>
+          <span className="ws-agentsmd-state ws-agentsmd-ok">已发现</span>
+          <button
+            className="ws-agentsmd-btn"
+            title="在文件管理器中打开所在目录"
+            onClick={() => void agentApi.revealInExplorer(activeId)}
+          >
+            <FolderOpen size={13} />
+            打开目录
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="ws-agentsmd-state">未找到</span>
+          <button
+            className="ws-agentsmd-btn"
+            title="在工作区根创建 AGENTS.md 骨架模板（创建后下一轮会话自动注入）"
+            onClick={handleCreate}
+          >
+            <Plus size={13} />
+            创建
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 

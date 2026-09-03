@@ -2785,3 +2785,41 @@ body.resizing-col .resize-handle::after {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.24);
 }
+
+/* AGENTS.md status row (project instructions entry) */
+.ws-agentsmd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.ws-agentsmd-name {
+  color: var(--text);
+  font-weight: 500;
+}
+.ws-agentsmd-state {
+  flex: 1;
+}
+.ws-agentsmd-ok {
+  color: #7ec699;
+}
+.ws-agentsmd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+.ws-agentsmd-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

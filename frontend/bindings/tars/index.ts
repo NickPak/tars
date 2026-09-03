@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    AgentsMdStatus,
     FileEntry,
     ModelChangedEvent,
     ModelInfo,
