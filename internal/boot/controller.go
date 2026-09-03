@@ -44,12 +44,12 @@ type Controller struct {
 	cancel     context.CancelFunc
 	sessionMgr *session.Manager
 	todoMgr    *todo.Manager
-	skillPv    *SkillProvider
+	skillPv    *skill.Runtime
 	sandbox    *sandbox.NativeFs
 	prompt     *PromptCompose
 	gate       *guard.Gate
 	toolReg    *kernel.Registry
-	mcpPv      *McpProvider
+	mcpPv      *mcp.Runtime
 	agent      agent.Agent
 }
 
@@ -85,10 +85,10 @@ func NewController(cfg *config.AppConfig, data *session.Data, sink event.Sink, l
 	// 不再经 provider 每次回调；零消息窗口内换目录走 Controller.SetWorkspaceDir。
 	c.sandbox = sandbox.NewNativeFs(c.sessionMgr.GetWorkspaceDir())
 
-	c.skillPv = NewSkillProvider(skillMgr, c.sessionMgr)
+	c.skillPv = skillMgr.NewRuntime(c.sessionMgr)
 
 	// MCP 通道：闭包捕获会话 Registry（动态注册归宿）；无 MCP 时为 nil。
-	c.mcpPv = NewMCPProvider(mcpMgr, c.toolReg, c.sessionMgr)
+	c.mcpPv = mcpMgr.NewRuntime(c.toolReg, c.sessionMgr)
 
 	toolkit.RegisterBuiltinTools(c.toolReg, c.sandbox, c.todoMgr, askMgr, c.skillPv, c.mcpPv, c.sessionMgr)
 

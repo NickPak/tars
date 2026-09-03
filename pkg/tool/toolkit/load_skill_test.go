@@ -7,11 +7,17 @@ import (
 	"testing"
 )
 
-// mockSkillRuntime 实现 skills.SkillProvider：记录 Load 调用次数以验证幂等。
+// mockSkillRuntime 实现 skill.Provider：记录 Load 调用次数以验证幂等；
+// 同时记录 WriteSkill 调用参数（write_skill 测试复用本 mock）。
 type mockSkillRuntime struct {
-	loaded      map[string]bool
-	loadCount   int
-	loadedNames []string
+	loaded       map[string]bool
+	loadCount    int
+	loadedNames  []string
+	writeCalled  bool
+	gotWriteName string
+	gotOverwrite bool
+	writeCreated bool
+	writeErr     error
 }
 
 func newMockSkillRuntime() *mockSkillRuntime {
@@ -23,6 +29,13 @@ func (m *mockSkillRuntime) Load(name string) (string, error) {
 	return "# SKILL " + name + "\n\nbody\n", nil
 }
 
+func (m *mockSkillRuntime) WriteSkill(name, description, category, body string, overwrite bool) (bool, error) {
+	m.writeCalled = true
+	m.gotWriteName = name
+	m.gotOverwrite = overwrite
+	return m.writeCreated, m.writeErr
+}
+
 func (m *mockSkillRuntime) IsSkillLoaded(name string) bool { return m.loaded[name] }
 func (m *mockSkillRuntime) MarkSkillLoaded(name string)    { m.loaded[name] = true }
 func (m *mockSkillRuntime) GetLoadedSkills() []string {
@@ -32,12 +45,12 @@ func (m *mockSkillRuntime) GetLoadedSkills() []string {
 	}
 	return m.loadedNames
 }
-func (m *mockSkillRuntime) Search(query string, limit int) ([]skill.SkillSummary, error) {
-	return []skill.SkillSummary{{Name: "pptx", Description: "slides", Category: "docs"}}, nil
+func (m *mockSkillRuntime) Search(query string, limit int) ([]skill.Summary, error) {
+	return []skill.Summary{{Name: "pptx", Description: "slides", Category: "docs"}}, nil
 }
 func (m *mockSkillRuntime) SearchLimit() int { return 5 }
 
-func callLoadSkill(t *testing.T, rt skill.SkillProvider, name string) string {
+func callLoadSkill(t *testing.T, rt skill.Provider, name string) string {
 	t.Helper()
 	args, _ := json.Marshal(map[string]string{"name": name})
 	out, err := NewSkillTool(rt).definition().Handler(context.Background(), args)

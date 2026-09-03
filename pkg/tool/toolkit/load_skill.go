@@ -14,12 +14,12 @@ import (
 // （skills.SkillProvider）。"已加载"幂等状态由 Provider 会话级持有，
 // 载体本身无资源，Close 为空方法。
 type SkillTool struct {
-	rt skill.SkillProvider
+	rt skill.Provider
 }
 
 // NewSkillTool 创建 load_skill 载体。rt 为 nil 时 handler 报错
 // （装配层须保证注入技能运行时）。
-func NewSkillTool(rt skill.SkillProvider) *SkillTool {
+func NewSkillTool(rt skill.Provider) *SkillTool {
 	return &SkillTool{rt: rt}
 }
 

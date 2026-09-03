@@ -125,6 +125,25 @@ func TestCodeInterpreter_RiskRules(t *testing.T) {
 	}
 }
 
+// write_skill 是供应链写入（技能影响后续所有会话的 Agent 行为）：
+// 任何非空 content 的调用都必须过审批门。
+func TestWriteSkill_Gated(t *testing.T) {
+	def := builtinDef(t, "write_skill")
+	req := guard.Classify(def, callOf("write_skill", map[string]string{
+		"name": "deploy-app", "description": "d", "content": "# Deploy\n\nsteps…",
+	}))
+	if req == nil {
+		t.Fatal("write_skill with non-empty content must be gated")
+	}
+	if req.RiskKey != "write_skill:write" {
+		t.Errorf("unexpected risk key: %s", req.RiskKey)
+	}
+	// content 缺失/为空时不按危险拦——交给工具自身报参数错误。
+	if req := guard.Classify(def, callOf("write_skill", map[string]string{"name": "x"})); req != nil {
+		t.Error("empty content should not be gated")
+	}
+}
+
 // 其他内置工具（文件/交互/检索类）不声明风险规则：Classify 一律放行。
 func TestOtherBuiltins_NotGated(t *testing.T) {
 	for _, name := range []string{"read_file", "write_file", "edit_file", "glob_files", "grep_files", "todo_write", "ask_user", "load_skill", "discover_tools"} {

@@ -15,13 +15,13 @@ import (
 // DiscoverTool 是 discover_tools 工具的载体（Carrier）：持有两个能力源
 // Provider（技能检索 + MCP 检索/物化）。无自有资源，Close 为空方法。
 type DiscoverTool struct {
-	skillRt skill.SkillProvider
-	mcpRt   mcp.McpProvider
+	skillRt skill.Provider
+	mcpRt   mcp.Provider
 }
 
 // NewDiscoverTool 创建 discover_tools 载体。skillRt / mcpRt 为 nil 时
 // 跳过对应能力源。
-func NewDiscoverTool(skillRt skill.SkillProvider, mcpRt mcp.McpProvider) *DiscoverTool {
+func NewDiscoverTool(skillRt skill.Provider, mcpRt mcp.Provider) *DiscoverTool {
 	return &DiscoverTool{skillRt: skillRt, mcpRt: mcpRt}
 }
 
@@ -80,7 +80,7 @@ func (t *DiscoverTool) definition() *kernel.Definition {
 				limit = t.skillRt.SearchLimit()
 			}
 
-			var skills []skill.SkillSummary
+			var skills []skill.Summary
 			if t.skillRt != nil {
 				hits, err := t.skillRt.Search(query, limit)
 				if err != nil {

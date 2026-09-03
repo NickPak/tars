@@ -18,6 +18,7 @@ var expectedBuiltinNames = []string{
 	"read_file",
 	"write_file",
 	"load_skill",
+	"write_skill",
 	"run_command",
 	"todo_write",
 }

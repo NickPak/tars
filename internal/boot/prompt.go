@@ -1,19 +1,21 @@
 package boot
 
 import (
+	"tars/pkg/mcp"
 	"tars/pkg/prompt"
 	"tars/pkg/schema"
+	"tars/pkg/skill"
 	"tars/pkg/tool/kernel"
 )
 
 type PromptCompose struct {
 	baseMsg *schema.Message
 	toolReg *kernel.Registry
-	skillPv *SkillProvider
-	mcpPv   *McpProvider
+	skillPv *skill.Runtime
+	mcpPv   *mcp.Runtime
 }
 
-func NewPromptCompose(toolReg *kernel.Registry, skillPv *SkillProvider, mcpPv *McpProvider) *PromptCompose {
+func NewPromptCompose(toolReg *kernel.Registry, skillPv *skill.Runtime, mcpPv *mcp.Runtime) *PromptCompose {
 	return &PromptCompose{
 		baseMsg: nil,
 		toolReg: toolReg,

@@ -107,9 +107,9 @@ func TestDiscoverTools_RequiresQuery(t *testing.T) {
 // mockSkillRuntimeSearch 允许自定义 Search 结果。
 type mockSkillRuntimeSearch struct {
 	mockSkillRuntime
-	results []skill.SkillSummary
+	results []skill.Summary
 }
 
-func (m *mockSkillRuntimeSearch) Search(query string, limit int) ([]skill.SkillSummary, error) {
+func (m *mockSkillRuntimeSearch) Search(query string, limit int) ([]skill.Summary, error) {
 	return m.results, nil
 }
