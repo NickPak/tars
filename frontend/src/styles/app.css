@@ -2895,6 +2895,13 @@ body.resizing-col .resize-handle::after {
 .session-tab-add:hover {
   color: var(--accent);
 }
+.session-tab-add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.session-tab-add:disabled:hover {
+  color: var(--text-dim);
+}
 
 /* context menu separator + disabled item (session tabs) */
 .ws-ctx-separator {
@@ -2909,4 +2916,141 @@ body.resizing-col .resize-handle::after {
 .ws-ctx-item:disabled:hover {
   color: var(--text-dim);
   background: transparent;
+}
+
+/* Memory page (settings) */
+.mem-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mem-fact {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.mem-fact.expired {
+  opacity: 0.55;
+}
+.mem-fact-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mem-type {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.mem-type-lesson {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.mem-subject {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mem-expired-tag {
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.mem-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.mem-body {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.mem-edit {
+  margin-top: 6px;
+}
+.mem-edit-area {
+  width: 100%;
+  resize: vertical;
+  font-size: 12px;
+}
+.mem-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mem-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Memory candidates (adoption queue) */
+.mem-candidates {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.mem-candidates-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.mem-candidate {
+  border-top: 1px solid var(--border);
+}
+.mem-candidate:first-of-type {
+  border-top: none;
+}
+.mem-adopt:hover {
+  color: #7ec699;
+}
+
+/* Memory audit trail */
+.mem-candidates-batch {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.mem-candidates-batch .dialog-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.mem-audit {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.mem-audit-row {
+  opacity: 0.75;
+  border-top: 1px solid var(--border);
+}
+.mem-audit-row:first-of-type {
+  border-top: none;
+}
+.mem-audit-tag {
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.mem-audit-on {
+  color: var(--accent);
 }

@@ -7,7 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as session$0 from "./internal/session/models.js";
+import * as memory$0 from "./pkg/memory/models.js";
 
 /**
  * AgentsMdStatus 是会话工作区的 AGENTS.md 发现状态（项目指令记忆的可发现性入口）。
@@ -91,6 +91,78 @@ export class FileEntry {
 }
 
 /**
+ * MemoryAuditView 是记忆审计视图：归档（forget/覆盖旧值）+ 拒绝（候选审计）。
+ */
+export class MemoryAuditView {
+    "archived": (memory$0.Fact | null)[];
+    "rejected": (memory$0.Fact | null)[];
+
+    /** Creates a new MemoryAuditView instance. */
+    constructor($$source: Partial<MemoryAuditView> = {}) {
+        if (!("archived" in $$source)) {
+            this["archived"] = [];
+        }
+        if (!("rejected" in $$source)) {
+            this["rejected"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MemoryAuditView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MemoryAuditView {
+        const $$createField0_0 = $$createType4;
+        const $$createField1_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("archived" in $$parsedSource) {
+            $$parsedSource["archived"] = $$createField0_0($$parsedSource["archived"]);
+        }
+        if ("rejected" in $$parsedSource) {
+            $$parsedSource["rejected"] = $$createField1_0($$parsedSource["rejected"]);
+        }
+        return new MemoryAuditView($$parsedSource as Partial<MemoryAuditView>);
+    }
+}
+
+/**
+ * MemoryFactsView 是设置页记忆面板的完整视图：全局记忆 + 各项目记忆。
+ */
+export class MemoryFactsView {
+    "global": (memory$0.Fact | null)[];
+    "projects": ProjectMemoryFacts[];
+
+    /** Creates a new MemoryFactsView instance. */
+    constructor($$source: Partial<MemoryFactsView> = {}) {
+        if (!("global" in $$source)) {
+            this["global"] = [];
+        }
+        if (!("projects" in $$source)) {
+            this["projects"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MemoryFactsView instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MemoryFactsView {
+        const $$createField0_0 = $$createType4;
+        const $$createField1_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("global" in $$parsedSource) {
+            $$parsedSource["global"] = $$createField0_0($$parsedSource["global"]);
+        }
+        if ("projects" in $$parsedSource) {
+            $$parsedSource["projects"] = $$createField1_0($$parsedSource["projects"]);
+        }
+        return new MemoryFactsView($$parsedSource as Partial<MemoryFactsView>);
+    }
+}
+
+/**
  * ModelChangedEvent is the payload of the "model:changed" event.
  */
 export class ModelChangedEvent {
@@ -109,7 +181,7 @@ export class ModelChangedEvent {
      * Creates a new ModelChangedEvent instance from a string or object.
      */
     static createFrom($$source: any = {}): ModelChangedEvent {
-        const $$createField0_0 = $$createType2;
+        const $$createField0_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("model" in $$parsedSource) {
             $$parsedSource["model"] = $$createField0_0($$parsedSource["model"]);
@@ -214,54 +286,50 @@ export class ModelPrice {
 }
 
 /**
- * ProjectCreated 是 CreateProject 的返回：新项目与其默认会话。
+ * ProjectMemoryFacts 是一个项目级记忆的展示分组。
  */
-export class ProjectCreated {
-    "id": string;
+export class ProjectMemoryFacts {
+    "projectId": string;
+    "title": string;
+    "facts": (memory$0.Fact | null)[];
 
     /**
-     * Title 是用户显式命名的项目标题；空 = 未命名（展示层从项目内最近
-     * 会话的标题推导）。显式优先：一旦命名，不再跟随会话自动命名。
+     * Candidates 是压缩联动产出的待采纳建议（采纳制：不生效，用户决定）。
      */
-    "title"?: string;
+    "candidates": (memory$0.Fact | null)[];
 
-    /**
-     * WorkspaceDir 是用户显式设置的自定义工作区绝对路径；空 = 使用
-     * 项目级默认目录（GetWorkspaceDir 解析）。
-     */
-    "workspaceDir"?: string;
-    "createdAt": number;
-    "updatedAt": number;
-    "session": session$0.Data | null;
-
-    /** Creates a new ProjectCreated instance. */
-    constructor($$source: Partial<ProjectCreated> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
+    /** Creates a new ProjectMemoryFacts instance. */
+    constructor($$source: Partial<ProjectMemoryFacts> = {}) {
+        if (!("projectId" in $$source)) {
+            this["projectId"] = "";
         }
-        if (!("createdAt" in $$source)) {
-            this["createdAt"] = 0;
+        if (!("title" in $$source)) {
+            this["title"] = "";
         }
-        if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = 0;
+        if (!("facts" in $$source)) {
+            this["facts"] = [];
         }
-        if (!("session" in $$source)) {
-            this["session"] = null;
+        if (!("candidates" in $$source)) {
+            this["candidates"] = [];
         }
 
         Object.assign(this, $$source);
     }
 
     /**
-     * Creates a new ProjectCreated instance from a string or object.
+     * Creates a new ProjectMemoryFacts instance from a string or object.
      */
-    static createFrom($$source: any = {}): ProjectCreated {
-        const $$createField5_0 = $$createType4;
+    static createFrom($$source: any = {}): ProjectMemoryFacts {
+        const $$createField2_0 = $$createType4;
+        const $$createField3_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("session" in $$parsedSource) {
-            $$parsedSource["session"] = $$createField5_0($$parsedSource["session"]);
+        if ("facts" in $$parsedSource) {
+            $$parsedSource["facts"] = $$createField2_0($$parsedSource["facts"]);
         }
-        return new ProjectCreated($$parsedSource as Partial<ProjectCreated>);
+        if ("candidates" in $$parsedSource) {
+            $$parsedSource["candidates"] = $$createField3_0($$parsedSource["candidates"]);
+        }
+        return new ProjectMemoryFacts($$parsedSource as Partial<ProjectMemoryFacts>);
     }
 }
 
@@ -417,7 +485,7 @@ export class SessionStats {
      * Creates a new SessionStats instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionStats {
-        const $$createField17_0 = $$createType6;
+        const $$createField17_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("modelPrices" in $$parsedSource) {
             $$parsedSource["modelPrices"] = $$createField17_0($$parsedSource["modelPrices"]);
@@ -493,8 +561,11 @@ export class WorkspaceInfo {
 // Private type creation functions
 const $$createType0 = FileEntry.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = ModelInfo.createFrom;
-const $$createType3 = session$0.Data.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = ModelPrice.createFrom;
-const $$createType6 = $Create.Map($Create.Any, $$createType5);
+const $$createType2 = memory$0.Fact.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = ProjectMemoryFacts.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = ModelInfo.createFrom;
+const $$createType8 = ModelPrice.createFrom;
+const $$createType9 = $Create.Map($Create.Any, $$createType8);

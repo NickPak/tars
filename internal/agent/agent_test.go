@@ -531,7 +531,7 @@ func TestRun_MemoryBlockAssembly(t *testing.T) {
 	t.Run("inserted between history and status bar", func(t *testing.T) {
 		cfg := &Config{MaxIterations: 1}
 		cfg.Validate()
-		mem := fakeMemoryBlock{msg: &schema.Message{Role: schema.RoleUser, Content: "<project_memory>rules</project_memory>"}}
+		mem := fakeMemoryBlock{msg: &schema.Message{Role: schema.RoleUser, Content: "<agents_md>rules</agents_md>"}}
 		a := NewReAct(cfg, fakeComposer{}, &fakeSession{}, newTestRegistry(nil), nil, mem, fakeSkillStatus{}, &mockMCPRuntime{})
 		sink := &recordingSink{}
 		if _, _, err := runTurn(a, context.Background(), sink, "hi", end); err != nil {
@@ -542,7 +542,7 @@ func TestRun_MemoryBlockAssembly(t *testing.T) {
 		if len(msgs) != 2 {
 			t.Fatalf("expected [memory, statusbar], got %d messages", len(msgs))
 		}
-		if !strings.Contains(msgs[0].Content, "<project_memory>") {
+		if !strings.Contains(msgs[0].Content, "<agents_md>") {
 			t.Errorf("msgs[0] should be the memory block: %q", msgs[0].Content)
 		}
 		if !strings.Contains(msgs[1].Content, "<agent_status") {

@@ -11,10 +11,10 @@ import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
 import type * as mcpModels from "../../bindings/tars/pkg/mcp/models";
-import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus, Project, ProjectCreated } from "../types";
+import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus, Project, MemoryFactsView } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
-import type { SessionRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, ApprovalEvent, CompressionDoneEvent, CompressionFailedEvent } from "../types";
+import type { SessionRenamedEvent, ProjectRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, ApprovalEvent, CompressionDoneEvent, CompressionFailedEvent } from "../types";
 
 /**
  * 后端 llm.Config 中 providers/models 是 map（key 即条目 ID），
@@ -75,6 +75,10 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
       tierResidentMax: cfg.skills?.tierResidentMax ?? 500,
       discoverResultLimit: cfg.skills?.discoverResultLimit ?? 5,
     },
+    memory: {
+      enabled: cfg.memory?.enabled ?? true,
+      maxIndexBytes: cfg.memory?.maxIndexBytes ?? 8192,
+    },
   };
 }
 
@@ -99,20 +103,31 @@ function toWireConfig(cfg: AppConfig): configModels.AppConfig {
     agent: { ...cfg.agent },
     trace: { ...cfg.trace },
     skills: { ...cfg.skills },
+    // undefined 时不下发：后端 JSON 路径对空对象不会套用 YAML 的
+    // enabled=true 缺省，空段会把 enabled 零值成 false 静默关闭功能。
+    memory: cfg.memory ? { ...cfg.memory } : undefined,
   };
 }
 
 export const agentApi = {
-  /** 创建新项目（含一个默认会话） */
-  createProject: async (): Promise<ProjectCreated> => {
+  /** 创建新项目（含一个默认会话：sessions 恰含新建的那一个） */
+  createProject: async (): Promise<Project> => {
     const p = await AgentService.CreateProject();
-    if (!p || !p.session) throw new Error("创建项目失败：后端返回空");
-    return p as ProjectCreated;
+    if (!p || !p.sessions?.[0]) throw new Error("创建项目失败：后端返回空");
+    return p as Project;
   },
 
   /** 列出全部项目（含各自会话） */
   listProjects: async (): Promise<Project[]> =>
     ((await AgentService.ListProjects()) ?? []) as Project[],
+
+  /** 关闭会话 Tab（仅视图标记：数据保留，可重开） */
+  closeSession: (id: string): Promise<void> =>
+    AgentService.CloseSession(id),
+
+  /** 重新打开已关闭的会话 Tab */
+  openSession: (id: string): Promise<void> =>
+    AgentService.OpenSession(id),
 
   /** 删除项目（级联其下全部会话） */
   deleteProject: (id: string): Promise<void> =>
@@ -125,6 +140,40 @@ export const agentApi = {
   /** 在系统文件管理器中打开项目的工作区目录 */
   revealProjectWorkspace: (projectId: string): Promise<void> =>
     AgentService.RevealProjectWorkspace(projectId),
+
+  /** 列出全部记忆事实（全局 + 各项目） */
+  listMemoryFacts: async (): Promise<MemoryFactsView> => {
+    const v = await AgentService.ListMemoryFacts();
+    return (v ?? { global: [], projects: [] }) as MemoryFactsView;
+  },
+
+  /** 删除一条记忆（归档留痕，可恢复） */
+  forgetMemoryFact: (scope: string, projectId: string, subject: string): Promise<void> =>
+    AgentService.ForgetMemoryFact(scope, projectId, subject),
+
+  /** 编辑一条记忆的正文（旧值归档） */
+  updateMemoryFact: (scope: string, projectId: string, subject: string, body: string): Promise<void> =>
+    AgentService.UpdateMemoryFact(scope, projectId, subject, body),
+
+  /** 采纳记忆候选：转为正式事实 */
+  adoptMemoryCandidate: (projectId: string, subject: string): Promise<void> =>
+    AgentService.AdoptMemoryCandidate(projectId, subject),
+
+  /** 拒绝记忆候选：进入拒绝审计（不再重复提议） */
+  rejectMemoryCandidate: (projectId: string, subject: string): Promise<void> =>
+    AgentService.RejectMemoryCandidate(projectId, subject),
+
+  /** 批量采纳项目的全部候选 */
+  adoptAllMemoryCandidates: (projectId: string): Promise<void> =>
+    AgentService.AdoptAllMemoryCandidates(projectId),
+
+  /** 批量拒绝项目的全部候选 */
+  rejectAllMemoryCandidates: (projectId: string): Promise<void> =>
+    AgentService.RejectAllMemoryCandidates(projectId),
+
+  /** 记忆审计视图（归档 + 拒绝留痕） */
+  listMemoryAudit: (scope: string, projectId: string): Promise<import("../types").MemoryAuditView> =>
+    AgentService.ListMemoryAudit(scope, projectId) as Promise<import("../types").MemoryAuditView>,
 
   /** 在项目中新建会话（Tab，与项目共用工作区） */
   createSession: async (projectId: string): Promise<Session> => {
@@ -315,6 +364,7 @@ export interface AgentEventHandlers {
   onDone: (done: StreamDone) => void;
   onError: (err: StreamError) => void;
   onSessionRenamed?: (ev: SessionRenamedEvent) => void;
+  onProjectRenamed?: (ev: ProjectRenamedEvent) => void;
   onReasoning?: (ev: ReasoningEvent) => void;
   onTool?: (ev: ToolEvent) => void;
   onToolResult?: (ev: ToolResultEvent) => void;
@@ -338,6 +388,9 @@ export function subscribeAgentEvents(handlers: AgentEventHandlers): () => void {
     Events.On(AgentEvents.Error, (ev) => handlers.onError(ev.data as StreamError)),
     Events.On(AgentEvents.SessionRenamed, (ev) =>
       handlers.onSessionRenamed?.(ev.data as SessionRenamedEvent),
+    ),
+    Events.On(AgentEvents.ProjectRenamed, (ev) =>
+      handlers.onProjectRenamed?.(ev.data as ProjectRenamedEvent),
     ),
     Events.On(AgentEvents.Reasoning, (ev) =>
       handlers.onReasoning?.(ev.data as ReasoningEvent),

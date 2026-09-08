@@ -46,6 +46,10 @@ const (
 	// KindSessionRenamed 会话标题被修改（RenameSession 字段有效）。
 	// 透出前端：会话列表据此即时刷新标题（手动改名与首条消息自动命名共用）。
 	KindSessionRenamed
+	// KindProjectRenamed 项目标题被修改（ProjectRenamed 字段有效）。
+	// 透出前端：项目列表据此即时刷新标题（手动改名与会话首条消息的
+	// 跟随自动命名共用）。
+	KindProjectRenamed
 
 	// KindCompressionStarted 压缩管线触发并开始执行（Compression 字段有效）。
 	// 透出前端（压缩有秒级延迟与一次缓存重建成本，用户有权感知）。
@@ -76,6 +80,7 @@ type Event struct {
 	Iteration      *IterationEvent       // KindIterationStart / KindIterationEnd
 	Turn           *TurnEvent            // KindTurnStarted
 	SessionRenamed *SessionRenamedEvent  // KindSessionRenamed
+	ProjectRenamed *ProjectRenamedEvent  // KindProjectRenamed
 	// 压缩三件套共用同一字段名太绕，按语义分三个指针
 	CompressionStarted *CompressionStartedEvent // KindCompressionStarted
 	CompressionDone    *CompressionDoneEvent    // KindCompressionDone
@@ -169,6 +174,13 @@ type ReasoningEvent struct {
 // SessionRenamedEvent "session:renamed"：会话标题变更（手动或首条消息自动命名）。
 type SessionRenamedEvent struct {
 	SessionID string `json:"sessionId"`
+	Title     string `json:"title"`
+}
+
+// ProjectRenamedEvent "project:renamed"：项目标题变更（手动改名或会话
+// 首条消息自动命名后的跟随）。
+type ProjectRenamedEvent struct {
+	ProjectID string `json:"projectId"`
 	Title     string `json:"title"`
 }
 

@@ -16,7 +16,7 @@ import (
 func builtinDef(t *testing.T, name string) *tool.Definition {
 	t.Helper()
 	reg := tool.NewRegistry(nil)
-	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil, nil)
+	RegisterBuiltinTools(reg, nil, nil, nil, nil, nil, nil, nil)
 	def, ok := reg.FindTool(name)
 	if !ok {
 		t.Fatalf("builtin tool %s not found", name)
@@ -146,7 +146,7 @@ func TestWriteSkill_Gated(t *testing.T) {
 
 // 其他内置工具（文件/交互/检索类）不声明风险规则：Classify 一律放行。
 func TestOtherBuiltins_NotGated(t *testing.T) {
-	for _, name := range []string{"read_file", "write_file", "edit_file", "glob_files", "grep_files", "todo_write", "ask_user", "load_skill", "discover_tools"} {
+	for _, name := range []string{"read_file", "write_file", "edit_file", "glob_files", "grep_files", "todo_write", "ask_user", "load_skill", "discover_tools", "remember", "recall"} {
 		def := builtinDef(t, name)
 		if len(def.RiskRules) != 0 {
 			t.Errorf("%s: unexpected risk rules declared", name)

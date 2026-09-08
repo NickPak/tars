@@ -1,11 +1,12 @@
 import { create } from "zustand";
 
-/** 设置面板的分类页签。占位页签（skills/mcp/appearance）对应规划中功能 */
+/** 设置面板的分类页签。占位页签（appearance）对应规划中功能 */
 export type SettingsTab =
   | "general"
   | "model"
   | "agent"
   | "trace"
+  | "memory"
   | "skills"
   | "mcp"
   | "appearance"

@@ -9,10 +9,12 @@ export {
 export {
     AgentsMdStatus,
     FileEntry,
+    MemoryAuditView,
+    MemoryFactsView,
     ModelChangedEvent,
     ModelInfo,
     ModelPrice,
-    ProjectCreated,
+    ProjectMemoryFacts,
     SessionStats,
     SubmitResult,
     WorkspaceInfo

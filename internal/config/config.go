@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"tars/internal/agent"
 	"tars/pkg/llm"
+	"tars/pkg/memory"
 	"tars/pkg/skill"
 	"tars/pkg/trace"
 
@@ -33,11 +34,12 @@ func DefaultDataDir() string {
 // 注意：MCP 服务器配置不属于本结构——它与技能一样由 pkg/mcp.Manager
 // 在工作目录（<workDir>/mcp/servers.yaml）下自管读写、即改即存。
 type AppConfig struct {
-	LLM     *llm.Config   `yaml:"llm,omitempty" json:"llm,omitempty"`
-	WorkDir string        `yaml:"workDir,omitempty" json:"workDir,omitempty"`
-	Trace   *trace.Config `yaml:"trace,omitempty" json:"trace,omitempty"`
-	Agent   *agent.Config `yaml:"agent,omitempty" json:"agent,omitempty"`
-	Skills  *skill.Config `yaml:"skills,omitempty" json:"skills,omitempty"`
+	LLM     *llm.Config     `yaml:"llm,omitempty" json:"llm,omitempty"`
+	WorkDir string          `yaml:"workDir,omitempty" json:"workDir,omitempty"`
+	Trace   *trace.Config   `yaml:"trace,omitempty" json:"trace,omitempty"`
+	Agent   *agent.Config   `yaml:"agent,omitempty" json:"agent,omitempty"`
+	Skills  *skill.Config   `yaml:"skills,omitempty" json:"skills,omitempty"`
+	Memory  *memory.Config  `yaml:"memory,omitempty" json:"memory,omitempty"`
 }
 
 func Get() *AppConfig {
@@ -82,6 +84,10 @@ func (c *AppConfig) Validate() error {
 		c.Skills = &skill.Config{}
 	}
 	c.Skills.Validate()
+	if c.Memory == nil {
+		c.Memory = memory.NewConfig()
+	}
+	c.Memory.Validate()
 	if c.LLM != nil {
 		if err := c.LLM.Validate(); err != nil {
 			return err
@@ -162,6 +168,15 @@ func SaveAppConfigFile(cfg *AppConfig) error {
 		sm := ensureMap(m, "skills")
 		setOrDelInt(sm, "tierFullMax", int64(cfg.Skills.TierFullMax))
 		setOrDelInt(sm, "tierResidentMax", int64(cfg.Skills.TierResidentMax))
+	}
+	if cfg.Memory != nil {
+		mm := ensureMap(m, "memory")
+		if cfg.Memory.Enabled {
+			setScalar(mm, "enabled", "!!bool", "true")
+		} else {
+			delKey(mm, "enabled") // 缺省即启用
+		}
+		setOrDelInt(mm, "maxIndexBytes", int64(cfg.Memory.MaxIndexBytes))
 	}
 	if cfg.Trace != nil {
 		tm := ensureMap(m, "trace")

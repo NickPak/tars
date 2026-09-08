@@ -38,6 +38,8 @@ func (s *WailsSink) Emit(e event.Event) {
 		app.Event.Emit("agent:approval", e.Approval)
 	case event.KindSessionRenamed:
 		app.Event.Emit("session:renamed", e.SessionRenamed)
+	case event.KindProjectRenamed:
+		app.Event.Emit("project:renamed", e.ProjectRenamed)
 	case event.KindCompressionStarted:
 		app.Event.Emit("session:compression_started", e.CompressionStarted)
 	case event.KindCompressionDone:

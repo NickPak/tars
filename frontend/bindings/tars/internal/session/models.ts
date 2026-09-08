@@ -19,8 +19,21 @@ export class Data {
     "title": string;
     "createdAt": number;
     "updatedAt": number;
+
+    /**
+     * Closed 标记会话 Tab 是否已被用户关闭（关闭 ≠ 删除：数据保留，
+     * 可从已关闭列表重开）。会话运行时始终驻留内存（Controller），
+     * 本字段只是打开态的持久化。
+     */
+    "closed"?: boolean;
     "loadedSkills": { [_ in string]?: {} };
     "loadedTools": { [_ in string]?: {} };
+
+    /**
+     * RecalledMemory 是本次会话 recall 命中的记忆幂等集合（状态栏
+     * <memory recalled/> 可见度；与 LoadedSkills 同机制）。
+     */
+    "recalledMemory": { [_ in string]?: {} };
     "messages": (schema$0.Message | null)[];
 
     /** Creates a new Data instance. */
@@ -46,6 +59,9 @@ export class Data {
         if (!("loadedTools" in $$source)) {
             this["loadedTools"] = {};
         }
+        if (!("recalledMemory" in $$source)) {
+            this["recalledMemory"] = {};
+        }
         if (!("messages" in $$source)) {
             this["messages"] = [];
         }
@@ -57,18 +73,22 @@ export class Data {
      * Creates a new Data instance from a string or object.
      */
     static createFrom($$source: any = {}): Data {
-        const $$createField5_0 = $$createType0;
         const $$createField6_0 = $$createType0;
-        const $$createField7_0 = $$createType3;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
+        const $$createField9_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("loadedSkills" in $$parsedSource) {
-            $$parsedSource["loadedSkills"] = $$createField5_0($$parsedSource["loadedSkills"]);
+            $$parsedSource["loadedSkills"] = $$createField6_0($$parsedSource["loadedSkills"]);
         }
         if ("loadedTools" in $$parsedSource) {
-            $$parsedSource["loadedTools"] = $$createField6_0($$parsedSource["loadedTools"]);
+            $$parsedSource["loadedTools"] = $$createField7_0($$parsedSource["loadedTools"]);
+        }
+        if ("recalledMemory" in $$parsedSource) {
+            $$parsedSource["recalledMemory"] = $$createField8_0($$parsedSource["recalledMemory"]);
         }
         if ("messages" in $$parsedSource) {
-            $$parsedSource["messages"] = $$createField7_0($$parsedSource["messages"]);
+            $$parsedSource["messages"] = $$createField9_0($$parsedSource["messages"]);
         }
         return new Data($$parsedSource as Partial<Data>);
     }

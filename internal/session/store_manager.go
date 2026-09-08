@@ -34,6 +34,14 @@ func NewStoreManager() *StoreManager {
 	return &StoreManager{}
 }
 
+func (s *StoreManager) Startup() error {
+	return nil
+}
+
+func (s *StoreManager) Shutdown() error {
+	return nil
+}
+
 // ListSessions 按创建时间降序列出一个项目下的会话摘要（扫描
 // <projectDir>/sessions/，跳过 meta 损坏/缺失的目录）。
 func (s *StoreManager) ListSessions(projectDir string) ([]*Metadata, error) {

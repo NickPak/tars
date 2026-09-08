@@ -13,6 +13,33 @@ interface MarkdownProps {
   content: string;
 }
 
+/**
+ * 修复 CJK 全角括号/引号与 ** 相邻时加粗失效的问题（仅处理非代码段）。
+ * CommonMark 定界符规则：闭符 ** 前是标点、后是非空白非标点（如
+ * `**基于云原生（cloud-native）**设计` 中 `）**设`）不能闭合强调；
+ * 开符 ** 后是标点、前是非空白非标点（如 `是**（云原生）**`）同理不能
+ * 开启。修复：在 ** 与全角括号/引号之间插入零宽空格（ZWSP 既非空白也
+ * 非标点，定界符两侧分类随之合法），视觉与排版完全无损。
+ * 仅针对括号/引号类——句读（，。等）本就不造成失效，不污染文本。
+ */
+const CJK_BRACKETS = "（）【】《》「」『』〔〕〖〗〈〉";
+const BOLD_BEFORE_BRACKET = new RegExp(`(\\*\\*)(?=[${CJK_BRACKETS}])`, "g");
+const BRACKET_BEFORE_BOLD = new RegExp(`([${CJK_BRACKETS}])(?=\\*\\*)`, "g");
+
+function normalizeCjkBold(text: string): string {
+  return text
+    .replace(BOLD_BEFORE_BRACKET, "$1​")
+    .replace(BRACKET_BEFORE_BOLD, "$1​");
+}
+
+/** 按代码段（围栏代码块 + 行内代码）切分，仅对文本段应用 fn */
+function mapOutsideCode(content: string, fn: (text: string) => string): string {
+  return content
+    .split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g)
+    .map((seg, i) => (i % 2 === 1 ? seg : fn(seg)))
+    .join("");
+}
+
 export default function Markdown({ content }: MarkdownProps) {
   return (
     <div className="markdown">
@@ -21,7 +48,7 @@ export default function Markdown({ content }: MarkdownProps) {
         rehypePlugins={[rehypeKatex, rehypeHighlight]}
         components={{ pre: CodeBlock }}
       >
-        {content}
+        {mapOutsideCode(content, normalizeCjkBold)}
       </ReactMarkdown>
     </div>
   );

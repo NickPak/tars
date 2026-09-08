@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
+  BookMarked,
   Bot,
   Brain,
   Check,
@@ -23,6 +24,7 @@ import type { AppConfig, LLMConfig, ModelConfig, ProviderConfig } from "../types
 import { ConfirmDialog } from "./Dialog";
 import SkillsPage from "./SkillsPage";
 import MCPPage from "./MCPPage";
+import MemoryPage from "./MemoryPage";
 
 interface NavItem {
   tab: SettingsTab;
@@ -37,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { tab: "model", label: "模型", icon: <Brain size={15} /> },
   { tab: "agent", label: "Agent", icon: <Bot size={15} /> },
   { tab: "trace", label: "追踪", icon: <Activity size={15} /> },
+  { tab: "memory", label: "记忆", icon: <BookMarked size={15} /> },
   { tab: "skills", label: "技能", icon: <Sparkles size={15} /> },
   { tab: "mcp", label: "MCP 与工具", icon: <Plug size={15} /> },
   { tab: "appearance", label: "外观", icon: <Palette size={15} />, planned: true },
@@ -44,9 +47,9 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /** 有真实内容、显示底部保存条的页签（其余为占位）。
- *  保存条是面板级的：MCP/技能列表的变更即改即存不进 draft，
+ *  保存条是面板级的：MCP/技能/记忆列表的变更即改即存不进 draft，
  *  但底栏在各页签间保持一致的呈现（按钮仅在有 draft 改动时可用）。 */
-const REAL_TABS: SettingsTab[] = ["general", "model", "agent", "trace", "skills", "mcp"];
+const REAL_TABS: SettingsTab[] = ["general", "model", "agent", "trace", "memory", "skills", "mcp"];
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -196,6 +199,9 @@ export default function SettingsPanel() {
                 )}
                 {tab === "trace" && (
                   <TracePage draft={draft} update={update} />
+                )}
+                {tab === "memory" && (
+                  <MemoryPage draft={draft} update={update} />
                 )}
                 {tab === "skills" && (
                   <SkillsPage draft={draft} update={update} />

@@ -6,6 +6,7 @@ export {
     CompressionDoneEvent,
     CompressionFailedEvent,
     CompressionStartedEvent,
+    ProjectRenamedEvent,
     ReasoningEvent,
     SessionRenamedEvent,
     StreamChunk,

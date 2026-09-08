@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"tars/internal/boot"
 	"tars/internal/config"
-	"tars/internal/project"
 	"tars/internal/session"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -44,19 +43,14 @@ func (s *AgentService) ServiceShutdown() error {
 
 // --- Project & session management API ---
 
-// ProjectCreated 是 CreateProject 的返回：新项目与其默认会话。
-type ProjectCreated struct {
-	*project.Project
-	Session *session.Data `json:"session"`
-}
-
 // CreateProject 创建新项目（含一个默认会话，可直接开始对话）。
-func (s *AgentService) CreateProject() (*ProjectCreated, error) {
+// 返回 ProjectView：Sessions 恰含新建的那一个默认会话。
+func (s *AgentService) CreateProject() (*boot.ProjectView, error) {
 	proj, sess, err := s.app.CreateProject()
 	if err != nil {
 		return nil, err
 	}
-	return &ProjectCreated{Project: proj, Session: sess}, nil
+	return &boot.ProjectView{Metadata: proj, Sessions: []*session.Data{sess}}, nil
 }
 
 // ListProjects 列出全部项目（含各自会话）。
@@ -79,9 +73,20 @@ func (s *AgentService) CreateSession(projectID string) (*session.Data, error) {
 	return s.app.CreateSession(projectID)
 }
 
-// DeleteSession 删除项目内的单个会话；删除整个项目用 DeleteProject。
+// DeleteSession 删除项目内的单个会话（真删除，清空对话记录）；
+// 删除整个项目用 DeleteProject。
 func (s *AgentService) DeleteSession(id string) error {
 	return s.app.DeleteSession(id)
+}
+
+// CloseSession 关闭会话 Tab（仅视图标记：数据保留，可从已关闭列表重开）。
+func (s *AgentService) CloseSession(id string) error {
+	return s.app.CloseSession(id)
+}
+
+// OpenSession 重新打开已关闭的会话 Tab。
+func (s *AgentService) OpenSession(id string) error {
+	return s.app.OpenSession(id)
 }
 
 func (s *AgentService) RenameSession(id, title string) error {

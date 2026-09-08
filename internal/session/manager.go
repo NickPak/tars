@@ -9,6 +9,7 @@ import (
 
 	"tars/pkg/event"
 	"tars/pkg/llm"
+	"tars/pkg/memory"
 	"tars/pkg/schema"
 	"tars/pkg/tool/guard"
 
@@ -24,6 +25,12 @@ import (
 // 实例立即反映新值，同项目的多个会话 Manager 由此共享同一工作区。
 type WorkspaceSource interface {
 	GetWorkspaceDir() string
+}
+
+// CandidateSink 是压缩后记忆候选的接收面（pkg/memory.Runtime 天然满足，
+// 装配层注入）。采纳制旁路：Suggest 内部失败软处理，不影响压缩主路径。
+type CandidateSink interface {
+	Suggest(items []memory.CandidateItem)
 }
 
 type Manager struct {
@@ -44,6 +51,9 @@ type Manager struct {
 	llmMgr      *llm.Manager
 	selector    Selector
 	extractor   Extractor
+	// candidates 是压缩后记忆候选的接收面（pkg/memory.Runtime 天然满足；
+	// nil 时跳过——旁路产出，不影响压缩主路径）。
+	candidates  CandidateSink
 	failures    int  // 连续失败计数
 	circuitOpen bool // 熔断：true 后 Maybe 短路（02 篇 §9）
 	// lastActedTokens 已据其做过减量的实测用量：同一个信号只作用一次
@@ -133,8 +143,25 @@ func (s *Manager) RiskTable() *guard.RiskTable {
 	return s.risks
 }
 
+// SetCandidateSink 注入记忆候选接收面（装配层在 Controller 组装时调用）。
+func (s *Manager) SetCandidateSink(sink CandidateSink) {
+	s.candidates = sink
+}
+
 func (s *Manager) RenameSession(title string) error {
 	return s.SetTitle(title)
+}
+
+// SetClosed 设置会话 Tab 的关闭标记（内存 + 写穿 meta.json）。
+// 关闭 ≠ 删除：会话数据与 Controller 都保留，仅前端 Tab 隐藏。
+func (s *Manager) SetClosed(closed bool) error {
+	s.data.SetClosed(closed)
+
+	err := instance.SaveMetadata(s.dir, s.data.Metadata)
+	if err != nil {
+		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+	}
+	return err
 }
 
 // --- 会话生命周期（Info 的创建/恢复/删除） ---
@@ -536,6 +563,24 @@ func (s *Manager) compress(ctx context.Context, provider llm.Provider, raw []*sc
 		s.UnmarkSkillLoaded(name)
 	}
 
+	// ⑥ 记忆候选（P3 采纳制）：UserAsks（用户原话）派生候选原料交给
+	// 记忆侧做持久性过滤与去重。Facts 不派生——路径/URL/ID 属"仓库可
+	// 推导"内容，与 remember 反面清单冲突。旁路产出，失败不影响压缩。
+	if s.candidates != nil && len(entries) > 0 {
+		pointer := ArchiveScheme + filepath.Base(archivePath)
+		var items []memory.CandidateItem
+		for _, e := range entries {
+			for _, u := range e.UserAsks {
+				items = append(items, memory.CandidateItem{
+					Type: memory.FactFeedback, Text: u, Pointer: pointer,
+				})
+			}
+		}
+		if len(items) > 0 {
+			s.candidates.Suggest(items)
+		}
+	}
+
 	return len(entries), len(merged), next.Stats, nil
 }
 
@@ -631,6 +676,20 @@ func (s *Manager) IsSkillLoaded(name string) bool {
 
 func (s *Manager) GetLoadedSkills() []string {
 	return s.data.GetLoadedSkills()
+}
+
+// MarkMemoryRecalled 记录 recall 命中的记忆并写穿 meta.json
+// （memory.Runtime 状态面；与 MarkSkillLoaded 同机制）。
+func (s *Manager) MarkMemoryRecalled(subjects ...string) {
+	s.data.MarkMemoryRecalled(subjects...)
+	if err := instance.SaveMetadata(s.dir, s.data.Metadata); err != nil {
+		slog.Warn("Failed to save session meta", "id", s.data.ID, "error", err)
+	}
+}
+
+// GetRecalledMemory 返回已 recall 的记忆 subject（排序）。
+func (s *Manager) GetRecalledMemory() []string {
+	return s.data.GetRecalledMemory()
 }
 
 func (s *Manager) MarkToolLoaded(name string) {

@@ -42,6 +42,8 @@ export interface Session {
   messages: ChatMessage[];
   createdAt: number;
   updatedAt: number;
+  /** Tab 是否已关闭（关闭 ≠ 删除：数据保留，可从已关闭列表重开） */
+  closed?: boolean;
 }
 
 /** "agent:chunk" 事件 payload：助手回复的一个增量片段 */
@@ -71,6 +73,12 @@ export interface StreamError {
 /** "session:renamed" 事件 payload：会话标题变更 */
 export interface SessionRenamedEvent {
   sessionId: string;
+  title: string;
+}
+
+/** "project:renamed" 事件 payload：项目标题变更（手动改名或跟随会话自动命名） */
+export interface ProjectRenamedEvent {
+  projectId: string;
   title: string;
 }
 
@@ -313,6 +321,12 @@ export interface TraceConfig {
   otlpGrpcEndpoint: string;
 }
 
+/** 记忆配置段（memory.Config） */
+export interface MemoryConfig {
+  enabled: boolean;
+  maxIndexBytes?: number;
+}
+
 /** 完整应用配置（config.AppConfig）
  *  注意：MCP 服务器配置不在其中——由后端 mcp.Manager 自管（即改即存），
  *  前端经 listMCPServers / upsertMCPServer / removeMCPServer /
@@ -323,6 +337,7 @@ export interface AppConfig {
   agent: AgentConfig;
   trace: TraceConfig;
   skills: SkillsConfig;
+  memory?: MemoryConfig;
 }
 
 /** MCP 服务器配置（mcp.ServerConfig） */
@@ -383,13 +398,37 @@ export interface Project {
   sessions: Session[];
 }
 
-/** 创建项目的返回：项目 + 默认会话 */
-export interface ProjectCreated {
-  id: string;
-  workspaceDir?: string;
-  createdAt: number;
-  updatedAt: number;
-  session: Session;
+/** 一条记忆事实（对应后端正 memory.Fact） */
+export interface MemoryFact {
+  type: "user" | "feedback" | "project" | "reference" | "lesson";
+  subject: string;
+  created: string;
+  lastConfirmed: string;
+  expiresAt?: string;
+  source: string;
+  writtenBy?: string;
+  body: string;
+}
+
+/** 一个项目级记忆分组 */
+export interface ProjectMemoryFacts {
+  projectId: string;
+  title: string;
+  facts: MemoryFact[];
+  /** 压缩联动产出的待采纳建议（采纳制：不生效，用户决定） */
+  candidates: MemoryFact[] | null;
+}
+
+/** 记忆审计视图：归档（删除/覆盖旧值）+ 拒绝（候选审计） */
+export interface MemoryAuditView {
+  archived: MemoryFact[] | null;
+  rejected: MemoryFact[] | null;
+}
+
+/** 记忆面板视图：全局 + 各项目 */
+export interface MemoryFactsView {
+  global: MemoryFact[] | null;
+  projects: ProjectMemoryFacts[] | null;
 }
 
 /** 会话工作区的 AGENTS.md 发现状态 */
@@ -405,6 +444,7 @@ export const AgentEvents = {
   Done: "agent:done",
   Error: "agent:error",
   SessionRenamed: "session:renamed",
+  ProjectRenamed: "project:renamed",
   Reasoning: "agent:reasoning",
   Tool: "agent:tool",
   ToolResult: "agent:tool_result",

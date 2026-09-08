@@ -201,6 +201,35 @@ export class CompressionStartedEvent {
 }
 
 /**
+ * ProjectRenamedEvent "project:renamed"：项目标题变更（手动改名或会话
+ * 首条消息自动命名后的跟随）。
+ */
+export class ProjectRenamedEvent {
+    "projectId": string;
+    "title": string;
+
+    /** Creates a new ProjectRenamedEvent instance. */
+    constructor($$source: Partial<ProjectRenamedEvent> = {}) {
+        if (!("projectId" in $$source)) {
+            this["projectId"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProjectRenamedEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProjectRenamedEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ProjectRenamedEvent($$parsedSource as Partial<ProjectRenamedEvent>);
+    }
+}
+
+/**
  * ReasoningEvent "agent:reasoning"：思考链内容的流式增量片段。
  */
 export class ReasoningEvent {

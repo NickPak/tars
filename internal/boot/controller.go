@@ -40,7 +40,7 @@ import (
 // 有多少订阅者（UI/trace/…）、如何组合，由外部决定。
 type Controller struct {
 	cfg        *config.AppConfig
-	proj       *project.Project
+	proj       *project.Metadata
 	sink       event.Sink
 	llmMgr     *llm.Manager
 	mu         sync.Mutex
@@ -53,13 +53,14 @@ type Controller struct {
 	gate       *guard.Gate
 	toolReg    *tool.Registry
 	mcpPv      *mcp.Runtime
+	memRt      *memory.Runtime
 	agent      agent.Agent
 }
 
 // NewController 组装会话级组件：事件出口、TODO 状态机、交互通道、
 // 工具执行器（构造器注入依赖 + 权限门 Gate）。
 // proj 是会话所属项目（工作区来源）；sessionDir 是会话存储目录。
-func NewController(cfg *config.AppConfig, proj *project.Project, sessionDir string, data *session.Data, sink event.Sink, llmMgr *llm.Manager, skillMgr *skill.Manager, mcpMgr *mcp.Manager, askMgr *ask.Manager) *Controller {
+func NewController(cfg *config.AppConfig, proj *project.Metadata, sessionDir string, data *session.Data, sink event.Sink, llmMgr *llm.Manager, skillMgr *skill.Manager, mcpMgr *mcp.Manager, memMgr *memory.Manager, askMgr *ask.Manager) *Controller {
 	c := &Controller{
 		cfg:        cfg,
 		proj:       proj,
@@ -95,13 +96,26 @@ func NewController(cfg *config.AppConfig, proj *project.Project, sessionDir stri
 	// MCP 通道：闭包捕获会话 Registry（动态注册归宿）；无 MCP 时为 nil。
 	c.mcpPv = mcpMgr.NewRuntime(c.toolReg, c.sessionMgr)
 
-	toolkit.RegisterBuiltinTools(c.toolReg, c.sandbox, c.todoMgr, askMgr, c.skillPv, c.mcpPv, c.sessionMgr)
+	// 记忆运行时：AGENTS.md 读取面 + 事实记忆落盘端（remember/recall）。
+	// projectDir 解析项目级记忆根；modelID 闭包在写入时标注来源模型。
+	projectDir := proj.GetProjectDir()
+	c.memRt = memMgr.NewRuntime(c.sessionMgr, projectDir, func() string {
+		_, modelCfg, err := llmMgr.Active()
+		if err != nil {
+			return ""
+		}
+		return modelCfg.EntryID
+	})
+	// 压缩联动（P3 采纳制）：压缩成功后 UserAsks 派生记忆候选。
+	c.sessionMgr.SetCandidateSink(c.memRt)
+
+	toolkit.RegisterBuiltinTools(c.toolReg, c.sandbox, c.todoMgr, askMgr, c.skillPv, c.mcpPv, c.memRt, c.sessionMgr)
 
 	c.prompt = NewPromptCompose(c.toolReg, c.skillPv, c.mcpPv)
 
 	// 会话级 agent：跨轮复用（会话级依赖构造注入；模型/消息 ID 等轮级
 	// 输入经 Run 参数传入；配置热更新经 Limits 每轮解析）。
-	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.toolReg, toolkit.SystemEnv{}, memory.NewRuntime(c.sessionMgr), c.todoMgr, c.skillPv, c.mcpPv)
+	c.agent = agent.NewReAct(cfg.Agent, c.prompt, c.sessionMgr, c.toolReg, toolkit.SystemEnv{}, c.memRt, c.todoMgr, c.skillPv, c.mcpPv, c.memRt)
 	return c
 }
 
@@ -211,8 +225,8 @@ func (c *Controller) Shutdown() error {
 // GetSessionMgr 返回本 Controller 持有的会话。
 func (c *Controller) GetSessionMgr() *session.Manager { return c.sessionMgr }
 
-// Project 返回会话所属项目（工作区的拥有者）。
-func (c *Controller) Project() *project.Project { return c.proj }
+// GetProject 返回会话所属项目（工作区的拥有者）。
+func (c *Controller) GetProject() *project.Metadata { return c.proj }
 
 // SyncWorkspaceRoot 项目工作区换绑后由 App 调用：sandbox 根同步到最新值
 // （sandbox 根是固定值，不跟随 provider——成功换目录后必须显式通知）。
@@ -250,6 +264,17 @@ func (c *Controller) Retry(messageID string) (string, error) {
 
 func (c *Controller) RenameSession(title string) error {
 	return c.sessionMgr.RenameSession(title)
+}
+
+// SetClosed 设置会话 Tab 的关闭标记（写穿 meta.json）。
+// 关闭 ≠ 删除：Controller 保留在内存，数据保留在磁盘。
+func (c *Controller) SetClosed(closed bool) error {
+	return c.sessionMgr.SetClosed(closed)
+}
+
+// IsClosed 报告会话 Tab 是否已被用户关闭。
+func (c *Controller) IsClosed() bool {
+	return c.sessionMgr.GetData().Closed
 }
 
 // IsRunning 报告本会话是否有运行中的轮。

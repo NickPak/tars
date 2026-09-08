@@ -16,15 +16,10 @@ export class ProjectView {
     "id": string;
 
     /**
-     * Title 是用户显式命名的项目标题；空 = 未命名（展示层从项目内最近
-     * 会话的标题推导）。显式优先：一旦命名，不再跟随会话自动命名。
+     * Title 是项目标题：创建时即填充 DefaultProjectTitle（空值仅存在于
+     * 旧数据，展示层对其仍可走会话标题推导）。
      */
     "title"?: string;
-
-    /**
-     * WorkspaceDir 是用户显式设置的自定义工作区绝对路径；空 = 使用
-     * 项目级默认目录（GetWorkspaceDir 解析）。
-     */
     "workspaceDir"?: string;
     "createdAt": number;
     "updatedAt": number;

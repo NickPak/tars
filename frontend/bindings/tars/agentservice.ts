@@ -26,6 +26,21 @@ import * as skill$0 from "./pkg/skill/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AdoptAllMemoryCandidates 批量采纳一个项目的全部候选（单条失败不阻断，
+ * 返回首个错误——面板刷新后可见剩余项）。
+ */
+export function AdoptAllMemoryCandidates(projectID: string): $CancellablePromise<void> {
+    return $Call.ByID(409363988, projectID);
+}
+
+/**
+ * AdoptMemoryCandidate 采纳一条记忆候选：转为正式事实并移出候选区。
+ */
+export function AdoptMemoryCandidate(projectID: string, subject: string): $CancellablePromise<void> {
+    return $Call.ByID(7105478, projectID, subject);
+}
+
+/**
  * AnswerAskUser 提交一次询问/审批的用户答复。requestID 即工具调用 ID
  * （ask_user 询问或危险调用审批共用同一答复通道）。
  * value：confirm 为 "confirm"/"deny"；select 为选项 id；input 为文本；
@@ -43,6 +58,13 @@ export function CancelMessage(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
+ * CloseSession 关闭会话 Tab（仅视图标记：数据保留，可从已关闭列表重开）。
+ */
+export function CloseSession(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1478965180, id);
+}
+
+/**
  * CreateAgentsMd 在工作区根写入 AGENTS.md 骨架模板；已存在时拒绝
  * （防覆盖用户内容——创建动作必须显式且幂等失败可见）。
  */
@@ -52,8 +74,9 @@ export function CreateAgentsMd(sessionID: string): $CancellablePromise<void> {
 
 /**
  * CreateProject 创建新项目（含一个默认会话，可直接开始对话）。
+ * 返回 ProjectView：Sessions 恰含新建的那一个默认会话。
  */
-export function CreateProject(): $CancellablePromise<$models.ProjectCreated | null> {
+export function CreateProject(): $CancellablePromise<boot$0.ProjectView | null> {
     return $Call.ByID(2602385197).then(($result: any) => {
         return $$createType1($result);
     });
@@ -85,7 +108,8 @@ export function DeleteProject(id: string): $CancellablePromise<void> {
 }
 
 /**
- * DeleteSession 删除项目内的单个会话；删除整个项目用 DeleteProject。
+ * DeleteSession 删除项目内的单个会话（真删除，清空对话记录）；
+ * 删除整个项目用 DeleteProject。
  */
 export function DeleteSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(3827341809, id);
@@ -105,6 +129,13 @@ export function EditMessage(sessionID: string, messageID: string, content: strin
  */
 export function ExportSession(sessionID: string): $CancellablePromise<string> {
     return $Call.ByID(801229534, sessionID);
+}
+
+/**
+ * ForgetMemoryFact 删除一条记忆（归档留痕，可恢复）。
+ */
+export function ForgetMemoryFact(scope: string, projectID: string, subject: string): $CancellablePromise<void> {
+    return $Call.ByID(3027231836, scope, projectID, subject);
 }
 
 /**
@@ -186,12 +217,31 @@ export function ListMCPTools(server: string): $CancellablePromise<(mcp$0.ToolInf
 }
 
 /**
+ * ListMemoryAudit 返回一个记忆根的审计视图（留痕不真删的可恢复性证明）。
+ */
+export function ListMemoryAudit(scope: string, projectID: string): $CancellablePromise<$models.MemoryAuditView | null> {
+    return $Call.ByID(557800638, scope, projectID).then(($result: any) => {
+        return $$createType21($result);
+    });
+}
+
+/**
+ * ListMemoryFacts 列出全部记忆事实（全局 + 有事实的项目；含过期项——
+ * 面板是审计界面，过期项由前端灰显标注）。
+ */
+export function ListMemoryFacts(): $CancellablePromise<$models.MemoryFactsView | null> {
+    return $Call.ByID(3594804070).then(($result: any) => {
+        return $$createType23($result);
+    });
+}
+
+/**
  * ListModels returns all configured model entries（TopicBar 切换下拉用）。
  * 按条目 ID 排序返回（map 无序，下拉列表需要确定性顺序）。
  */
 export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
     return $Call.ByID(425219254).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType24($result);
     });
 }
 
@@ -200,7 +250,7 @@ export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
  */
 export function ListProjects(): $CancellablePromise<(boot$0.ProjectView | null)[]> {
     return $Call.ByID(60175774).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType25($result);
     });
 }
 
@@ -209,7 +259,7 @@ export function ListProjects(): $CancellablePromise<(boot$0.ProjectView | null)[
  */
 export function ListSkills(): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(2331056158).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType28($result);
     });
 }
 
@@ -220,7 +270,7 @@ export function ListSkills(): $CancellablePromise<(skill$0.SkillMeta | null)[]> 
  */
 export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(2376334908, sessionID).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType30($result);
     });
 }
 
@@ -239,6 +289,13 @@ export function OpenDirectoryDialog(): $CancellablePromise<string> {
  */
 export function OpenFile(sessionID: string, relPath: string): $CancellablePromise<void> {
     return $Call.ByID(2435973242, sessionID, relPath);
+}
+
+/**
+ * OpenSession 重新打开已关闭的会话 Tab。
+ */
+export function OpenSession(id: string): $CancellablePromise<void> {
+    return $Call.ByID(871953224, id);
 }
 
 /**
@@ -265,6 +322,20 @@ export function OpenSkillFileDialog(): $CancellablePromise<string> {
  */
 export function ProbeMCPServer(name: string): $CancellablePromise<void> {
     return $Call.ByID(872187245, name);
+}
+
+/**
+ * RejectAllMemoryCandidates 批量拒绝一个项目的全部候选。
+ */
+export function RejectAllMemoryCandidates(projectID: string): $CancellablePromise<void> {
+    return $Call.ByID(1415283299, projectID);
+}
+
+/**
+ * RejectMemoryCandidate 拒绝一条记忆候选：移入拒绝审计（不再重复提议）。
+ */
+export function RejectMemoryCandidate(projectID: string, subject: string): $CancellablePromise<void> {
+    return $Call.ByID(3338105629, projectID, subject);
 }
 
 /**
@@ -338,7 +409,7 @@ export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise
  */
 export function SearchSkills(query: string): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
     return $Call.ByID(1567288730, query).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType28($result);
     });
 }
 
@@ -391,7 +462,7 @@ export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePro
  */
 export function SkillCategories(): $CancellablePromise<string[]> {
     return $Call.ByID(692754289).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType31($result);
     });
 }
 
@@ -400,7 +471,7 @@ export function SkillCategories(): $CancellablePromise<string[]> {
  */
 export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<$models.SubmitResult | null> {
     return $Call.ByID(382211931, sessionID, content).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType33($result);
     });
 }
 
@@ -413,6 +484,13 @@ export function UninstallSkill(name: string): $CancellablePromise<void> {
 }
 
 /**
+ * UpdateMemoryFact 编辑一条记忆的正文（旧值归档；敏感模式校验在存储层）。
+ */
+export function UpdateMemoryFact(scope: string, projectID: string, subject: string, body: string): $CancellablePromise<void> {
+    return $Call.ByID(1090766716, scope, projectID, subject, body);
+}
+
+/**
  * UpsertMCPServer 登记/覆盖一个 MCP 服务器（立即落盘生效；
  * 覆盖既有服务器时其运行中连接即回收，下次调用按新配置懒重启）。
  */
@@ -421,7 +499,7 @@ export function UpsertMCPServer(name: string, cfg: mcp$0.ServerConfig | null): $
 }
 
 // Private type creation functions
-const $$createType0 = $models.ProjectCreated.createFrom;
+const $$createType0 = boot$0.ProjectView.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = session$0.Data.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
@@ -441,15 +519,17 @@ const $$createType16 = $Create.Array($$createType15);
 const $$createType17 = mcp$0.ToolInfo.createFrom;
 const $$createType18 = $Create.Nullable($$createType17);
 const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = $Create.Array($$createType8);
-const $$createType21 = boot$0.ProjectView.createFrom;
-const $$createType22 = $Create.Nullable($$createType21);
-const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = skill$0.SkillMeta.createFrom;
-const $$createType25 = $Create.Nullable($$createType24);
-const $$createType26 = $Create.Array($$createType25);
-const $$createType27 = $models.FileEntry.createFrom;
+const $$createType20 = $models.MemoryAuditView.createFrom;
+const $$createType21 = $Create.Nullable($$createType20);
+const $$createType22 = $models.MemoryFactsView.createFrom;
+const $$createType23 = $Create.Nullable($$createType22);
+const $$createType24 = $Create.Array($$createType8);
+const $$createType25 = $Create.Array($$createType1);
+const $$createType26 = skill$0.SkillMeta.createFrom;
+const $$createType27 = $Create.Nullable($$createType26);
 const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = $Create.Array($Create.Any);
-const $$createType30 = $models.SubmitResult.createFrom;
-const $$createType31 = $Create.Nullable($$createType30);
+const $$createType29 = $models.FileEntry.createFrom;
+const $$createType30 = $Create.Array($$createType29);
+const $$createType31 = $Create.Array($Create.Any);
+const $$createType32 = $models.SubmitResult.createFrom;
+const $$createType33 = $Create.Nullable($$createType32);

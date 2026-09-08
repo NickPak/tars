@@ -28,21 +28,29 @@ type Metadata struct {
 	Title        string              `json:"title"`
 	CreatedAt    int64               `json:"createdAt"`
 	UpdatedAt    int64               `json:"updatedAt"`
+	// Closed 标记会话 Tab 是否已被用户关闭（关闭 ≠ 删除：数据保留，
+	// 可从已关闭列表重开）。会话运行时始终驻留内存（Controller），
+	// 本字段只是打开态的持久化。
+	Closed       bool                `json:"closed,omitempty"`
 	LoadedSkills map[string]struct{} `json:"loadedSkills"`
 	LoadedTools  map[string]struct{} `json:"loadedTools"`
+	// RecalledMemory 是本次会话 recall 命中的记忆幂等集合（状态栏
+	// <memory recalled/> 可见度；与 LoadedSkills 同机制）。
+	RecalledMemory map[string]struct{} `json:"recalledMemory"`
 }
 
 func NewMetadata(id, projectID string) *Metadata {
 	now := time.Now().UnixMilli()
 
 	return &Metadata{
-		ID:           id,
-		ProjectID:    projectID,
-		Title:        DefaultSessionTitle,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		LoadedSkills: make(map[string]struct{}),
-		LoadedTools:  make(map[string]struct{}),
+		ID:             id,
+		ProjectID:      projectID,
+		Title:          DefaultSessionTitle,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		LoadedSkills:   make(map[string]struct{}),
+		LoadedTools:    make(map[string]struct{}),
+		RecalledMemory: make(map[string]struct{}),
 	}
 }
 
@@ -143,6 +151,12 @@ func (i *Data) SetTitle(title string) {
 	i.UpdatedAt = time.Now().UnixMilli()
 }
 
+// SetClosed 设置会话 Tab 的关闭标记（纯视图态，不触碰 UpdatedAt——
+// 关闭/重开不是活跃行为，不应影响"最近"排序）。
+func (i *Data) SetClosed(closed bool) {
+	i.Closed = closed
+}
+
 // AppendMessage 追加消息：内存列表 + jsonl 持久化 + 事件通知，一处完成。
 func (i *Data) AppendMessage(updateAt int64, msg ...*schema.Message) {
 	i.Messages = append(i.Messages, msg...)
@@ -223,6 +237,26 @@ func (i *Data) GetLoadedSkills() []string {
 	}
 	slices.Sort(skills)
 	return skills
+}
+
+// MarkMemoryRecalled 记录 recall 命中的记忆 subject（幂等集合）。
+func (i *Data) MarkMemoryRecalled(subjects ...string) {
+	if i.RecalledMemory == nil {
+		i.RecalledMemory = make(map[string]struct{})
+	}
+	for _, s := range subjects {
+		i.RecalledMemory[s] = struct{}{}
+	}
+}
+
+// GetRecalledMemory 返回已 recall 的记忆 subject（排序，稳定渲染）。
+func (i *Data) GetRecalledMemory() []string {
+	out := make([]string, 0, len(i.RecalledMemory))
+	for s := range i.RecalledMemory {
+		out = append(out, s)
+	}
+	slices.Sort(out)
+	return out
 }
 
 func (i *Data) MarkToolLoaded(name string) {

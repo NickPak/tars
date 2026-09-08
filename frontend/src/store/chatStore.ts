@@ -9,6 +9,8 @@ export interface SessionMeta {
   title: string;
   createdAt: number;
   updatedAt: number;
+  /** Tab 是否已关闭（关闭 ≠ 删除：保留在 sessions 里，Tab 条不渲染） */
+  closed?: boolean;
 }
 
 interface ChatState {
@@ -51,13 +53,17 @@ interface ChatState {
   renameProject: (projectId: string, title: string) => Promise<void>;
   /** 在当前项目中新建会话 Tab */
   addSessionTab: () => Promise<void>;
-  /** 关闭会话 Tab（删除该会话；项目保留） */
+  /** 关闭会话 Tab（仅视图标记：数据保留，可从已关闭列表重开） */
   closeSessionTab: (id: string) => Promise<void>;
+  /** 重新打开已关闭的会话 Tab */
+  reopenSessionTab: (id: string) => Promise<void>;
+  /** 删除会话（真删除：清空对话记录，不可撤销） */
+  deleteSessionTab: (id: string) => Promise<void>;
   /** 重命名会话（Tab 右键菜单；项目显式标题优先于它展示） */
   renameSession: (id: string, title: string) => Promise<void>;
-  /** 关闭当前项目中除指定会话外的全部 Tab */
+  /** 关闭当前项目中除指定会话外的全部 Tab（仅视图标记） */
   closeOtherTabs: (id: string) => Promise<void>;
-  /** 关闭当前项目的全部 Tab（项目保留为空项目态） */
+  /** 关闭当前项目的全部 Tab（仅视图标记，项目保留） */
   closeAllTabs: () => Promise<void>;
   send: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
@@ -83,7 +89,7 @@ interface ChatState {
 }
 
 function toMeta(projectId: string, c: Session): SessionMeta {
-  return { id: c.id, projectId, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt };
+  return { id: c.id, projectId, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt, closed: c.closed };
 }
 
 function errText(e: unknown): string {
@@ -220,6 +226,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ),
         }));
       },
+      onProjectRenamed: ({ projectId, title }) => {
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === projectId ? { ...p, title } : p,
+          ),
+        }));
+      },
       onReasoning: ({ sessionId, messageId, content }) => {
         if (!get().isStreaming || sessionId !== get().activeId) return;
         set((s) => {
@@ -343,9 +356,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   selectProject: async (projectId) => {
     if (get().isStreaming || projectId === get().activeProjectId) return;
-    // 激活项目内最近创建的会话；无会话则停在空项目态（Tab 条只剩【+】）
+    // 激活项目内最近创建的"打开中"会话；全部已关闭或无会话则停在
+    // 空项目态（已关闭会话从 Tab 条右侧列表手动重开）
     const tabs = get()
-      .sessions.filter((c) => c.projectId === projectId)
+      .sessions.filter((c) => c.projectId === projectId && !c.closed)
       .sort((a, b) => a.createdAt - b.createdAt);
     const target = tabs[tabs.length - 1];
     if (target) {
@@ -383,7 +397,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   closeSessionTab: async (id) => {
-    // 流式中的活动 Tab 不可关（后端同样会拒绝删除运行中的会话）
+    // 流式中的活动 Tab 不可关（避免本地流态与后端取消竞态）
+    if (get().isStreaming && get().activeId === id) return;
+    const meta = get().sessions.find((c) => c.id === id);
+    if (!meta || meta.closed) return;
+    try {
+      await agentApi.closeSession(id);
+    } catch (e) {
+      set({ backendError: errText(e) });
+      return;
+    }
+    // 仅打标记：会话保留在 sessions 里（已关闭列表的数据源）
+    set((s) => ({
+      sessions: s.sessions.map((c) => (c.id === id ? { ...c, closed: true } : c)),
+    }));
+    if (get().activeId === id) {
+      // 切到同项目相邻的打开中 Tab；没有则停在空项目态
+      set({ activeId: null, messages: [], workspace: null, stats: null, pendingApprovals: {}, compressionMarks: [] });
+      const rest = get()
+        .sessions.filter((c) => c.projectId === meta.projectId && !c.closed)
+        .sort((a, b) => a.createdAt - b.createdAt);
+      const next = rest[rest.length - 1];
+      if (next) await get().selectSession(next.id);
+    }
+  },
+
+  reopenSessionTab: async (id) => {
+    const meta = get().sessions.find((c) => c.id === id);
+    if (!meta || !meta.closed) return;
+    try {
+      await agentApi.openSession(id);
+    } catch (e) {
+      set({ backendError: errText(e) });
+      return;
+    }
+    set((s) => ({
+      sessions: s.sessions.map((c) => (c.id === id ? { ...c, closed: false } : c)),
+      activeProjectId: meta.projectId,
+    }));
+    await get().selectSession(id);
+  },
+
+  deleteSessionTab: async (id) => {
+    // 流式中的活动 Tab 不可删（后端同样会拒绝删除运行中的会话）
     if (get().isStreaming && get().activeId === id) return;
     const meta = get().sessions.find((c) => c.id === id);
     if (!meta) return;
@@ -395,10 +451,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     set((s) => ({ sessions: s.sessions.filter((c) => c.id !== id) }));
     if (get().activeId === id) {
-      // 切到同项目相邻 Tab；没有则停在空项目态
+      // 切到同项目相邻的打开中 Tab；没有则停在空项目态
       set({ activeId: null, messages: [], workspace: null, stats: null, pendingApprovals: {}, compressionMarks: [] });
       const rest = get()
-        .sessions.filter((c) => c.projectId === meta.projectId)
+        .sessions.filter((c) => c.projectId === meta.projectId && !c.closed)
         .sort((a, b) => a.createdAt - b.createdAt);
       const next = rest[rest.length - 1];
       if (next) await get().selectSession(next.id);
@@ -421,17 +477,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
   closeOtherTabs: async (id) => {
     const pid = get().activeProjectId;
     if (!pid || get().isStreaming) return;
-    const others = get().sessions.filter((c) => c.projectId === pid && c.id !== id);
+    const others = get().sessions.filter((c) => c.projectId === pid && c.id !== id && !c.closed);
     for (const t of others) {
       try {
-        await agentApi.deleteSession(t.id);
+        await agentApi.closeSession(t.id);
       } catch (e) {
         set({ backendError: errText(e) });
         return;
       }
     }
     set((s) => ({
-      sessions: s.sessions.filter((c) => c.projectId !== pid || c.id === id),
+      sessions: s.sessions.map((c) =>
+        c.projectId === pid && c.id !== id ? { ...c, closed: true } : c,
+      ),
     }));
     if (get().activeId !== id) await get().selectSession(id);
   },
@@ -439,18 +497,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   closeAllTabs: async () => {
     const pid = get().activeProjectId;
     if (!pid || get().isStreaming) return;
-    const all = get().sessions.filter((c) => c.projectId === pid);
+    const all = get().sessions.filter((c) => c.projectId === pid && !c.closed);
     for (const t of all) {
       try {
-        await agentApi.deleteSession(t.id);
+        await agentApi.closeSession(t.id);
       } catch (e) {
         set({ backendError: errText(e) });
         return;
       }
     }
-    // 空项目态：项目保留，Tab 条只剩【+】
+    // 全部关闭后停在空项目态：Tab 条只剩【+】，已关闭会话可从列表重开
     set((s) => ({
-      sessions: s.sessions.filter((c) => c.projectId !== pid),
+      sessions: s.sessions.map((c) =>
+        c.projectId === pid ? { ...c, closed: true } : c,
+      ),
       activeId: null,
       messages: [],
       workspace: null,
@@ -500,13 +560,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }));
         } else {
           const proj = await agentApi.createProject();
-          sessId = proj.session.id;
+          const sess = proj.sessions[0];
+          sessId = sess.id;
           set((s) => ({
             projects: [
               ...s.projects,
-              { id: proj.id, workspaceDir: proj.workspaceDir, createdAt: proj.createdAt, updatedAt: proj.updatedAt, sessions: [proj.session] },
+              { id: proj.id, workspaceDir: proj.workspaceDir, createdAt: proj.createdAt, updatedAt: proj.updatedAt, sessions: proj.sessions },
             ],
-            sessions: [toMeta(proj.id, proj.session), ...s.sessions],
+            sessions: [toMeta(proj.id, sess), ...s.sessions],
             activeId: sessId,
             activeProjectId: proj.id,
           }));
@@ -655,11 +716,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (!activeId) {
         // 无活动会话时先创建项目（再为其设置自定义工作区）
         const proj = await agentApi.createProject();
-        const sess = proj.session;
+        const sess = proj.sessions[0];
         set((s) => ({
           projects: [
             ...s.projects,
-            { id: proj.id, workspaceDir: proj.workspaceDir, createdAt: proj.createdAt, updatedAt: proj.updatedAt, sessions: [sess] },
+            { id: proj.id, workspaceDir: proj.workspaceDir, createdAt: proj.createdAt, updatedAt: proj.updatedAt, sessions: proj.sessions },
           ],
           sessions: [toMeta(proj.id, sess), ...s.sessions],
           activeId: sess.id,

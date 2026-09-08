@@ -23,6 +23,7 @@ declare module "@wailsio/runtime" {
             "agent:tool": event$0.ToolEvent | null;
             "agent:tool_result": event$0.ToolResultEvent | null;
             "model:changed": main$0.ModelChangedEvent | null;
+            "project:renamed": event$0.ProjectRenamedEvent | null;
             "session:compression_done": event$0.CompressionDoneEvent | null;
             "session:compression_failed": event$0.CompressionFailedEvent | null;
             "session:compression_started": event$0.CompressionStartedEvent | null;

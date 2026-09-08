@@ -23,10 +23,11 @@ function configure() {
         "agent:tool": $$createType11,
         "agent:tool_result": $$createType13,
         "model:changed": $$createType15,
-        "session:compression_done": $$createType17,
-        "session:compression_failed": $$createType19,
-        "session:compression_started": $$createType21,
-        "session:renamed": $$createType23,
+        "project:renamed": $$createType17,
+        "session:compression_done": $$createType19,
+        "session:compression_failed": $$createType21,
+        "session:compression_started": $$createType23,
+        "session:renamed": $$createType25,
     }));
 }
 
@@ -47,13 +48,15 @@ const $$createType12 = event$0.ToolResultEvent.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
 const $$createType14 = main$0.ModelChangedEvent.createFrom;
 const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = event$0.CompressionDoneEvent.createFrom;
+const $$createType16 = event$0.ProjectRenamedEvent.createFrom;
 const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = event$0.CompressionFailedEvent.createFrom;
+const $$createType18 = event$0.CompressionDoneEvent.createFrom;
 const $$createType19 = $Create.Nullable($$createType18);
-const $$createType20 = event$0.CompressionStartedEvent.createFrom;
+const $$createType20 = event$0.CompressionFailedEvent.createFrom;
 const $$createType21 = $Create.Nullable($$createType20);
-const $$createType22 = event$0.SessionRenamedEvent.createFrom;
+const $$createType22 = event$0.CompressionStartedEvent.createFrom;
 const $$createType23 = $Create.Nullable($$createType22);
+const $$createType24 = event$0.SessionRenamedEvent.createFrom;
+const $$createType25 = $Create.Nullable($$createType24);
 
 configure();

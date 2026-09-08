@@ -6,17 +6,20 @@ import (
 
 	"tars/pkg/ask"
 	"tars/pkg/mcp"
+	"tars/pkg/memory"
 	"tars/pkg/sandbox"
 	"tars/pkg/todo"
 )
 
-func RegisterBuiltinTools(registry *tool.Registry, sandbox sandbox.SandboxProvider, todo todo.TodoProvider, ask ask.AskProvider, skill skill.Provider, mcp mcp.Provider, archive ArchiveProvider) {
+func RegisterBuiltinTools(registry *tool.Registry, sandbox sandbox.SandboxProvider, todo todo.TodoProvider, ask ask.AskProvider, skill skill.Provider, mcp mcp.Provider, mem memory.Provider, archive ArchiveProvider) {
 	registry.Register(NewAskTool(ask))
 	registry.Register(NewCodeInterpreter(sandbox, archive))
 	registry.Register(NewDiscoverTool(skill, mcp))
 	registry.Register(NewFileTools(sandbox, archive))
 	registry.Register(NewSkillTool(skill))
 	registry.Register(NewSkillWriterTool(skill))
+	registry.Register(NewRememberTool(mem, ask))
+	registry.Register(NewRecallTool(mem))
 	registry.Register(NewShell(sandbox, archive))
 	registry.Register(NewTodoTool(todo))
 }
