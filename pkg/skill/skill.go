@@ -21,7 +21,7 @@ type Provider interface {
 	StateProvider
 	// Load 返回指定 Skill 的 SKILL.md 全文。
 	Load(name string) (string, error)
-	// Search 按自然语言需求检索技能（BM25），返回候选；无命中返回空。
+	// Search 按自然语言需求检索技能（bleve），返回候选；无命中返回空。
 	Search(query string, limit int) ([]Summary, error)
 	// SearchLimit 是检索返回的候选数上限（配置驱动；discover_tools 与
 	// 设置页搜索共用，保证"页面所见 = 模型所得"）。

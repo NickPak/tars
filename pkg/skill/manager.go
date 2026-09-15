@@ -425,8 +425,8 @@ func (s *Manager) normalize(srcPath string) (dir string, cleanup func(), err err
 	}
 }
 
-// Search 按自然语言需求检索启用中的技能（BM25 + 前缀索引，引擎在
-// pkg/search，与 MCP 工具检索共用同一实现）。
+// Search 按自然语言需求检索启用中的技能（bleve 引擎在 pkg/search，
+// 与 MCP 工具检索共用同一实现）。
 func (s *Manager) Search(query string, limit int) ([]*SkillMeta, error) {
 	list := s.Enabled() // 禁用技能不参与检索
 

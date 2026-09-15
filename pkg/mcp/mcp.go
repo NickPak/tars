@@ -23,7 +23,7 @@ type StateProvider interface {
 // 实现见 runtime.go；tools 包只依赖本接口）。
 type Provider interface {
 	// Search 在启用服务器的工具缓存中按自然语言需求检索（与技能检索
-	// 共用同一 BM25 引擎与候选数上限）。
+	// 共用同一 bleve 引擎与候选数上限）。
 	Search(query string, limit int) ([]ToolHit, error)
 	// Materialize 把命中的 MCP 工具注册进本会话的工具集（懒启动服务器
 	// 进程、包装 Definition、会话 Registry 注册）；此后模型可直接按

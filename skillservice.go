@@ -72,7 +72,7 @@ func (s *AgentService) SetSkillEnabled(name string, enabled bool) error {
 }
 
 // SearchSkills searches installed skills by natural-language query — the same
-// BM25 retrieval and result limit as the agent-facing discover_tools tool,
+// bleve retrieval and result limit as the agent-facing discover_tools tool,
 // so the settings page shows exactly what the model would get. An empty query
 // returns the full list.
 func (s *AgentService) SearchSkills(query string) ([]*skill.SkillMeta, error) {

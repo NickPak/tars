@@ -1,17 +1,36 @@
-// Package search 是本地模糊检索引擎：BM25 排序 + CJK bigram 分词 +
-// 拉丁词 edge n-gram 前缀索引。skills 与 mcp 的发现通道共用同一引擎，
-// 保证"设置页搜索所见 = discover_tools 所得"在不同能力源间口径一致。
-// 零依赖、纯函数、无状态。
+// Package search 是本地模糊检索引擎：bleve 索引与打分 + 自管预分词
+// （CJK 单字/bigram + 拉丁词 edge n-gram 前缀）。skills 与 mcp 的发现
+// 通道共用同一引擎，保证"设置页搜索所见 = discover_tools 所得"在不同
+// 能力源间口径一致。
+//
+// 与 pkg/memory 的检索同款模式：索引是纯内存派生品，语料量级小（数百
+// 条），每次调用现建现用，零磁盘产物、零失效问题。
+//
+// 为什么不直接用 bleve 内置分析器：cjk 分析器不提供拉丁词前缀命中
+// （查 "ppt" 命中技能 "pptx"），而该特性依赖"索引侧展开、查询侧不展开"
+// 的非对称策略。故分词仍由本包完成（Tokenize/TokenizeForIndex），
+// 预分词结果以空格连接后交给 bleve（whitespace 分析器）建索引与打分——
+// 排序质量由专业库负责，本包只声明"索引什么、查什么"。
 package search
 
 import (
-	"math"
-	"sort"
+	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/blevesearch/bleve/v2"
+	_ "github.com/blevesearch/bleve/v2/analysis/analyzer/custom"    // 注册 "custom" 分析器构造器
+	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/whitespace" // 注册 "whitespace" 分词器
+	"github.com/blevesearch/bleve/v2/mapping"
 )
 
-const defaultLimit = 5
+const (
+	defaultLimit = 5
+	// analyzerName 自定义分析器：仅 whitespace 切分。token 已由本包
+	// 预分词（含小写归一），bleve 侧只需原样建倒排。
+	analyzerName = "tars_ws"
+)
 
 // Item 把检索文档（任意文本）与调用方载荷绑定。
 type Item[T any] struct {
@@ -19,106 +38,86 @@ type Item[T any] struct {
 	Payload T      // 命中后原样返回
 }
 
-// Search 对 items 做 BM25 检索，返回得分降序的前 limit 个载荷；无命中返回空。
-// 引擎对载荷类型零感知（泛型），每次调用现场建索引——文档集小（数百量级），
-// 无持久索引需求。
+// newIndexMapping 构造索引映射：单一 text 字段，whitespace 分析器。
+func newIndexMapping() mapping.IndexMapping {
+	field := bleve.NewTextFieldMapping()
+	field.Analyzer = analyzerName
+
+	doc := bleve.NewDocumentMapping()
+	doc.AddFieldMappingsAt("text", field)
+
+	m := bleve.NewIndexMapping()
+	m.DefaultMapping = doc
+	if err := m.AddCustomAnalyzer(analyzerName, map[string]any{
+		"type":      "custom",
+		"tokenizer": "whitespace",
+	}); err != nil {
+		// 内置组件声明，构造期即定，不会失败；失败按编程错误暴露。
+		panic(fmt.Sprintf("search: register analyzer: %v", err))
+	}
+	return m
+}
+
+// Search 对 items 做全文检索，返回得分降序的前 limit 个载荷；无命中返回空。
+// 引擎对载荷类型零感知（泛型）。
 func Search[T any](items []Item[T], query string, limit int) []T {
 	if limit <= 0 {
 		limit = defaultLimit
 	}
 
-	type doc struct {
-		item   Item[T]
-		tokens []string
+	queryTokens := Tokenize(query)
+	if len(queryTokens) == 0 {
+		return nil
 	}
-	docs := make([]doc, 0, len(items))
-	docLens := make([]int, 0, len(items))
+
+	idx, err := bleve.NewMemOnly(newIndexMapping())
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = idx.Close() }()
+
+	indexed := make([]T, 0, len(items))
 	for _, it := range items {
 		tokens := TokenizeForIndex(it.Text)
 		if len(tokens) == 0 {
 			continue
 		}
-		docs = append(docs, doc{item: it, tokens: tokens})
-		docLens = append(docLens, len(tokens))
+		if err := idx.Index(strconv.Itoa(len(indexed)), map[string]string{
+			"text": strings.Join(tokens, " "),
+		}); err != nil {
+			return nil
+		}
+		indexed = append(indexed, it.Payload)
 	}
-	if len(docs) == 0 {
+	if len(indexed) == 0 {
 		return nil
 	}
 
-	// 文档频率
-	df := map[string]int{}
-	for _, d := range docs {
-		for t := range unique(d.tokens) {
-			df[t]++
-		}
+	// 查询侧不展开前缀（经典非对称策略）：查询 token 原样参与匹配，
+	// 索引侧已展开的 edge n-gram 使前缀查询自然命中。
+	q := bleve.NewMatchQuery(strings.Join(queryTokens, " "))
+	q.FieldVal = "text"
+	req := bleve.NewSearchRequestOptions(q, limit, 0, false)
+	res, err := idx.Search(req)
+	if err != nil {
+		return nil
 	}
 
-	avgdl := 0.0
-	for _, l := range docLens {
-		avgdl += float64(l)
-	}
-	avgdl /= float64(len(docs))
-
-	const k1, b = 1.5, 0.75
-	N := float64(len(docs))
-	queryTokens := Tokenize(query)
-
-	type scored struct {
-		item  Item[T]
-		score float64
-	}
-	var results []scored
-	for i, d := range docs {
-		tf := map[string]int{}
-		for _, t := range d.tokens {
-			tf[t]++
+	out := make([]T, 0, len(res.Hits))
+	for _, hit := range res.Hits {
+		i, err := strconv.Atoi(hit.ID)
+		if err != nil || i < 0 || i >= len(indexed) {
+			continue
 		}
-		var score float64
-		for _, qt := range queryTokens {
-			f := float64(tf[qt])
-			if f == 0 {
-				continue
-			}
-			idfv := idf(N, df[qt])
-			dl := float64(docLens[i])
-			score += idfv * (f * (k1 + 1)) / (f + k1*(1-b+b*dl/avgdl))
-		}
-		if score > 0 {
-			results = append(results, scored{item: d.item, score: score})
-		}
-	}
-
-	sort.Slice(results, func(i, j int) bool { return results[i].score > results[j].score })
-	if len(results) > limit {
-		results = results[:limit]
-	}
-	out := make([]T, len(results))
-	for i, r := range results {
-		out[i] = r.item.Payload
+		out = append(out, indexed[i])
 	}
 	return out
-}
-
-// idf 采用 Lucene BM25 的非负形式：ln(1 + (N-df+0.5)/(df+0.5))。
-// 常见词（df 接近 N）权重平滑趋近 0，而不是像 RSJ 原始形式那样变负——
-// 前缀索引会制造大量遍布全库的 token（如 category 词 "documents" 的前缀
-// "doc"），负 IDF 会把含这些词的文档整体惩罚到 score<=0 被过滤掉。
-func idf(N float64, df int) float64 {
-	return math.Log(1 + (N-float64(df)+0.5)/(float64(df)+0.5))
-}
-
-func unique(ts []string) map[string]struct{} {
-	m := make(map[string]struct{}, len(ts))
-	for _, t := range ts {
-		m[t] = struct{}{}
-	}
-	return m
 }
 
 // TokenizeForIndex 在 Tokenize 基础上为每个拉丁词追加 edge n-gram 前缀
 // （最小长度 2），使查询词可前缀命中文档词（如查询 "ppt" 命中技能名
 // "pptx"）。查询侧不展开（经典非对称策略：索引侧展开、查询侧原样），
-// 精确词命中与前缀命中在同一 BM25 框架内比较——前缀通常稀有、IDF 高，
+// 精确词命中与前缀命中在同一排序框架内比较——前缀通常稀有、权重高，
 // 前缀命中的文档自然靠前。CJK token 已有单字+bigram 覆盖，不再展开。
 func TokenizeForIndex(s string) []string {
 	toks := Tokenize(s)

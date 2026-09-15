@@ -13,7 +13,7 @@ func FullToolName(server, tool string) string {
 }
 
 // Search 在启用服务器的探测缓存中按自然语言需求检索工具
-// （BM25 引擎与 skills 共用 pkg/search）。检索文档为
+// （bleve 引擎与 skills 共用 pkg/search）。检索文档为
 // "工具名 + 工具描述 + 服务器名"：服务器名参与索引使"yahoo finance 股价"
 // 这类需求能命中 description 较弱的工具。
 // 未探测（ToolCount=0）的服务器自然无条目、不参与命中。
