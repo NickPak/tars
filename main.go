@@ -45,8 +45,21 @@ func main() {
 		Name:        "tars",
 		Description: "Personal Agent",
 		Icon:        iconPNG,
+		// 注册顺序即启动顺序，关闭为其反序（Wails v3 API 契约）：
+		// AgentService 首位——它持有应用生命周期（ServiceStartup 创建
+		// boot.App 并登记 boot.SetCurrent，ServiceShutdown 最后执行）。
 		Services: []application.Service{
 			application.NewService(&AgentService{}),
+			application.NewService(&AgentsMDService{}),
+			application.NewService(&ConfigService{}),
+			application.NewService(&ExportService{}),
+			application.NewService(&FileService{}),
+			application.NewService(&MCPService{}),
+			application.NewService(&MemoryService{}),
+			application.NewService(&ModelService{}),
+			application.NewService(&SkillService{}),
+			application.NewService(&StatService{}),
+			application.NewService(&WorkspaceService{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

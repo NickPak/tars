@@ -10,35 +10,11 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as boot$0 from "./internal/boot/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as config$0 from "./internal/config/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as session$0 from "./internal/session/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as mcp$0 from "./pkg/mcp/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as skill$0 from "./pkg/skill/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
-
-/**
- * AdoptAllMemoryCandidates 批量采纳一个项目的全部候选（单条失败不阻断，
- * 返回首个错误——面板刷新后可见剩余项）。
- */
-export function AdoptAllMemoryCandidates(projectID: string): $CancellablePromise<void> {
-    return $Call.ByID(409363988, projectID);
-}
-
-/**
- * AdoptMemoryCandidate 采纳一条记忆候选：转为正式事实并移出候选区。
- */
-export function AdoptMemoryCandidate(projectID: string, subject: string): $CancellablePromise<void> {
-    return $Call.ByID(7105478, projectID, subject);
-}
 
 /**
  * AnswerAskUser 提交一次询问/审批的用户答复。requestID 即工具调用 ID
@@ -62,14 +38,6 @@ export function CancelMessage(sessionID: string): $CancellablePromise<void> {
  */
 export function CloseSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(1478965180, id);
-}
-
-/**
- * CreateAgentsMd 在工作区根写入 AGENTS.md 骨架模板；已存在时拒绝
- * （防覆盖用户内容——创建动作必须显式且幂等失败可见）。
- */
-export function CreateAgentsMd(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(1549284599, sessionID);
 }
 
 /**
@@ -122,126 +90,9 @@ export function EditMessage(sessionID: string, messageID: string, content: strin
     return $Call.ByID(847968623, sessionID, messageID, content);
 }
 
-/**
- * ExportSession renders the session as Markdown, prompts the user
- * for a destination via the OS save dialog, and writes the file.
- * Returns the chosen path ("" if the user cancelled).
- */
-export function ExportSession(sessionID: string): $CancellablePromise<string> {
-    return $Call.ByID(801229534, sessionID);
-}
-
-/**
- * ForgetMemoryFact 删除一条记忆（归档留痕，可恢复）。
- */
-export function ForgetMemoryFact(scope: string, projectID: string, subject: string): $CancellablePromise<void> {
-    return $Call.ByID(3027231836, scope, projectID, subject);
-}
-
-/**
- * GetAgentsMdStatus 报告会话工作区根是否存在 AGENTS.md。
- */
-export function GetAgentsMdStatus(sessionID: string): $CancellablePromise<$models.AgentsMdStatus | null> {
-    return $Call.ByID(2029247233, sessionID).then(($result: any) => {
-        return $$createType5($result);
-    });
-}
-
-/**
- * GetAppConfig 返回当前配置（密钥原样返回，前端用眼睛按钮控制显示）。
- */
-export function GetAppConfig(): $CancellablePromise<config$0.AppConfig | null> {
-    return $Call.ByID(3243841041).then(($result: any) => {
-        return $$createType7($result);
-    });
-}
-
-/**
- * GetModelInfo returns the currently active model (TopicBar/状态栏展示用）。
- * 未配置任何模型时返回空对象（前端退化为不显示）。
- */
-export function GetModelInfo(): $CancellablePromise<$models.ModelInfo | null> {
-    return $Call.ByID(708754981).then(($result: any) => {
-        return $$createType9($result);
-    });
-}
-
 export function GetSession(id: string): $CancellablePromise<session$0.Data | null> {
     return $Call.ByID(2463902692, id).then(($result: any) => {
         return $$createType3($result);
-    });
-}
-
-/**
- * GetSessionStats 返回指定会话的聚合统计。空会话返回带模型/价格信息的零值。
- */
-export function GetSessionStats(sessionID: string): $CancellablePromise<$models.SessionStats | null> {
-    return $Call.ByID(520403183, sessionID).then(($result: any) => {
-        return $$createType11($result);
-    });
-}
-
-/**
- * GetWorkspaceInfo returns the current workspace info for a session.
- */
-export function GetWorkspaceInfo(sessionID: string): $CancellablePromise<$models.WorkspaceInfo | null> {
-    return $Call.ByID(3454358245, sessionID).then(($result: any) => {
-        return $$createType13($result);
-    });
-}
-
-/**
- * InstallSkill installs a skill from a local artifact (SKILL.md file,
- * directory, or .zip/.tar.gz archive). Returns the installed skill name.
- */
-export function InstallSkill(srcPath: string, category: string, overwrite: boolean): $CancellablePromise<string> {
-    return $Call.ByID(3285071100, srcPath, category, overwrite);
-}
-
-/**
- * ListMCPServers 返回全部已配置 MCP 服务器（含禁用项与工具计数）。
- */
-export function ListMCPServers(): $CancellablePromise<(mcp$0.ServerInfo | null)[]> {
-    return $Call.ByID(2900398080).then(($result: any) => {
-        return $$createType16($result);
-    });
-}
-
-/**
- * ListMCPTools 返回一个服务器的缓存工具清单（未探测返回空）。
- */
-export function ListMCPTools(server: string): $CancellablePromise<(mcp$0.ToolInfo | null)[]> {
-    return $Call.ByID(1929838067, server).then(($result: any) => {
-        return $$createType19($result);
-    });
-}
-
-/**
- * ListMemoryAudit 返回一个记忆根的审计视图（留痕不真删的可恢复性证明）。
- */
-export function ListMemoryAudit(scope: string, projectID: string): $CancellablePromise<$models.MemoryAuditView | null> {
-    return $Call.ByID(557800638, scope, projectID).then(($result: any) => {
-        return $$createType21($result);
-    });
-}
-
-/**
- * ListMemoryFacts 列出全部记忆事实（全局 + 有事实的项目；含过期项——
- * 面板是审计界面，过期项由前端灰显标注）。
- */
-export function ListMemoryFacts(): $CancellablePromise<$models.MemoryFactsView | null> {
-    return $Call.ByID(3594804070).then(($result: any) => {
-        return $$createType23($result);
-    });
-}
-
-/**
- * ListModels returns all configured model entries（TopicBar 切换下拉用）。
- * 按条目 ID 排序返回（map 无序，下拉列表需要确定性顺序）。
- */
-export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
-    return $Call.ByID(425219254).then(($result: any) => {
-        return $$createType24($result);
     });
 }
 
@@ -250,45 +101,8 @@ export function ListModels(): $CancellablePromise<$models.ModelInfo[]> {
  */
 export function ListProjects(): $CancellablePromise<(boot$0.ProjectView | null)[]> {
     return $Call.ByID(60175774).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType4($result);
     });
-}
-
-/**
- * ListSkills returns all installed skills (frontmatter + registry metadata).
- */
-export function ListSkills(): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
-    return $Call.ByID(2331056158).then(($result: any) => {
-        return $$createType28($result);
-    });
-}
-
-/**
- * ListWorkspaceFiles returns a recursive file tree of the given session's
- * workspace directory（工作区是项目级：同项目多会话共享同一目录）。
- * If the directory doesn't exist yet (new project), an empty slice is returned.
- */
-export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$models.FileEntry[]> {
-    return $Call.ByID(2376334908, sessionID).then(($result: any) => {
-        return $$createType30($result);
-    });
-}
-
-/**
- * OpenDirectoryDialog shows the OS native directory picker and returns the
- * selected path (empty string if the user cancels). This does NOT change the
- * session's workspace — call SetWorkspaceDir to apply the selection.
- */
-export function OpenDirectoryDialog(): $CancellablePromise<string> {
-    return $Call.ByID(3054993619);
-}
-
-/**
- * OpenFile opens a file with the OS default application (not hardcoded to any
- * specific editor). The path should be relative to the session's workspace.
- */
-export function OpenFile(sessionID: string, relPath: string): $CancellablePromise<void> {
-    return $Call.ByID(2435973242, sessionID, relPath);
 }
 
 /**
@@ -296,54 +110,6 @@ export function OpenFile(sessionID: string, relPath: string): $CancellablePromis
  */
 export function OpenSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(871953224, id);
-}
-
-/**
- * OpenSkillDirDialog shows the OS native picker for a skill artifact DIRECTORY.
- * Returns the selected path (empty if cancelled).
- */
-export function OpenSkillDirDialog(): $CancellablePromise<string> {
-    return $Call.ByID(1154416800);
-}
-
-/**
- * OpenSkillFileDialog shows the OS native picker for a skill artifact FILE
- * (SKILL.md, .zip, or .tar.gz). Returns the selected path (empty if cancelled).
- * 独立于目录对话框：Windows 原生对话框启用"仅文件夹"模式后无法同时显示文件。
- */
-export function OpenSkillFileDialog(): $CancellablePromise<string> {
-    return $Call.ByID(3156687267);
-}
-
-/**
- * ProbeMCPServer 探测一个已启用服务器：拉起进程抓取工具清单并缓存
- * （此后会话启动零进程，discover_tools 用缓存检索）。
- * 服务器须已配置且启用；60s 超时（npx 类启动器首次下载可能较慢）。
- */
-export function ProbeMCPServer(name: string): $CancellablePromise<void> {
-    return $Call.ByID(872187245, name);
-}
-
-/**
- * RejectAllMemoryCandidates 批量拒绝一个项目的全部候选。
- */
-export function RejectAllMemoryCandidates(projectID: string): $CancellablePromise<void> {
-    return $Call.ByID(1415283299, projectID);
-}
-
-/**
- * RejectMemoryCandidate 拒绝一条记忆候选：移入拒绝审计（不再重复提议）。
- */
-export function RejectMemoryCandidate(projectID: string, subject: string): $CancellablePromise<void> {
-    return $Call.ByID(3338105629, projectID, subject);
-}
-
-/**
- * RemoveMCPServer 移除一个 MCP 服务器（立即落盘生效；连接即回收，
- * 探测缓存同步清理）。
- */
-export function RemoveMCPServer(name: string): $CancellablePromise<void> {
-    return $Call.ByID(695157915, name);
 }
 
 /**
@@ -367,135 +133,12 @@ export function RetryMessage(sessionID: string, messageID: string): $Cancellable
 }
 
 /**
- * RevealFileInExplorer reveals a specific file in the OS file manager
- * (selects the file in Explorer/Finder). The path should be relative to the
- * session's workspace.
- */
-export function RevealFileInExplorer(sessionID: string, relPath: string): $CancellablePromise<void> {
-    return $Call.ByID(3485873987, sessionID, relPath);
-}
-
-/**
- * RevealInExplorer opens the OS file manager at the session's workspace
- * directory. On Windows this is Explorer, on macOS Finder, on Linux the
- * default file manager via xdg-open.
- */
-export function RevealInExplorer(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(3758436925, sessionID);
-}
-
-/**
- * RevealProjectWorkspace opens the OS file manager at the project's workspace
- * directory（项目级入口：零会话项目没有 Controller，直接经项目管理器解析）。
- */
-export function RevealProjectWorkspace(projectID: string): $CancellablePromise<void> {
-    return $Call.ByID(3116010363, projectID);
-}
-
-/**
- * SaveAppConfig 校验并保存配置：写回 config.yaml（保留注释与 apiKey 引用），
- * 并热更新内存配置与模型注册表（model/agent/trace 立即生效，
- * workDir 需重启生效——工作目录涉及存量会话数据搬迁）。
- */
-export function SaveAppConfig(v: config$0.AppConfig | null): $CancellablePromise<void> {
-    return $Call.ByID(484951638, v);
-}
-
-/**
- * SearchSkills searches installed skills by natural-language query — the same
- * BM25 retrieval and result limit as the agent-facing discover_tools tool,
- * so the settings page shows exactly what the model would get. An empty query
- * returns the full list.
- */
-export function SearchSkills(query: string): $CancellablePromise<(skill$0.SkillMeta | null)[]> {
-    return $Call.ByID(1567288730, query).then(($result: any) => {
-        return $$createType28($result);
-    });
-}
-
-/**
- * SetActiveModel switches the active model: 预构建目标模型（失败则不切换），
- * 热更新注册表并落盘（active 键），最后广播 model:changed 事件。
- */
-export function SetActiveModel(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1916297203, id);
-}
-
-/**
- * SetMCPServerEnabled 启用/禁用服务器（立即落盘生效；禁用后对 Agent
- * 不可见——索引/检索/连接排除，连接即回收，配置与探测缓存保留）。
- */
-export function SetMCPServerEnabled(name: string, enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2496346776, name, enabled);
-}
-
-/**
- * SetSkillCategory updates an installed skill's category (registry + index
- * regeneration; takes effect in the next conversation turn).
- */
-export function SetSkillCategory(name: string, category: string): $CancellablePromise<void> {
-    return $Call.ByID(2616464261, name, category);
-}
-
-/**
- * SetSkillEnabled enables/disables an installed skill (registry + index
- * regeneration; a disabled skill is invisible to the agent: excluded from
- * the index, discovery search and load_skill).
- */
-export function SetSkillEnabled(name: string, enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1358667874, name, enabled);
-}
-
-/**
- * SetWorkspaceDir sets a custom workspace directory for the given session's
- * PROJECT（工作区是项目属性：同项目全部会话共享）。守卫在 App 层：
- * 项目内所有会话零消息且无运行中的轮才允许；锁定后不迁移。
- * 不存在"重置为默认"入口。
- */
-export function SetWorkspaceDir(sessionID: string, dir: string): $CancellablePromise<void> {
-    return $Call.ByID(3610152448, sessionID, dir);
-}
-
-/**
- * SkillCategories returns the distinct categories seen in the registry,
- * for the install dialog's category dropdown.
- */
-export function SkillCategories(): $CancellablePromise<string[]> {
-    return $Call.ByID(692754289).then(($result: any) => {
-        return $$createType31($result);
-    });
-}
-
-/**
  * SubmitMessage submits a user message and starts the agent loop.
  */
 export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<$models.SubmitResult | null> {
     return $Call.ByID(382211931, sessionID, content).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType6($result);
     });
-}
-
-/**
- * UninstallSkill removes an installed skill (directory + registry entry)
- * and regenerates the index.
- */
-export function UninstallSkill(name: string): $CancellablePromise<void> {
-    return $Call.ByID(3606209071, name);
-}
-
-/**
- * UpdateMemoryFact 编辑一条记忆的正文（旧值归档；敏感模式校验在存储层）。
- */
-export function UpdateMemoryFact(scope: string, projectID: string, subject: string, body: string): $CancellablePromise<void> {
-    return $Call.ByID(1090766716, scope, projectID, subject, body);
-}
-
-/**
- * UpsertMCPServer 登记/覆盖一个 MCP 服务器（立即落盘生效；
- * 覆盖既有服务器时其运行中连接即回收，下次调用按新配置懒重启）。
- */
-export function UpsertMCPServer(name: string, cfg: mcp$0.ServerConfig | null): $CancellablePromise<void> {
-    return $Call.ByID(351656858, name, cfg);
 }
 
 // Private type creation functions
@@ -503,33 +146,6 @@ const $$createType0 = boot$0.ProjectView.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = session$0.Data.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.AgentsMdStatus.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = config$0.AppConfig.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $models.ModelInfo.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $models.SessionStats.createFrom;
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = $models.WorkspaceInfo.createFrom;
-const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = mcp$0.ServerInfo.createFrom;
-const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = mcp$0.ToolInfo.createFrom;
-const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = $models.MemoryAuditView.createFrom;
-const $$createType21 = $Create.Nullable($$createType20);
-const $$createType22 = $models.MemoryFactsView.createFrom;
-const $$createType23 = $Create.Nullable($$createType22);
-const $$createType24 = $Create.Array($$createType8);
-const $$createType25 = $Create.Array($$createType1);
-const $$createType26 = skill$0.SkillMeta.createFrom;
-const $$createType27 = $Create.Nullable($$createType26);
-const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = $models.FileEntry.createFrom;
-const $$createType30 = $Create.Array($$createType29);
-const $$createType31 = $Create.Array($Create.Any);
-const $$createType32 = $models.SubmitResult.createFrom;
-const $$createType33 = $Create.Nullable($$createType32);
+const $$createType4 = $Create.Array($$createType1);
+const $$createType5 = $models.SubmitResult.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);

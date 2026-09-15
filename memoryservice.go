@@ -3,9 +3,13 @@ package main
 import (
 	"fmt"
 
+	"tars/internal/boot"
 	"tars/internal/project"
 	"tars/pkg/memory"
 )
+
+// MemoryService —— 记忆面板 API（设置页记忆页签：事实/候选/审计）。
+type MemoryService struct{}
 
 // ProjectMemoryFacts 是一个项目级记忆的展示分组。
 type ProjectMemoryFacts struct {
@@ -24,8 +28,8 @@ type MemoryFactsView struct {
 
 // ListMemoryFacts 列出全部记忆事实（全局 + 有事实的项目；含过期项——
 // 面板是审计界面，过期项由前端灰显标注）。
-func (s *AgentService) ListMemoryFacts() (*MemoryFactsView, error) {
-	memMgr := s.app.GetMemoryMgr()
+func (s *MemoryService) ListMemoryFacts() (*MemoryFactsView, error) {
+	memMgr := boot.Current().GetMemoryMgr()
 	view := &MemoryFactsView{}
 
 	global, err := memory.ListFacts(memMgr.GetGlobalMemoryDir())
@@ -34,7 +38,7 @@ func (s *AgentService) ListMemoryFacts() (*MemoryFactsView, error) {
 	}
 	view.Global = global
 
-	for _, pv := range s.app.ListProjects() {
+	for _, pv := range boot.Current().ListProjects() {
 		facts, err := memory.ListFacts(memMgr.GetProjectMemoryDir(pv.GetProjectDir()))
 		if err != nil {
 			continue
@@ -67,8 +71,8 @@ func (s *AgentService) ListMemoryFacts() (*MemoryFactsView, error) {
 }
 
 // ForgetMemoryFact 删除一条记忆（归档留痕，可恢复）。
-func (s *AgentService) ForgetMemoryFact(scope, projectID, subject string) error {
-	memDir, err := s.app.GetMemoryDir(scope, projectID)
+func (s *MemoryService) ForgetMemoryFact(scope, projectID, subject string) error {
+	memDir, err := boot.Current().GetMemoryDir(scope, projectID)
 	if err != nil {
 		return err
 	}
@@ -76,8 +80,8 @@ func (s *AgentService) ForgetMemoryFact(scope, projectID, subject string) error 
 }
 
 // UpdateMemoryFact 编辑一条记忆的正文（旧值归档；敏感模式校验在存储层）。
-func (s *AgentService) UpdateMemoryFact(scope, projectID, subject, body string) error {
-	memDir, err := s.app.GetMemoryDir(scope, projectID)
+func (s *MemoryService) UpdateMemoryFact(scope, projectID, subject, body string) error {
+	memDir, err := boot.Current().GetMemoryDir(scope, projectID)
 	if err != nil {
 		return err
 	}
@@ -88,8 +92,8 @@ func (s *AgentService) UpdateMemoryFact(scope, projectID, subject, body string) 
 }
 
 // AdoptMemoryCandidate 采纳一条记忆候选：转为正式事实并移出候选区。
-func (s *AgentService) AdoptMemoryCandidate(projectID, subject string) error {
-	memDir, err := s.app.GetMemoryDir(string(memory.ScopeProject), projectID)
+func (s *MemoryService) AdoptMemoryCandidate(projectID, subject string) error {
+	memDir, err := boot.Current().GetMemoryDir(string(memory.ScopeProject), projectID)
 	if err != nil {
 		return err
 	}
@@ -97,8 +101,8 @@ func (s *AgentService) AdoptMemoryCandidate(projectID, subject string) error {
 }
 
 // RejectMemoryCandidate 拒绝一条记忆候选：移入拒绝审计（不再重复提议）。
-func (s *AgentService) RejectMemoryCandidate(projectID, subject string) error {
-	memDir, err := s.app.GetMemoryDir(string(memory.ScopeProject), projectID)
+func (s *MemoryService) RejectMemoryCandidate(projectID, subject string) error {
+	memDir, err := boot.Current().GetMemoryDir(string(memory.ScopeProject), projectID)
 	if err != nil {
 		return err
 	}
@@ -107,8 +111,8 @@ func (s *AgentService) RejectMemoryCandidate(projectID, subject string) error {
 
 // AdoptAllMemoryCandidates 批量采纳一个项目的全部候选（单条失败不阻断，
 // 返回首个错误——面板刷新后可见剩余项）。
-func (s *AgentService) AdoptAllMemoryCandidates(projectID string) error {
-	memDir, err := s.app.GetMemoryDir(string(memory.ScopeProject), projectID)
+func (s *MemoryService) AdoptAllMemoryCandidates(projectID string) error {
+	memDir, err := boot.Current().GetMemoryDir(string(memory.ScopeProject), projectID)
 	if err != nil {
 		return err
 	}
@@ -125,8 +129,8 @@ func (s *AgentService) AdoptAllMemoryCandidates(projectID string) error {
 }
 
 // RejectAllMemoryCandidates 批量拒绝一个项目的全部候选。
-func (s *AgentService) RejectAllMemoryCandidates(projectID string) error {
-	memDir, err := s.app.GetMemoryDir(string(memory.ScopeProject), projectID)
+func (s *MemoryService) RejectAllMemoryCandidates(projectID string) error {
+	memDir, err := boot.Current().GetMemoryDir(string(memory.ScopeProject), projectID)
 	if err != nil {
 		return err
 	}
@@ -149,8 +153,8 @@ type MemoryAuditView struct {
 }
 
 // ListMemoryAudit 返回一个记忆根的审计视图（留痕不真删的可恢复性证明）。
-func (s *AgentService) ListMemoryAudit(scope, projectID string) (*MemoryAuditView, error) {
-	root, err := s.app.GetMemoryDir(scope, projectID)
+func (s *MemoryService) ListMemoryAudit(scope, projectID string) (*MemoryAuditView, error) {
+	root, err := boot.Current().GetMemoryDir(scope, projectID)
 	if err != nil {
 		return nil, err
 	}

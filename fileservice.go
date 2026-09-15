@@ -8,7 +8,12 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"tars/internal/boot"
 )
+
+// FileService —— 工作区文件树浏览与系统级打开/定位（工作区页面）。
+type FileService struct{}
 
 // FileEntry represents a single file or directory in the workspace file tree.
 type FileEntry struct {
@@ -24,8 +29,8 @@ type FileEntry struct {
 const maxTreeDepth = 5
 
 // workspaceDirOf 解析会话所属项目的生效工作区（项目属性，多会话共享）。
-func (s *AgentService) workspaceDirOf(sessionID string) (string, error) {
-	ctrl, ok := s.app.FindController(sessionID)
+func (s *FileService) workspaceDirOf(sessionID string) (string, error) {
+	ctrl, ok := boot.Current().FindController(sessionID)
 	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
@@ -35,7 +40,7 @@ func (s *AgentService) workspaceDirOf(sessionID string) (string, error) {
 // ListWorkspaceFiles returns a recursive file tree of the given session's
 // workspace directory（工作区是项目级：同项目多会话共享同一目录）。
 // If the directory doesn't exist yet (new project), an empty slice is returned.
-func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error) {
+func (s *FileService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error) {
 	wsDir, err := s.workspaceDirOf(sessionID)
 	if err != nil {
 		return nil, err
@@ -54,7 +59,7 @@ func (s *AgentService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error)
 
 // OpenFile opens a file with the OS default application (not hardcoded to any
 // specific editor). The path should be relative to the session's workspace.
-func (s *AgentService) OpenFile(sessionID string, relPath string) error {
+func (s *FileService) OpenFile(sessionID string, relPath string) error {
 	wsDir, err := s.workspaceDirOf(sessionID)
 	if err != nil {
 		return err
@@ -72,7 +77,7 @@ func (s *AgentService) OpenFile(sessionID string, relPath string) error {
 // RevealInExplorer opens the OS file manager at the session's workspace
 // directory. On Windows this is Explorer, on macOS Finder, on Linux the
 // default file manager via xdg-open.
-func (s *AgentService) RevealInExplorer(sessionID string) error {
+func (s *FileService) RevealInExplorer(sessionID string) error {
 	wsDir, err := s.workspaceDirOf(sessionID)
 	if err != nil {
 		return err
@@ -87,8 +92,8 @@ func (s *AgentService) RevealInExplorer(sessionID string) error {
 
 // RevealProjectWorkspace opens the OS file manager at the project's workspace
 // directory（项目级入口：零会话项目没有 Controller，直接经项目管理器解析）。
-func (s *AgentService) RevealProjectWorkspace(projectID string) error {
-	wsDir, err := s.app.GetProjectWorkspaceDir(projectID)
+func (s *FileService) RevealProjectWorkspace(projectID string) error {
+	wsDir, err := boot.Current().GetProjectWorkspaceDir(projectID)
 	if err != nil {
 		return err
 	}
@@ -101,7 +106,7 @@ func (s *AgentService) RevealProjectWorkspace(projectID string) error {
 // RevealFileInExplorer reveals a specific file in the OS file manager
 // (selects the file in Explorer/Finder). The path should be relative to the
 // session's workspace.
-func (s *AgentService) RevealFileInExplorer(sessionID string, relPath string) error {
+func (s *FileService) RevealFileInExplorer(sessionID string, relPath string) error {
 	wsDir, err := s.workspaceDirOf(sessionID)
 	if err != nil {
 		return err

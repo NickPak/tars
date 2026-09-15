@@ -1,4 +1,4 @@
-// 与 Go 端 agentservice.go 中的结构体一一对应。
+// 与 Go 端各 service 文件（agentservice.go / skillservice.go / ...）中的结构体对应。
 
 export type Role = "user" | "assistant" | "tool";
 

@@ -1,12 +1,25 @@
-// 接口绑定层：封装所有对 Go 端 AgentService 的调用与流式事件订阅。
+// 接口绑定层：封装所有对 Go 端各领域 Service 的调用与流式事件订阅。
 // UI 组件只依赖本模块，不直接接触 Wails runtime。
 //
 // 底层使用 `wails3 generate bindings` 生成的强类型 bindings
-// （frontend/bindings/tars）。Go 端结构体/方法签名变更后重新生成即可，
+// （frontend/bindings/tars，按 Go 端服务结构体一文件一模块）。
+// Go 端结构体/方法签名变更后重新生成即可，
 // 本模块对上层（store / 组件）暴露的接口保持不变。
 
 import { Events } from "@wailsio/runtime";
-import { AgentService } from "../../bindings/tars";
+import {
+  AgentService,
+  AgentsMDService,
+  ConfigService,
+  ExportService,
+  FileService,
+  MCPService,
+  MemoryService,
+  ModelService,
+  SkillService,
+  StatService,
+  WorkspaceService,
+} from "../../bindings/tars";
 import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
@@ -139,41 +152,41 @@ export const agentApi = {
 
   /** 在系统文件管理器中打开项目的工作区目录 */
   revealProjectWorkspace: (projectId: string): Promise<void> =>
-    AgentService.RevealProjectWorkspace(projectId),
+    FileService.RevealProjectWorkspace(projectId),
 
   /** 列出全部记忆事实（全局 + 各项目） */
   listMemoryFacts: async (): Promise<MemoryFactsView> => {
-    const v = await AgentService.ListMemoryFacts();
+    const v = await MemoryService.ListMemoryFacts();
     return (v ?? { global: [], projects: [] }) as MemoryFactsView;
   },
 
   /** 删除一条记忆（归档留痕，可恢复） */
   forgetMemoryFact: (scope: string, projectId: string, subject: string): Promise<void> =>
-    AgentService.ForgetMemoryFact(scope, projectId, subject),
+    MemoryService.ForgetMemoryFact(scope, projectId, subject),
 
   /** 编辑一条记忆的正文（旧值归档） */
   updateMemoryFact: (scope: string, projectId: string, subject: string, body: string): Promise<void> =>
-    AgentService.UpdateMemoryFact(scope, projectId, subject, body),
+    MemoryService.UpdateMemoryFact(scope, projectId, subject, body),
 
   /** 采纳记忆候选：转为正式事实 */
   adoptMemoryCandidate: (projectId: string, subject: string): Promise<void> =>
-    AgentService.AdoptMemoryCandidate(projectId, subject),
+    MemoryService.AdoptMemoryCandidate(projectId, subject),
 
   /** 拒绝记忆候选：进入拒绝审计（不再重复提议） */
   rejectMemoryCandidate: (projectId: string, subject: string): Promise<void> =>
-    AgentService.RejectMemoryCandidate(projectId, subject),
+    MemoryService.RejectMemoryCandidate(projectId, subject),
 
   /** 批量采纳项目的全部候选 */
   adoptAllMemoryCandidates: (projectId: string): Promise<void> =>
-    AgentService.AdoptAllMemoryCandidates(projectId),
+    MemoryService.AdoptAllMemoryCandidates(projectId),
 
   /** 批量拒绝项目的全部候选 */
   rejectAllMemoryCandidates: (projectId: string): Promise<void> =>
-    AgentService.RejectAllMemoryCandidates(projectId),
+    MemoryService.RejectAllMemoryCandidates(projectId),
 
   /** 记忆审计视图（归档 + 拒绝留痕） */
   listMemoryAudit: (scope: string, projectId: string): Promise<import("../types").MemoryAuditView> =>
-    AgentService.ListMemoryAudit(scope, projectId) as Promise<import("../types").MemoryAuditView>,
+    MemoryService.ListMemoryAudit(scope, projectId) as Promise<import("../types").MemoryAuditView>,
 
   /** 在项目中新建会话（Tab，与项目共用工作区） */
   createSession: async (projectId: string): Promise<Session> => {
@@ -215,61 +228,61 @@ export const agentApi = {
   // --- 文件服务 ---
 
   listWorkspaceFiles: async (sessionId: string): Promise<FileEntry[]> =>
-    (await AgentService.ListWorkspaceFiles(sessionId)) as FileEntry[],
+    (await FileService.ListWorkspaceFiles(sessionId)) as FileEntry[],
 
   /** 用系统默认程序打开文件 */
   openFile: (sessionId: string, relPath: string): Promise<void> =>
-    AgentService.OpenFile(sessionId, relPath),
+    FileService.OpenFile(sessionId, relPath),
 
   /** 在系统文件管理器中打开工作区目录 */
   revealInExplorer: (sessionId: string): Promise<void> =>
-    AgentService.RevealInExplorer(sessionId),
+    FileService.RevealInExplorer(sessionId),
 
   /** 在系统文件管理器中显示指定文件（选中该文件） */
   revealFileInExplorer: (sessionId: string, relPath: string): Promise<void> =>
-    AgentService.RevealFileInExplorer(sessionId, relPath),
+    FileService.RevealFileInExplorer(sessionId, relPath),
 
   /** 查询会话工作区的 AGENTS.md 状态 */
   getAgentsMdStatus: async (sessionId: string): Promise<AgentsMdStatus | null> =>
-    (await AgentService.GetAgentsMdStatus(sessionId)) as AgentsMdStatus | null,
+    (await AgentsMDService.GetAgentsMdStatus(sessionId)) as AgentsMdStatus | null,
 
   /** 在工作区根创建 AGENTS.md 骨架模板（已存在时后端拒绝） */
   createAgentsMd: (sessionId: string): Promise<void> =>
-    AgentService.CreateAgentsMd(sessionId),
+    AgentsMDService.CreateAgentsMd(sessionId),
 
   // --- 工作区管理 ---
 
   /** 弹出系统目录选择对话框，返回选中的路径（取消则返回空串） */
   openDirectoryDialog: async (): Promise<string> =>
-    await AgentService.OpenDirectoryDialog(),
+    await WorkspaceService.OpenDirectoryDialog(),
 
   /** 设置会话的自定义工作区目录（空串 = 重置为默认） */
   setWorkspaceDir: (sessionId: string, dir: string): Promise<void> =>
-    AgentService.SetWorkspaceDir(sessionId, dir),
+    WorkspaceService.SetWorkspaceDir(sessionId, dir),
 
   /** 获取会话当前的工作区信息 */
   getWorkspaceInfo: async (sessionId: string): Promise<WorkspaceInfo> =>
-    (await AgentService.GetWorkspaceInfo(sessionId)) as WorkspaceInfo,
+    (await WorkspaceService.GetWorkspaceInfo(sessionId)) as WorkspaceInfo,
 
   /** 获取会话级聚合统计（状态栏数据） */
   getSessionStats: async (sessionId: string): Promise<SessionStats> =>
-    (await AgentService.GetSessionStats(sessionId)) as SessionStats,
+    (await StatService.GetSessionStats(sessionId)) as SessionStats,
 
   /** 获取当前激活模型信息（TopicBar 模型选择器展示用） */
   getModelInfo: async (): Promise<ModelInfo> =>
-    (await AgentService.GetModelInfo()) as ModelInfo,
+    (await ModelService.GetModelInfo()) as ModelInfo,
 
   /** 获取全部已配置模型条目（模型切换下拉用） */
   listModels: async (): Promise<ModelInfo[]> =>
-    ((await AgentService.ListModels()) ?? []) as ModelInfo[],
+    ((await ModelService.ListModels()) ?? []) as ModelInfo[],
 
   /** 切换当前使用的模型（立即生效并持久化），成功后后端广播 model:changed */
   setActiveModel: (id: string): Promise<void> =>
-    AgentService.SetActiveModel(id),
+    ModelService.SetActiveModel(id),
 
   /** 导出会话为 Markdown（弹出系统保存对话框），返回保存路径（取消返回空串） */
   exportSession: async (sessionId: string): Promise<string> =>
-    await AgentService.ExportSession(sessionId),
+    await ExportService.ExportSession(sessionId),
 
   /** 提交一次询问/审批的用户答复（requestID 即工具调用 ID） */
   answerAskUser: async (
@@ -284,78 +297,78 @@ export const agentApi = {
 
   /** 已安装技能列表 */
   listSkills: async (): Promise<Skill[]> =>
-    (await AgentService.ListSkills()) as Skill[],
+    (await SkillService.ListSkills()) as Skill[],
 
   /** 已出现的技能分类（安装对话框下拉用） */
   skillCategories: async (): Promise<string[]> =>
-    await AgentService.SkillCategories(),
+    await SkillService.SkillCategories(),
 
   /** 从本地制品安装技能，返回安装后的技能名 */
   installSkill: async (
     srcPath: string,
     category: string,
     overwrite: boolean,
-  ): Promise<string> => await AgentService.InstallSkill(srcPath, category, overwrite),
+  ): Promise<string> => await SkillService.InstallSkill(srcPath, category, overwrite),
 
   /** 卸载技能 */
   uninstallSkill: async (name: string): Promise<void> =>
-    await AgentService.UninstallSkill(name),
+    await SkillService.UninstallSkill(name),
 
   /** 修改已安装技能的分类（写注册表并重跑索引，下一轮对话生效） */
   setSkillCategory: async (name: string, category: string): Promise<void> =>
-    await AgentService.SetSkillCategory(name, category),
+    await SkillService.SetSkillCategory(name, category),
 
   /** 启用/禁用技能（禁用后对 Agent 不可见：索引/检索/加载排除） */
   setSkillEnabled: async (name: string, enabled: boolean): Promise<void> =>
-    await AgentService.SetSkillEnabled(name, enabled),
+    await SkillService.SetSkillEnabled(name, enabled),
 
-  /** 模糊搜索已安装技能（与 discover_tools 同款 BM25 检索和候选数上限，
+  /** 模糊搜索已安装技能（与 discover_tools 同款 bleve 检索和候选数上限，
    *  页面所见 = 模型所得；空查询返回完整列表） */
   searchSkills: async (query: string): Promise<Skill[]> =>
-    (await AgentService.SearchSkills(query)) as Skill[],
+    (await SkillService.SearchSkills(query)) as Skill[],
 
   // ---- MCP 服务器管理 ----
 
   /** 全部已配置 MCP 服务器（含禁用项与工具计数） */
   listMCPServers: async (): Promise<MCPServerInfo[]> =>
-    (await AgentService.ListMCPServers()) as MCPServerInfo[],
+    (await MCPService.ListMCPServers()) as MCPServerInfo[],
 
   /** 探测服务器：拉起进程抓取工具清单并缓存（60s 超时） */
   probeMCPServer: async (name: string): Promise<void> =>
-    await AgentService.ProbeMCPServer(name),
+    await MCPService.ProbeMCPServer(name),
 
   /** 登记/覆盖一个 MCP 服务器（立即落盘生效；覆盖时连接即回收） */
   upsertMCPServer: async (name: string, cfg: MCPServerConfig): Promise<void> =>
-    await AgentService.UpsertMCPServer(name, cfg as mcpModels.ServerConfig),
+    await MCPService.UpsertMCPServer(name, cfg as mcpModels.ServerConfig),
 
   /** 移除一个 MCP 服务器（立即落盘生效；连接即回收，探测缓存清理） */
   removeMCPServer: async (name: string): Promise<void> =>
-    await AgentService.RemoveMCPServer(name),
+    await MCPService.RemoveMCPServer(name),
 
   /** 启用/禁用服务器（立即落盘生效；禁用后对 Agent 不可见，连接即回收） */
   setMCPServerEnabled: async (name: string, enabled: boolean): Promise<void> =>
-    await AgentService.SetMCPServerEnabled(name, enabled),
+    await MCPService.SetMCPServerEnabled(name, enabled),
 
   /** 弹出系统选择器选择技能制品文件（SKILL.md / zip / tar.gz），取消返回空串 */
   openSkillFileDialog: async (): Promise<string> =>
-    await AgentService.OpenSkillFileDialog(),
+    await SkillService.OpenSkillFileDialog(),
 
   /** 弹出系统选择器选择技能目录，取消返回空串 */
   openSkillDirDialog: async (): Promise<string> =>
-    await AgentService.OpenSkillDirDialog(),
+    await SkillService.OpenSkillDirDialog(),
 
   // --- 设置（应用配置） ---
 
   /** 获取当前应用配置（密钥原样返回，UI 层负责掩码显示） */
   getAppConfig: async (): Promise<AppConfig> => {
-    const cfg = await AgentService.GetAppConfig();
+    const cfg = await ConfigService.GetAppConfig();
     if (!cfg) throw new Error("获取配置失败：后端返回空");
     return normalizeAppConfig(cfg);
   },
 
   /** 保存应用配置：写回 config.yaml 并热更新（model/agent/trace 立即生效） */
   saveAppConfig: async (cfg: AppConfig): Promise<void> => {
-    await AgentService.SaveAppConfig(toWireConfig(cfg));
+    await ConfigService.SaveAppConfig(toWireConfig(cfg));
   },
 };
 

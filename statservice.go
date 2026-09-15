@@ -2,9 +2,13 @@ package main
 
 import (
 	"fmt"
+	"tars/internal/boot"
 	"tars/internal/config"
 	"tars/pkg/schema"
 )
+
+// StatService —— 会话聚合统计（底部状态栏：tokens/费用/缓存命中/压缩计量）。
+type StatService struct{}
 
 // SessionStats 是会话级聚合统计，供底部状态栏展示。
 // 轮次级指标（本次命中率/本次费用/tokens/耗时）随每条 assistant 消息的
@@ -56,8 +60,8 @@ type ModelPrice struct {
 }
 
 // GetSessionStats 返回指定会话的聚合统计。空会话返回带模型/价格信息的零值。
-func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) {
-	if !s.app.HasSession(sessionID) {
+func (s *StatService) GetSessionStats(sessionID string) (*SessionStats, error) {
+	if !boot.Current().HasSession(sessionID) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
@@ -68,7 +72,7 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 	if cfg != nil && cfg.LLM != nil {
 		if active := cfg.LLM.ActiveModel(); active != nil {
 			// 健康状态跟随当前激活的模型条目（per-model 记录在 Registry）
-			stats.ModelHealthy = s.app.GetLLMMgr().IsHealthy(active.EntryID)
+			stats.ModelHealthy = boot.Current().GetLLMMgr().IsHealthy(active.EntryID)
 			stats.ModelID = active.ModelId
 			stats.ContextWindow = active.ContextWindow
 			activeIn, activeOut = active.InputPricePerMillion, active.OutputPricePerMillion
@@ -91,7 +95,7 @@ func (s *AgentService) GetSessionStats(sessionID string) (*SessionStats, error) 
 
 	// 拷贝消息切片头做只读快照（统计只读 Usage/CreatedAt 等标量字段）
 	var msgs []*schema.Message
-	if sess, ok := s.app.FindSession(sessionID); ok {
+	if sess, ok := boot.Current().FindSession(sessionID); ok {
 		msgs = append([]*schema.Message{}, sess.Messages...)
 		// 压缩计量（plan/context 06 篇）：从压缩态直读，无新基础设施。
 		if comp := sess.Compaction; comp != nil {
