@@ -1,5 +1,6 @@
-// Package todo defines the per-session TODO state machine persisted
-// in the session directory (todo.json).
+// Package todo defines the per-project TODO state machine persisted
+// in the project directory (todo.json), shared by all sessions of
+// the project.
 package todo
 
 import (
@@ -46,11 +47,14 @@ type TodoProvider interface {
 	Snapshot() ([]Todo, int64)
 }
 
-// Manager 是 per-session 的 TODO 状态机。
+// Manager 是 per-project 的 TODO 状态机：同一项目的全部会话共享同一个
+// Manager 实例（由 Project 持有并注入各 Controller），一个任务可以横跨
+// 多次对话推进。
 // 设计文档 2.10：模型调 todo_write → 框架校验并更新状态机（持久化到
-// workspace 文件，跨会话存活）→ 返回确认 → StatusBar 渲染 todo 区。
+// 项目目录文件，跨会话存活）→ 返回确认 → StatusBar 渲染 todo 区。
 //
-// 线程安全：工具可能并行执行（虽然 todo_write 通常独占一轮），用 RWMutex 保护。
+// 线程安全：工具可能并行执行（虽然 todo_write 通常独占一轮），且同项目
+// 多个会话可能并发读写，用 RWMutex 保护。
 type Manager struct {
 	mu       sync.RWMutex
 	todos    []Todo
@@ -62,9 +66,10 @@ type Manager struct {
 	renderChangedIter int
 }
 
-// NewManager 创建一个以 baseDir 为会话目录的 TodoStore。
+// NewManager 创建一个以 baseDir 为项目目录的 TodoStore。
 // todo.json 持久化文件在 baseDir 下。传空串则纯内存模式（不持久化）。
-// 调用方应在会话恢复时调用 Load() 读回磁盘状态。
+// 调用方应在会话恢复时调用 Load() 读回磁盘状态（幂等，同项目多个
+// 会话各自调用不会产生副作用）。
 func NewManager(baseDir string) *Manager {
 	filePath := ""
 	if baseDir != "" {

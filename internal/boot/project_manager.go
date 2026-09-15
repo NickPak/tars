@@ -139,7 +139,7 @@ func (m *ProjectManager) CreateSession(projectID string) (*session.Data, error) 
 	if err != nil {
 		return nil, err
 	}
-	ctrl := NewController(m.cfg, p.meta, sessionDir, sess, m.sink, m.llmMgr, m.skillMgr, m.mcpMgr, m.memMgr, m.askMgr)
+	ctrl := NewController(m.cfg, p.meta, sessionDir, sess, m.sink, m.llmMgr, m.skillMgr, m.mcpMgr, m.memMgr, m.askMgr, p.GetTodoMgr())
 	if _, err := p.AddController(ctrl); err != nil {
 		return nil, err
 	}
@@ -354,7 +354,7 @@ func (m *ProjectManager) Restore() error {
 
 		for _, sess := range infos {
 			sessionDir := session.GetSessionDir(p.GetProjectDir(), sess.ID)
-			ctrl := NewController(m.cfg, p.meta, sessionDir, sess, m.sink, m.llmMgr, m.skillMgr, m.mcpMgr, m.memMgr, m.askMgr)
+			ctrl := NewController(m.cfg, p.meta, sessionDir, sess, m.sink, m.llmMgr, m.skillMgr, m.mcpMgr, m.memMgr, m.askMgr, p.GetTodoMgr())
 			if _, err := p.AddController(ctrl); err != nil {
 				slog.Error("Failed to startup controller", "session", sess.ID, "error", err)
 				continue

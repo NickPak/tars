@@ -8,6 +8,7 @@ import (
 
 	"tars/internal/project"
 	"tars/internal/session"
+	"tars/pkg/todo"
 )
 
 // ProjectView 是项目的展示视图：项目元信息 + 其下会话。
@@ -24,12 +25,16 @@ type Project struct {
 	meta  *project.Metadata
 	mu    sync.RWMutex
 	ctrls map[string]*Controller
+	// todoMgr 项目级 TODO 状态机：同项目全部会话共享（todo.json 存于
+	// 项目目录），由 NewController 注入各会话 Controller。
+	todoMgr *todo.Manager
 }
 
 func NewProject(meta *project.Metadata) *Project {
 	return &Project{
-		meta:  meta,
-		ctrls: make(map[string]*Controller),
+		meta:    meta,
+		ctrls:   make(map[string]*Controller),
+		todoMgr: todo.NewManager(meta.GetProjectDir()),
 	}
 }
 
@@ -37,6 +42,9 @@ func (p *Project) GetID() string { return p.meta.GetID() }
 
 // GetProjectDir 返回项目目录（projects/<pid>）。
 func (p *Project) GetProjectDir() string { return p.meta.GetProjectDir() }
+
+// GetTodoMgr 返回项目级共享的 TODO 状态机。
+func (p *Project) GetTodoMgr() *todo.Manager { return p.todoMgr }
 
 // AddController 为会话建 Controller 并登记（Startup 失败不入册）。
 func (p *Project) AddController(ctrl *Controller) (*Controller, error) {

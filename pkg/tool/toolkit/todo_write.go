@@ -20,14 +20,14 @@ type todoWriteArgs struct {
 	Todos []todoItem `json:"todos"`
 }
 
-// TodoTool 是 todo_write 工具的载体（Carrier）：持有会话级 TODO 状态机。
+// TodoTool 是 todo_write 工具的载体（Carrier）：持有项目级 TODO 状态机。
 // 无外部资源（状态机由装配层持有并随会话落盘），Close 为空方法。
 type TodoTool struct {
 	store todo.TodoProvider
 }
 
 // NewTodoTool 创建 todo_write 载体。store 为 nil 时 handler 报错
-// （装配层须保证注入会话级 Todo 状态机）。
+// （装配层须保证注入项目级 Todo 状态机）。
 func NewTodoTool(store todo.TodoProvider) *TodoTool {
 	return &TodoTool{store: store}
 }

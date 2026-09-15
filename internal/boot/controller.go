@@ -57,10 +57,12 @@ type Controller struct {
 	agent      agent.Agent
 }
 
-// NewController 组装会话级组件：事件出口、TODO 状态机、交互通道、
+// NewController 组装会话级组件：事件出口、交互通道、
 // 工具执行器（构造器注入依赖 + 权限门 Gate）。
 // proj 是会话所属项目（工作区来源）；sessionDir 是会话存储目录。
-func NewController(cfg *config.AppConfig, proj *project.Metadata, sessionDir string, data *session.Data, sink event.Sink, llmMgr *llm.Manager, skillMgr *skill.Manager, mcpMgr *mcp.Manager, memMgr *memory.Manager, askMgr *ask.Manager) *Controller {
+// todoMgr 是项目级共享的 TODO 状态机（由 Project 持有，同项目全部
+// 会话注入同一实例）。
+func NewController(cfg *config.AppConfig, proj *project.Metadata, sessionDir string, data *session.Data, sink event.Sink, llmMgr *llm.Manager, skillMgr *skill.Manager, mcpMgr *mcp.Manager, memMgr *memory.Manager, askMgr *ask.Manager, todoMgr *todo.Manager) *Controller {
 	c := &Controller{
 		cfg:        cfg,
 		proj:       proj,
@@ -69,7 +71,7 @@ func NewController(cfg *config.AppConfig, proj *project.Metadata, sessionDir str
 		mu:         sync.Mutex{},
 		cancel:     nil,
 		sessionMgr: nil,
-		todoMgr:    nil,
+		todoMgr:    todoMgr,
 		gate:       nil,
 		toolReg:    nil,
 		sandbox:    nil,
@@ -80,8 +82,6 @@ func NewController(cfg *config.AppConfig, proj *project.Metadata, sessionDir str
 	}
 
 	c.sessionMgr = session.NewManager(data, sessionDir, proj, sink, llmMgr, cfg.Agent.CompressionThreshold, cfg.Agent.CompressionKeepTurns, cfg.Agent.CompressionMinBatch, cfg.Agent.CompressionMaxFailures)
-
-	c.todoMgr = todo.NewManager(c.sessionMgr.GetSessionDir())
 
 	c.gate = guard.NewGate(askMgr, c.sessionMgr.RiskTable(), sink, c.sessionMgr.GetID())
 
