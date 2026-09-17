@@ -421,7 +421,6 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 				ElapsedMs: elapsedMs,
 			}})
 		} else {
-			c.llmMgr.SetHealthy(modelCfg.EntryID, false)
 			// 迭代超时单独分类，前端据此给出针对性提示（"provider 拥塞，重试？"）。
 			kind := "error"
 			if errors.Is(runErr, context.DeadlineExceeded) {
@@ -430,7 +429,6 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 			EmitError(sink, c.sessionMgr.GetID(), assistantID, runErr, kind, elapsedMs)
 		}
 	} else {
-		c.llmMgr.SetHealthy(modelCfg.EntryID, true)
 		sink.Emit(event.Event{Kind: event.KindTurnEnded, Done: &event.StreamDone{
 			SessionID: c.sessionMgr.GetID(), MessageID: assistantID, Usage: usage,
 			ElapsedMs: elapsedMs, FinalOutput: finalOutput,

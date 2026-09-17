@@ -25,8 +25,6 @@ type Manager struct {
 	mu     sync.RWMutex
 	cfg    *Config
 	models map[string]model.ToolCallingChatModel
-
-	healthy map[string]bool
 }
 
 func NewManager(cfg *Config) *Manager {
@@ -34,9 +32,8 @@ func NewManager(cfg *Config) *Manager {
 		cfg = &Config{}
 	}
 	r := &Manager{
-		cfg:     cfg,
-		models:  map[string]model.ToolCallingChatModel{},
-		healthy: map[string]bool{},
+		cfg:    cfg,
+		models: map[string]model.ToolCallingChatModel{},
 	}
 	return r
 }
@@ -49,25 +46,6 @@ func (r *Manager) Startup() error {
 
 func (r *Manager) Shutdown() error {
 	return nil
-}
-
-func (r *Manager) SetHealthy(entryID string, ok bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.healthy[entryID] = ok
-}
-
-func (r *Manager) IsHealthy(entryID string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	ok, recorded := r.healthy[entryID]
-	return !recorded || ok
-}
-
-func (r *Manager) ResetHealth() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.healthy = map[string]bool{}
 }
 
 func (r *Manager) UpdateConfig(cfg *Config) error {
@@ -89,9 +67,6 @@ func (r *Manager) UpdateConfig(cfg *Config) error {
 	if m := cfg.ActiveModel(); m != nil && active != nil {
 		r.models[m.EntryID] = active
 	}
-	// 配置可能修复了密钥/端点：清空健康记录，给新配置一次全新尝试。
-	// 锁已持有，内联重置（调 r.ResetHealth() 会对同一互斥锁二次加锁死锁）。
-	r.healthy = map[string]bool{}
 	return nil
 }
 

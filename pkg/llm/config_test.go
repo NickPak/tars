@@ -142,7 +142,7 @@ func TestValidateReasoningAndTemperature(t *testing.T) {
 	}
 }
 
-// UpdateConfig 不得在持有 r.mu 时对同一互斥锁二次加锁（ResetHealth 死锁回归）：
+// UpdateConfig 不得死锁（历史回归：曾在持锁路径上二次加锁）：
 // 清空模型的保存链路（SaveAppConfig → UpdateConfig）必须能完成。
 func TestUpdateConfigNoDeadlock(t *testing.T) {
 	r := NewManager(&Config{
@@ -167,15 +167,11 @@ func TestUpdateConfigNoDeadlock(t *testing.T) {
 			t.Fatalf("UpdateConfig with empty models: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("UpdateConfig deadlocked (ResetHealth re-locks r.mu)")
+		t.Fatal("UpdateConfig deadlocked")
 	}
 
 	// 清空后 Active() 报"尚未配置任何模型"，设置页可修复
 	if _, _, err := r.Active(); err == nil {
 		t.Fatal("Active should fail with zero models")
-	}
-	// 健康记录已清空
-	if len(r.healthy) != 0 {
-		t.Fatalf("healthy records should be reset, got %v", r.healthy)
 	}
 }

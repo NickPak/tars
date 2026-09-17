@@ -365,16 +365,6 @@ export class ProjectMemoryFacts {
  */
 export class SessionStats {
     /**
-     * ModelID 当前使用的模型名。
-     */
-    "modelId": string;
-
-    /**
-     * ModelHealthy 最近一次 LLM 调用是否成功（状态栏绿/红灯）。
-     */
-    "modelHealthy": boolean;
-
-    /**
      * Rounds 会话轮次（user 消息数）。
      */
     "rounds": number;
@@ -454,12 +444,6 @@ export class SessionStats {
 
     /** Creates a new SessionStats instance. */
     constructor($$source: Partial<SessionStats> = {}) {
-        if (!("modelId" in $$source)) {
-            this["modelId"] = "";
-        }
-        if (!("modelHealthy" in $$source)) {
-            this["modelHealthy"] = false;
-        }
         if (!("rounds" in $$source)) {
             this["rounds"] = 0;
         }
@@ -510,10 +494,10 @@ export class SessionStats {
      * Creates a new SessionStats instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionStats {
-        const $$createField17_0 = $$createType9;
+        const $$createField15_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("modelPrices" in $$parsedSource) {
-            $$parsedSource["modelPrices"] = $$createField17_0($$parsedSource["modelPrices"]);
+            $$parsedSource["modelPrices"] = $$createField15_0($$parsedSource["modelPrices"]);
         }
         return new SessionStats($$parsedSource as Partial<SessionStats>);
     }

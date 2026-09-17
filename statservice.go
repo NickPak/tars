@@ -14,10 +14,6 @@ type StatService struct{}
 // 轮次级指标（本次命中率/本次费用/tokens/耗时）随每条 assistant 消息的
 // Usage/ElapsedMs 持久化，由前端在消息底部直接渲染，不在此聚合。
 type SessionStats struct {
-	// ModelID 当前使用的模型名。
-	ModelID string `json:"modelId"`
-	// ModelHealthy 最近一次 LLM 调用是否成功（状态栏绿/红灯）。
-	ModelHealthy bool `json:"modelHealthy"`
 	// Rounds 会话轮次（user 消息数）。
 	Rounds int `json:"rounds"`
 	// TotalTokens 会话累计 token（所有 assistant 回复合计）。
@@ -66,14 +62,11 @@ func (s *StatService) GetSessionStats(sessionID string) (*SessionStats, error) {
 	}
 
 	cfg := config.Get()
-	stats := &SessionStats{ModelHealthy: true}
+	stats := &SessionStats{}
 	var activeIn, activeOut float64
 	var contextWindow int
 	if cfg != nil && cfg.LLM != nil {
 		if active := cfg.LLM.ActiveModel(); active != nil {
-			// 健康状态跟随当前激活的模型条目（per-model 记录在 Registry）
-			stats.ModelHealthy = boot.Current().GetLLMMgr().IsHealthy(active.EntryID)
-			stats.ModelID = active.ModelId
 			stats.ContextWindow = active.ContextWindow
 			activeIn, activeOut = active.InputPricePerMillion, active.OutputPricePerMillion
 			contextWindow = active.ContextWindow

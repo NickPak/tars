@@ -1,9 +1,9 @@
-import { Cpu, Circle } from "lucide-react";
+import { Circle } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 
 /**
  * 底部状态栏 —— 会话级聚合状态（Reasonix 风格）：
- *   模型+健康灯 | 平均命中 | 会话 tokens | Credits | 轮次 | 上下文 | 压缩阈值 | 会话费用
+ *   运行灯 | 平均命中 | 会话 tokens | Credits | 轮次 | 上下文 | 压缩阈值 | 会话费用
  * 轮次级指标（本次命中率/本次费用/本轮 tokens/耗时）在每条消息的底部展示。
  */
 export default function StatusBar() {
@@ -11,23 +11,18 @@ export default function StatusBar() {
   const isStreaming = useChatStore((s) => s.isStreaming);
   const backendError = useChatStore((s) => s.backendError);
 
-  // 新会话（stats 为 null）时统计信息尚不存在，左侧模型区整体隐藏
-  const healthy = stats?.modelHealthy ?? true;
-  const lampColor = backendError || !healthy ? "#f28b82" : isStreaming ? "#fdd663" : "#81c995";
-  const lampTitle = backendError || !healthy
-    ? "模型最近调用失败"
-    : isStreaming ? "生成中…" : "模型可用";
+  // 运行灯只表达即时状态：后端错误（红）/ 生成中（黄）/ 空闲（暗）
+  const lampColor = backendError ? "#f28b82" : isStreaming ? "#fdd663" : "#5f6368";
+  const lampTitle = backendError
+    ? "后端调用失败"
+    : isStreaming ? "生成中…" : "空闲";
 
   return (
     <footer className="statusbar">
       <div className="statusbar-left">
-        {stats && (
-          <span className="statusbar-item" title={lampTitle}>
-            <Circle size={8} fill={lampColor} color={lampColor} />
-            <Cpu size={12} />
-            {stats.modelId}
-          </span>
-        )}
+        <span className="statusbar-item" title={lampTitle}>
+          <Circle size={8} fill={lampColor} color={lampColor} />
+        </span>
       </div>
       <div className="statusbar-right">
         {stats && (

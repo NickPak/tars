@@ -154,9 +154,6 @@ export interface ModelChangedEvent {
 
 /** 会话级聚合统计（底部状态栏数据） */
 export interface SessionStats {
-  modelId: string;
-  /** 最近一次 LLM 调用是否成功（状态灯） */
-  modelHealthy: boolean;
   /** 会话轮次（user 消息数） */
   rounds: number;
   totalTokens: number;
