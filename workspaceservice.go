@@ -54,7 +54,7 @@ func isDialogCancelled(err error) bool {
 // 项目内所有会话零消息且无运行中的轮才允许；锁定后不迁移。
 // 不存在"重置为默认"入口。
 func (s *WorkspaceService) SetWorkspaceDir(sessionID string, dir string) error {
-	if err := boot.Current().SetSessionWorkspace(sessionID, dir); err != nil {
+	if err := boot.GetApp().SetSessionWorkspace(sessionID, dir); err != nil {
 		return fmt.Errorf("set workspace dir: %w", err)
 	}
 	return nil
@@ -62,7 +62,7 @@ func (s *WorkspaceService) SetWorkspaceDir(sessionID string, dir string) error {
 
 // GetWorkspaceInfo returns the current workspace info for a session.
 func (s *WorkspaceService) GetWorkspaceInfo(sessionID string) (*WorkspaceInfo, error) {
-	ctrl, ok := boot.Current().FindController(sessionID)
+	ctrl, ok := boot.GetApp().FindController(sessionID)
 	if !ok {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}

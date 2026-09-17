@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"tars/internal/config"
 	"tars/internal/project"
 	"tars/internal/session"
@@ -21,6 +22,23 @@ import (
 	"tars/pkg/skill"
 	"tars/pkg/trace"
 )
+
+var (
+	// instance 是进程级 App 持有器
+	instance atomic.Pointer[App]
+)
+
+// SetApp 登记进程级 App 实例（装配期调用一次，先于任何前端调用）。
+func SetApp(a *App) {
+	instance.Store(a)
+}
+
+// GetApp 返回进程级 App 实例；未装配时返回 nil（调用方应视为
+// "backend not ready"——正常时序下不会发生：Wails 在全部
+// ServiceStartup 完成后才放行前端调用）。
+func GetApp() *App {
+	return instance.Load()
+}
 
 // App 是应用的全局唯一入口：进程级共享依赖 + 项目/会话运行时（委托
 // ProjectManager，App 不直接持有 Controller）。

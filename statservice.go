@@ -57,7 +57,7 @@ type ModelPrice struct {
 
 // GetSessionStats 返回指定会话的聚合统计。空会话返回带模型/价格信息的零值。
 func (s *StatService) GetSessionStats(sessionID string) (*SessionStats, error) {
-	if !boot.Current().HasSession(sessionID) {
+	if !boot.GetApp().HasSession(sessionID) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
@@ -88,7 +88,7 @@ func (s *StatService) GetSessionStats(sessionID string) (*SessionStats, error) {
 
 	// 拷贝消息切片头做只读快照（统计只读 Usage/CreatedAt 等标量字段）
 	var msgs []*schema.Message
-	if sess, ok := boot.Current().FindSession(sessionID); ok {
+	if sess, ok := boot.GetApp().FindSession(sessionID); ok {
 		msgs = append([]*schema.Message{}, sess.Messages...)
 		// 压缩计量（plan/context 06 篇）：从压缩态直读，无新基础设施。
 		if comp := sess.Compaction; comp != nil {

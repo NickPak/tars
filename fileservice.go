@@ -30,7 +30,7 @@ const maxTreeDepth = 5
 
 // workspaceDirOf 解析会话所属项目的生效工作区（项目属性，多会话共享）。
 func (s *FileService) workspaceDirOf(sessionID string) (string, error) {
-	ctrl, ok := boot.Current().FindController(sessionID)
+	ctrl, ok := boot.GetApp().FindController(sessionID)
 	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
@@ -93,7 +93,7 @@ func (s *FileService) RevealInExplorer(sessionID string) error {
 // RevealProjectWorkspace opens the OS file manager at the project's workspace
 // directory（项目级入口：零会话项目没有 Controller，直接经项目管理器解析）。
 func (s *FileService) RevealProjectWorkspace(projectID string) error {
-	wsDir, err := boot.Current().GetProjectWorkspaceDir(projectID)
+	wsDir, err := boot.GetApp().GetProjectWorkspaceDir(projectID)
 	if err != nil {
 		return err
 	}

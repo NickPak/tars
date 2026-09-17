@@ -14,14 +14,14 @@ type AgentsMDService struct{}
 
 // AgentsMdStatus 是会话工作区的 AGENTS.md 发现状态（项目指令记忆的可发现性入口）。
 type AgentsMdStatus struct {
-	Exists bool   `json:"exists"`
+	Exists bool `json:"exists"`
 	// Path 是 AGENTS.md 的完整路径（未找到时为预期路径，供 tooltip 展示）。
 	Path string `json:"path"`
 }
 
 // GetAgentsMdStatus 报告会话工作区根是否存在 AGENTS.md。
 func (s *AgentsMDService) GetAgentsMdStatus(sessionID string) (*AgentsMdStatus, error) {
-	ctrl, ok := boot.Current().FindController(sessionID)
+	ctrl, ok := boot.GetApp().FindController(sessionID)
 	if !ok {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
@@ -55,7 +55,7 @@ const agentsMdTemplate = `# AGENTS.md
 // CreateAgentsMd 在工作区根写入 AGENTS.md 骨架模板；已存在时拒绝
 // （防覆盖用户内容——创建动作必须显式且幂等失败可见）。
 func (s *AgentsMDService) CreateAgentsMd(sessionID string) error {
-	ctrl, ok := boot.Current().FindController(sessionID)
+	ctrl, ok := boot.GetApp().FindController(sessionID)
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}

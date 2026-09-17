@@ -56,7 +56,7 @@ func modelInfoOf(m *llm.ModelConfig, cfg *llm.Config) ModelInfo {
 // GetModelInfo returns the currently active model (TopicBar/状态栏展示用）。
 // 未配置任何模型时返回空对象（前端退化为不显示）。
 func (s *ModelService) GetModelInfo() (*ModelInfo, error) {
-	cfg := boot.Current().GetLLMMgr().Config()
+	cfg := boot.GetApp().GetLLMMgr().Config()
 	m := cfg.ActiveModel()
 	if m == nil {
 		return &ModelInfo{}, nil
@@ -68,7 +68,7 @@ func (s *ModelService) GetModelInfo() (*ModelInfo, error) {
 // ListModels returns all configured model entries（TopicBar 切换下拉用）。
 // 按条目 ID 排序返回（map 无序，下拉列表需要确定性顺序）。
 func (s *ModelService) ListModels() ([]ModelInfo, error) {
-	cfg := boot.Current().GetLLMMgr().Config()
+	cfg := boot.GetApp().GetLLMMgr().Config()
 	ids := make([]string, 0, len(cfg.Models))
 	for id := range cfg.Models {
 		ids = append(ids, id)
@@ -84,7 +84,7 @@ func (s *ModelService) ListModels() ([]ModelInfo, error) {
 // SetActiveModel switches the active model: 预构建目标模型（失败则不切换），
 // 热更新注册表并落盘（active 键），最后广播 model:changed 事件。
 func (s *ModelService) SetActiveModel(id string) error {
-	cfg := boot.Current().GetLLMMgr().Config()
+	cfg := boot.GetApp().GetLLMMgr().Config()
 	if cfg.FindModel(id) == nil {
 		return fmt.Errorf("模型条目 %q 不存在", id)
 	}
@@ -95,7 +95,7 @@ func (s *ModelService) SetActiveModel(id string) error {
 	newLLM := *cfg
 	newLLM.Active = id
 	// UpdateConfig 会预构建激活模型，配置错误在此暴露，不影响现状
-	if err := boot.Current().GetLLMMgr().UpdateConfig(&newLLM); err != nil {
+	if err := boot.GetApp().GetLLMMgr().UpdateConfig(&newLLM); err != nil {
 		return err
 	}
 

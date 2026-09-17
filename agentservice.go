@@ -16,7 +16,7 @@ import (
 // AgentService —— 项目/会话/对话轮 API，同时是应用生命周期的持有者：
 // 在 Services 切片中首位注册，ServiceStartup 最先执行（创建 boot.App 并
 // 登记 boot.SetCurrent），ServiceShutdown 最后执行（Wails 逆序关闭，
-// 等其他服务关闭后再 Shutdown 内核）。其余服务经 boot.Current() 取实例。
+// 等其他服务关闭后再 Shutdown 内核）。其余服务经 boot.GetApp() 取实例。
 // ============================================================================
 
 type AgentService struct{}
@@ -29,12 +29,12 @@ func (s *AgentService) ServiceStartup(ctx context.Context, options application.S
 	appConfig := config.Get()
 
 	app := boot.NewApp(appConfig, NewWailsSink())
-	boot.SetCurrent(app)
+	boot.SetApp(app)
 	return app.Startup()
 }
 
 func (s *AgentService) ServiceShutdown() error {
-	app := boot.Current()
+	app := boot.GetApp()
 	if app == nil {
 		return nil
 	}
@@ -47,7 +47,7 @@ func (s *AgentService) ServiceShutdown() error {
 // CreateProject 创建新项目（含一个默认会话，可直接开始对话）。
 // 返回 ProjectView：Sessions 恰含新建的那一个默认会话。
 func (s *AgentService) CreateProject() (*boot.ProjectView, error) {
-	proj, sess, err := boot.Current().CreateProject()
+	proj, sess, err := boot.GetApp().CreateProject()
 	if err != nil {
 		return nil, err
 	}
@@ -56,48 +56,48 @@ func (s *AgentService) CreateProject() (*boot.ProjectView, error) {
 
 // ListProjects 列出全部项目（含各自会话）。
 func (s *AgentService) ListProjects() ([]*boot.ProjectView, error) {
-	return boot.Current().ListProjects(), nil
+	return boot.GetApp().ListProjects(), nil
 }
 
 // DeleteProject 删除项目（级联其下全部会话数据）。
 func (s *AgentService) DeleteProject(id string) error {
-	return boot.Current().DeleteProject(id)
+	return boot.GetApp().DeleteProject(id)
 }
 
 // RenameProject 显式重命名项目（此后标题不再跟随会话自动命名）。
 func (s *AgentService) RenameProject(id, title string) error {
-	return boot.Current().RenameProject(id, title)
+	return boot.GetApp().RenameProject(id, title)
 }
 
 // CreateSession 在既有项目中新建会话（会话 Tab，与项目共用工作区）。
 func (s *AgentService) CreateSession(projectID string) (*session.Data, error) {
-	return boot.Current().CreateSession(projectID)
+	return boot.GetApp().CreateSession(projectID)
 }
 
 // DeleteSession 删除项目内的单个会话（真删除，清空对话记录）；
 // 删除整个项目用 DeleteProject。
 func (s *AgentService) DeleteSession(id string) error {
-	return boot.Current().DeleteSession(id)
+	return boot.GetApp().DeleteSession(id)
 }
 
 // CloseSession 关闭会话 Tab（仅视图标记：数据保留，可从已关闭列表重开）。
 func (s *AgentService) CloseSession(id string) error {
-	return boot.Current().CloseSession(id)
+	return boot.GetApp().CloseSession(id)
 }
 
 // OpenSession 重新打开已关闭的会话 Tab。
 func (s *AgentService) OpenSession(id string) error {
-	return boot.Current().OpenSession(id)
+	return boot.GetApp().OpenSession(id)
 }
 
 func (s *AgentService) RenameSession(id, title string) error {
-	return boot.Current().RenameSession(id, title)
+	return boot.GetApp().RenameSession(id, title)
 }
 
 // --- Session queries ---
 
 func (s *AgentService) GetSession(id string) (*session.Data, error) {
-	return boot.Current().GetSession(id)
+	return boot.GetApp().GetSession(id)
 }
 
 // --- Message operations ---
@@ -112,7 +112,7 @@ type SubmitResult struct {
 // SubmitMessage submits a user message (with optional image data URLs)
 // and starts the agent loop.
 func (s *AgentService) SubmitMessage(sessionID, content string, images []string) (*SubmitResult, error) {
-	userMsgID, assistantID, err := boot.Current().SubmitMessage(sessionID, content, images)
+	userMsgID, assistantID, err := boot.GetApp().SubmitMessage(sessionID, content, images)
 	if err != nil {
 		return nil, err
 	}
@@ -121,26 +121,26 @@ func (s *AgentService) SubmitMessage(sessionID, content string, images []string)
 
 // CancelMessage cancels an in-flight SubmitMessage turn.
 func (s *AgentService) CancelMessage(sessionID string) error {
-	return boot.Current().CancelMessage(sessionID)
+	return boot.GetApp().CancelMessage(sessionID)
 }
 
 // DeleteMessage deletes a message by ID — along with all messages after it
 // (truncate semantics, matching the frontend) — and returns its index.
 // Rejected while a turn is running: the message list is frozen mid-turn.
 func (s *AgentService) DeleteMessage(sessionID, messageID string) (int, error) {
-	return boot.Current().DeleteMessage(sessionID, messageID)
+	return boot.GetApp().DeleteMessage(sessionID, messageID)
 }
 
 // RetryMessage retries the last turn (or the turn containing the given
 // assistant message). It regenerates the assistant response for that turn.
 // 返回新一轮 assistant 消息 ID（前端回填本地占位，同 SubmitMessage）。
 func (s *AgentService) RetryMessage(sessionID string, messageID string) (string, error) {
-	return boot.Current().RetryMessage(sessionID, messageID)
+	return boot.GetApp().RetryMessage(sessionID, messageID)
 }
 
 // EditMessage edits a user message in-place (no regeneration).
 func (s *AgentService) EditMessage(sessionID, messageID, content string) error {
-	return boot.Current().EditMessage(sessionID, messageID, content)
+	return boot.GetApp().EditMessage(sessionID, messageID, content)
 }
 
 // AnswerAskUser 提交一次询问/审批的用户答复。requestID 即工具调用 ID
@@ -148,5 +148,5 @@ func (s *AgentService) EditMessage(sessionID, messageID, content string) error {
 // value：confirm 为 "confirm"/"deny"；select 为选项 id；input 为文本；
 // 审批为 "allow"/"allow_always"/"deny"。reason 为可选拒绝理由。
 func (s *AgentService) AnswerAskUser(requestID, value, reason string) error {
-	return boot.Current().AnswerAskUser(requestID, value, reason)
+	return boot.GetApp().AnswerAskUser(requestID, value, reason)
 }

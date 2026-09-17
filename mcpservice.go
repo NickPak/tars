@@ -17,7 +17,7 @@ type MCPService struct{}
 
 // ListMCPServers 返回全部已配置 MCP 服务器（含禁用项与工具计数）。
 func (s *MCPService) ListMCPServers() ([]*mcp.ServerInfo, error) {
-	st := boot.Current().GetMCPMgr()
+	st := boot.GetApp().GetMCPMgr()
 	if st == nil {
 		return nil, fmt.Errorf("mcp store not initialized")
 	}
@@ -27,7 +27,7 @@ func (s *MCPService) ListMCPServers() ([]*mcp.ServerInfo, error) {
 // UpsertMCPServer 登记/覆盖一个 MCP 服务器（立即落盘生效；
 // 覆盖既有服务器时其运行中连接即回收，下次调用按新配置懒重启）。
 func (s *MCPService) UpsertMCPServer(name string, cfg *mcp.ServerConfig) error {
-	st := boot.Current().GetMCPMgr()
+	st := boot.GetApp().GetMCPMgr()
 	if st == nil {
 		return fmt.Errorf("mcp store not initialized")
 	}
@@ -37,7 +37,7 @@ func (s *MCPService) UpsertMCPServer(name string, cfg *mcp.ServerConfig) error {
 // RemoveMCPServer 移除一个 MCP 服务器（立即落盘生效；连接即回收，
 // 探测缓存同步清理）。
 func (s *MCPService) RemoveMCPServer(name string) error {
-	st := boot.Current().GetMCPMgr()
+	st := boot.GetApp().GetMCPMgr()
 	if st == nil {
 		return fmt.Errorf("mcp store not initialized")
 	}
@@ -47,7 +47,7 @@ func (s *MCPService) RemoveMCPServer(name string) error {
 // SetMCPServerEnabled 启用/禁用服务器（立即落盘生效；禁用后对 Agent
 // 不可见——索引/检索/连接排除，连接即回收，配置与探测缓存保留）。
 func (s *MCPService) SetMCPServerEnabled(name string, enabled bool) error {
-	st := boot.Current().GetMCPMgr()
+	st := boot.GetApp().GetMCPMgr()
 	if st == nil {
 		return fmt.Errorf("mcp store not initialized")
 	}
@@ -58,7 +58,7 @@ func (s *MCPService) SetMCPServerEnabled(name string, enabled bool) error {
 // （此后会话启动零进程，discover_tools 用缓存检索）。
 // 服务器须已配置且启用；60s 超时（npx 类启动器首次下载可能较慢）。
 func (s *MCPService) ProbeMCPServer(name string) error {
-	st := boot.Current().GetMCPMgr()
+	st := boot.GetApp().GetMCPMgr()
 	if st == nil {
 		return fmt.Errorf("mcp store not initialized")
 	}
@@ -69,7 +69,7 @@ func (s *MCPService) ProbeMCPServer(name string) error {
 
 // ListMCPTools 返回一个服务器的缓存工具清单（未探测返回空）。
 func (s *MCPService) ListMCPTools(server string) ([]*mcp.ToolInfo, error) {
-	st := boot.Current().GetMCPMgr()
+	st := boot.GetApp().GetMCPMgr()
 	if st == nil {
 		return nil, fmt.Errorf("mcp store not initialized")
 	}

@@ -23,7 +23,7 @@ type ExportService struct{}
 // Returns the chosen path ("" if the user cancelled).
 func (s *ExportService) ExportSession(sessionID string) (string, error) {
 	// 渲染 Markdown（拷贝切片头做只读快照）
-	sess, ok := boot.Current().FindSession(sessionID)
+	sess, ok := boot.GetApp().FindSession(sessionID)
 	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}

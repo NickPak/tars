@@ -22,5 +22,5 @@ func (s *ConfigService) GetAppConfig() (*config.AppConfig, error) {
 // 并热更新内存配置与模型注册表（model/agent/trace 立即生效，
 // workDir 需重启生效——工作目录涉及存量会话数据搬迁）。
 func (s *ConfigService) SaveAppConfig(v *config.AppConfig) error {
-	return boot.Current().SaveAppConfig(v)
+	return boot.GetApp().SaveAppConfig(v)
 }
