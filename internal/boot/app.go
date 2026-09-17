@@ -257,12 +257,12 @@ func (a *App) FindController(id string) (*Controller, bool) {
 
 // SubmitMessage 提交一条用户消息并启动一轮对话（委托给会话的 Controller）。
 // 返回后端分配的 user/assistant 消息 ID。
-func (a *App) SubmitMessage(sessionID, content string) (string, string, error) {
+func (a *App) SubmitMessage(sessionID, content string, images []string) (string, string, error) {
 	c, ok := a.projMgr.FindController(sessionID)
 	if !ok {
 		return "", "", fmt.Errorf("session not found: %s", sessionID)
 	}
-	uid, aid, err := c.SubmitMessage(content)
+	uid, aid, err := c.SubmitMessage(content, images)
 	if err != nil {
 		return "", "", err
 	}

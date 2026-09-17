@@ -23,6 +23,10 @@ type ModelInfo struct {
 	ModelID       string `json:"modelId"`       // 发送给 API 的真实模型名
 	ContextWindow int    `json:"contextWindow"` // 上下文窗口大小（tokens），0 = 未知
 	Active        bool   `json:"active"`        // 是否为当前使用中的模型
+	// 能力声明（前端门控用：图片入口显隐、推理 UI 等）。
+	SupportsReasoning bool `json:"supportsReasoning"` // 模型支持推理/思考过程
+	SupportsImages    bool `json:"supportsImages"`    // 模型可接收图片输入
+	SupportsTools     bool `json:"supportsTools"`     // 模型可调用工具
 }
 
 // ModelChangedEvent is the payload of the "model:changed" event.
@@ -32,10 +36,13 @@ type ModelChangedEvent struct {
 
 func modelInfoOf(m *llm.ModelConfig, cfg *llm.Config) ModelInfo {
 	info := ModelInfo{
-		EntryID:       m.EntryID,
-		Provider:      m.Provider,
-		ModelID:       m.ModelId,
-		ContextWindow: m.ContextWindow,
+		EntryID:           m.EntryID,
+		Provider:          m.Provider,
+		ModelID:           m.ModelId,
+		ContextWindow:     m.ContextWindow,
+		SupportsReasoning: m.ReasoningEnabled(),
+		SupportsImages:    m.ImagesEnabled(),
+		SupportsTools:     m.ToolsEnabled(),
 	}
 	if p := cfg.FindProvider(m.Provider); p != nil {
 		info.ProviderType = p.Type

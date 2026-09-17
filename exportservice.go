@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,6 +54,68 @@ func (s *ExportService) ExportSession(sessionID string) (string, error) {
 		return "", fmt.Errorf("write export file: %w", err)
 	}
 	return target, nil
+}
+
+// SaveImage 把 data URL 图片保存到用户选择的位置（消息图片右键"保存图片"）。
+// 返回保存路径（"" 表示用户取消）。
+func (s *ExportService) SaveImage(dataURL string) (string, error) {
+	mime, data, err := parseImageDataURL(dataURL)
+	if err != nil {
+		return "", err
+	}
+	ext := ".png"
+	switch mime {
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/gif":
+		ext = ".gif"
+	case "image/webp":
+		ext = ".webp"
+	}
+
+	target, err := application.Get().Dialog.SaveFile().
+		SetMessage("保存图片").
+		SetFilename("image"+ext).
+		AddFilter("图片", "*"+ext).
+		AddFilter("所有文件", "*.*").
+		SetButtonText("保存").
+		CanCreateDirectories(true).
+		PromptForSingleSelection()
+	if err != nil {
+		if isDialogCancelled(err) {
+			return "", nil // 用户取消
+		}
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if target == "" {
+		return "", nil // 用户取消
+	}
+
+	if err := os.WriteFile(target, data, 0644); err != nil {
+		return "", fmt.Errorf("write image file: %w", err)
+	}
+	return target, nil
+}
+
+// parseImageDataURL 解析 data:image/<mime>;base64,<data> 形式的 data URL，
+// 返回 MIME 类型与解码后的字节。
+func parseImageDataURL(dataURL string) (string, []byte, error) {
+	if !strings.HasPrefix(dataURL, "data:") {
+		return "", nil, fmt.Errorf("not a data URL")
+	}
+	head, b64, ok := strings.Cut(dataURL, ",")
+	if !ok || !strings.HasSuffix(head, ";base64") {
+		return "", nil, fmt.Errorf("invalid image data URL format")
+	}
+	mime := strings.TrimSuffix(strings.TrimPrefix(head, "data:"), ";base64")
+	if !strings.HasPrefix(mime, "image/") {
+		return "", nil, fmt.Errorf("not an image data URL: %s", mime)
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return "", nil, fmt.Errorf("decode image data: %w", err)
+	}
+	return mime, data, nil
 }
 
 // renderSessionMarkdown 把会话消息渲染为可读的 Markdown 文档：

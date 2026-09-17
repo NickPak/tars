@@ -90,6 +90,41 @@ export class ModelConfig {
      */
     "enableThinking"?: boolean | null;
 
+    /**
+     * SupportsReasoning 模型支持推理/思考过程：控制 Reasoning 配置项
+     * 是否展示与 reasoning 参数是否下发。
+     */
+    "supportsReasoning"?: boolean | null;
+
+    /**
+     * SupportsImages 模型可接收图片输入：多模态输入的门禁。
+     */
+    "supportsImages"?: boolean | null;
+
+    /**
+     * SupportsTools 模型可调用工具：false 时 agent 不下发工具定义。
+     */
+    "supportsTools"?: boolean | null;
+
+    /**
+     * ReasoningEffort 推理强度：minimal/low/medium/high/xhigh，
+     * 构建请求时按供应商映射（openai reasoning.effort；gemini 换算
+     * thinking 预算；不支持的类型忽略）。
+     */
+    "reasoningEffort"?: string;
+
+    /**
+     * ReasoningSummary 推理摘要：auto/concise/detailed（openai
+     * reasoning.summary；其余类型忽略）。
+     */
+    "reasoningSummary"?: string;
+
+    /**
+     * Temperature 请求默认温度：nil 不下发（跟随服务端默认）；设置后
+     * 每次请求携带。合法区间 [0, 2]。
+     */
+    "temperature"?: number | null;
+
     /** Creates a new ModelConfig instance. */
     constructor($$source: Partial<ModelConfig> = {}) {
         if (!("entryId" in $$source)) {

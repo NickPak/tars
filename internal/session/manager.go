@@ -171,7 +171,7 @@ func (s *Manager) SetClosed(closed bool) error {
 // AppendUserMessage 新一轮对话的消息准备：追加 user 消息，首条消息顺便完成自动命名。
 // 返回新建 user 消息的 ID（服务层透传给前端回填本地占位）。
 // assistant 消息不预置——交错式存储，由轮运行中每次迭代经 AppendMessage 追加。
-func (s *Manager) AppendUserMessage(content string) string {
+func (s *Manager) AppendUserMessage(content string, images []string) string {
 	now := time.Now().UnixMilli()
 	id := uuid.NewString()
 	msg := &schema.Message{
@@ -179,6 +179,7 @@ func (s *Manager) AppendUserMessage(content string) string {
 		Role:      schema.RoleUser,
 		TurnID:    id, // 新轮起点：user 消息的 TurnID 即自身 ID
 		Content:   content,
+		Images:    images,
 		CreatedAt: now,
 	}
 	s.AppendMessage(now, msg)

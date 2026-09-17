@@ -67,6 +67,81 @@ func TestValidateActiveOK(t *testing.T) {
 	}
 }
 
+// 能力声明归一化：老配置（nil）回填默认值——工具默认开（现状行为不变），
+// 图片/推理默认关（显式声明才开启）；显式设置的值不被覆盖。
+func TestValidateCapabilityDefaults(t *testing.T) {
+	off, on := false, true
+	cfg := &Config{
+		Providers: map[string]*ProviderConfig{
+			"p": {ID: "p", Type: "openai"},
+		},
+		Models: map[string]*ModelConfig{
+			"p/legacy": {Provider: "p", ModelId: "legacy"}, // 全部 nil：老配置
+			"p/vision": {Provider: "p", ModelId: "vision",
+				SupportsImages: &on, SupportsTools: &off}, // 显式设置
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+
+	legacy := cfg.Models["p/legacy"]
+	if !legacy.ToolsEnabled() {
+		t.Error("legacy model should default to tools enabled")
+	}
+	if legacy.ImagesEnabled() || legacy.ReasoningEnabled() {
+		t.Error("legacy model should default to images/reasoning disabled")
+	}
+	if legacy.SupportsTools == nil || legacy.SupportsImages == nil || legacy.SupportsReasoning == nil {
+		t.Error("Validate should normalize nil capability fields")
+	}
+
+	vision := cfg.Models["p/vision"]
+	if !vision.ImagesEnabled() {
+		t.Error("explicit SupportsImages=true should be preserved")
+	}
+	if vision.ToolsEnabled() {
+		t.Error("explicit SupportsTools=false should be preserved")
+	}
+}
+
+// Reasoning 配置：小写归一；合法档位放行；非法档位与越界 temperature 拒绝。
+func TestValidateReasoningAndTemperature(t *testing.T) {
+	newCfg := func(m *ModelConfig) *Config {
+		return &Config{
+			Providers: map[string]*ProviderConfig{"p": {ID: "p", Type: "openai"}},
+			Models:    map[string]*ModelConfig{"p/m": m},
+		}
+	}
+
+	// 大小写归一
+	m := &ModelConfig{Provider: "p", ModelId: "m", ReasoningEffort: " High ", ReasoningSummary: "AUTO"}
+	if err := newCfg(m).Validate(); err != nil {
+		t.Fatalf("valid reasoning config rejected: %v", err)
+	}
+	if m.ReasoningEffort != "high" || m.ReasoningSummary != "auto" {
+		t.Errorf("reasoning values not normalized: %q %q", m.ReasoningEffort, m.ReasoningSummary)
+	}
+
+	// 非法档位
+	if err := newCfg(&ModelConfig{Provider: "p", ModelId: "m", ReasoningEffort: "hign"}).Validate(); err == nil {
+		t.Error("typo effort should be rejected")
+	}
+	if err := newCfg(&ModelConfig{Provider: "p", ModelId: "m", ReasoningSummary: "verbose"}).Validate(); err == nil {
+		t.Error("unknown summary should be rejected")
+	}
+
+	// temperature 边界
+	temp := 0.7
+	if err := newCfg(&ModelConfig{Provider: "p", ModelId: "m", Temperature: &temp}).Validate(); err != nil {
+		t.Errorf("valid temperature rejected: %v", err)
+	}
+	bad := 2.5
+	if err := newCfg(&ModelConfig{Provider: "p", ModelId: "m", Temperature: &bad}).Validate(); err == nil {
+		t.Error("temperature > 2 should be rejected")
+	}
+}
+
 // UpdateConfig 不得在持有 r.mu 时对同一互斥锁二次加锁（ResetHealth 死锁回归）：
 // 清空模型的保存链路（SaveAppConfig → UpdateConfig）必须能完成。
 func TestUpdateConfigNoDeadlock(t *testing.T) {

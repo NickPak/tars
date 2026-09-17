@@ -187,6 +187,25 @@ func buildOne(ctx context.Context, cfg *Config, m *ModelConfig) (model.ToolCalli
 	}
 }
 
+// f32p 把请求默认值 *float64 转为 eino 各组件的 *float32；nil 不下发。
+func f32p(v *float64) *float32 {
+	if v == nil {
+		return nil
+	}
+	f := float32(*v)
+	return &f
+}
+
+// f32pClamped 同 f32p，但收敛到供应商文档的更窄区间（如 claude/qianfan
+// 的 [0,1]）——全局 Validate 放行 [0,2]，超界值在构建期收敛而非报错。
+func f32pClamped(v *float64, hi float32) *float32 {
+	f := f32p(v)
+	if f != nil && *f > hi {
+		*f = hi
+	}
+	return f
+}
+
 func buildGemini(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	if p.ApiKey == "" {
 		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
@@ -196,8 +215,9 @@ func buildGemini(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 		return nil, fmt.Errorf("供应商 %q 初始化失败：%w", p.ID, err)
 	}
 	return gemini.NewChatModel(ctx, &gemini.Config{
-		Client: genaiClient,
-		Model:  m.ModelId,
+		Client:      genaiClient,
+		Model:       m.ModelId,
+		Temperature: f32p(m.Temperature),
 		ThinkingConfig: &genai.ThinkingConfig{
 			IncludeThoughts: true,
 			ThinkingBudget:  m.ThinkingBudget,
@@ -216,12 +236,19 @@ func buildOpenAI(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 		slog.Warn("供应商 BaseUrl 含端点后缀，已归一化", "provider", p.ID, "baseUrl", baseURL)
 	}
 	cfg := &openai.ChatModelConfig{
-		APIKey:  p.ApiKey,
-		BaseURL: baseURL,
-		Model:   m.ModelId,
+		APIKey:      p.ApiKey,
+		BaseURL:     baseURL,
+		Model:       m.ModelId,
+		Temperature: f32p(m.Temperature),
 	}
 	if m.MaxTokens > 0 {
 		cfg.MaxCompletionTokens = &m.MaxTokens
+	}
+	// 推理强度经能力门控：仅当条目声明支持推理才下发（往不支持的
+	// 端点发 reasoning_effort 会直接 400）。ReasoningSummary 属
+	// Responses API 范畴，chat completions 无对应字段，暂不下发。
+	if m.ReasoningEnabled() && m.ReasoningEffort != "" {
+		cfg.ReasoningEffort = openai.ReasoningEffortLevel(m.ReasoningEffort)
 	}
 	return openai.NewChatModel(ctx, cfg)
 }
@@ -234,9 +261,10 @@ func buildClaude(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 		return nil, fmt.Errorf("Claude 模型 %q 必须配置最大输出 tokens（maxTokens，Anthropic API 必填）", m.EntryID)
 	}
 	cfg := &claude.Config{
-		APIKey:    p.ApiKey,
-		Model:     m.ModelId,
-		MaxTokens: m.MaxTokens,
+		APIKey:      p.ApiKey,
+		Model:       m.ModelId,
+		MaxTokens:   m.MaxTokens,
+		Temperature: f32pClamped(m.Temperature, 1.0), // Anthropic 区间 [0,1]
 	}
 	if p.BaseUrl != "" {
 		cfg.BaseURL = &p.BaseUrl
@@ -259,6 +287,9 @@ func buildDeepSeek(ctx context.Context, p *ProviderConfig, m *ModelConfig) (mode
 	cfg := &deepseek.ChatModelConfig{
 		APIKey: p.ApiKey,
 		Model:  m.ModelId,
+	}
+	if m.Temperature != nil {
+		cfg.Temperature = float32(*m.Temperature) // deepseek 为值类型字段
 	}
 	if p.BaseUrl != "" {
 		cfg.BaseURL = p.BaseUrl
@@ -288,6 +319,7 @@ func buildQwen(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.To
 		BaseURL:        p.BaseUrl,
 		Model:          m.ModelId,
 		EnableThinking: m.EnableThinking,
+		Temperature:    f32p(m.Temperature),
 	}
 	if m.MaxTokens > 0 {
 		cfg.MaxTokens = &m.MaxTokens
@@ -300,8 +332,9 @@ func buildArk(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.Too
 		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
 	}
 	cfg := &ark.ChatModelConfig{
-		APIKey: p.ApiKey,
-		Model:  m.ModelId, // 注意：ark 的 Model 是推理接入点 endpoint ID（ep-xxx）
+		APIKey:      p.ApiKey,
+		Model:       m.ModelId, // 注意：ark 的 Model 是推理接入点 endpoint ID（ep-xxx）
+		Temperature: f32p(m.Temperature),
 	}
 	if p.BaseUrl != "" {
 		cfg.BaseURL = p.BaseUrl
@@ -330,6 +363,9 @@ func buildOllama(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 	if m.EnableThinking != nil {
 		cfg.Thinking = &ollama.ThinkValue{Value: *m.EnableThinking}
 	}
+	if m.Temperature != nil {
+		cfg.Options = &ollama.Options{Temperature: float32(*m.Temperature)}
+	}
 	return ollama.NewChatModel(ctx, cfg)
 }
 
@@ -340,7 +376,10 @@ func buildQianfan(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model
 	}
 	qianfan.GetQianfanSingletonConfig().AccessKey = p.AccessKey
 	qianfan.GetQianfanSingletonConfig().SecretKey = p.SecretKey
-	cfg := &qianfan.ChatModelConfig{Model: m.ModelId}
+	cfg := &qianfan.ChatModelConfig{
+		Model:       m.ModelId,
+		Temperature: f32pClamped(m.Temperature, 1.0), // 千帆区间 (0,1]，组件默认 0.95
+	}
 	if m.MaxTokens > 0 {
 		cfg.MaxCompletionTokens = &m.MaxTokens
 	}

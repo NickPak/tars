@@ -18,3 +18,11 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 export function ExportSession(sessionID: string): $CancellablePromise<string> {
     return $Call.ByID(1517483671, sessionID);
 }
+
+/**
+ * SaveImage 把 data URL 图片保存到用户选择的位置（消息图片右键"保存图片"）。
+ * 返回保存路径（"" 表示用户取消）。
+ */
+export function SaveImage(dataURL: string): $CancellablePromise<string> {
+    return $Call.ByID(3890655751, dataURL);
+}

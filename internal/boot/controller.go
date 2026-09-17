@@ -237,11 +237,31 @@ func (c *Controller) SyncWorkspaceRoot() {
 // SubmitMessage 提交一条用户消息并启动一轮对话：消息准备（追加 user 消息，
 // assistant 首轮产出时创建）与运行标记同步完成，循环异步执行。
 // 返回后端分配的 user/assistant 消息 ID（服务层透传给前端回填本地占位）。
-func (c *Controller) SubmitMessage(content string) (string, string, error) {
+// maxSubmitImageBytes 单次提交图片的总量上限（data URL 字节数，约对应
+// 15MB 原始图片）——内联进消息与请求体，无上限会把窗口与磁盘打爆。
+const maxSubmitImageBytes = 20 << 20
+
+func (c *Controller) SubmitMessage(content string, images []string) (string, string, error) {
 	if c.IsRunning() {
 		return "", "", fmt.Errorf("turn in progress, cancel it first")
 	}
-	userMsgID := c.sessionMgr.AppendUserMessage(content)
+	if len(images) > 0 {
+		// 能力门控：当前激活条目未声明图片能力时拒绝（纯配置读，
+		// 不触发模型客户端构建——与 ContextWindow() 同款粒度）。
+		total := 0
+		for _, u := range images {
+			total += len(u)
+		}
+		if total > maxSubmitImageBytes {
+			return "", "", fmt.Errorf("图片总量超过上限（%d MB），请压缩或减少图片", maxSubmitImageBytes>>20)
+		}
+		if cfg := c.llmMgr.Config(); cfg != nil {
+			if m := cfg.ActiveModel(); m != nil && !m.ImagesEnabled() {
+				return "", "", fmt.Errorf("当前模型 %q 未声明图片能力，请在设置中开启或切换支持图片的模型", m.EntryID)
+			}
+		}
+	}
+	userMsgID := c.sessionMgr.AppendUserMessage(content, images)
 	assistantID := uuid.NewString()
 	c.start(content, assistantID)
 	return userMsgID, assistantID, nil
@@ -328,7 +348,13 @@ func (c *Controller) run(ctx context.Context, userText, assistantID string) {
 	}
 
 	// Provider 适配：工具描述在 llm 适配层完成绑定（WithTools）。
-	provider, err := llm.NewProvider(chatModel, c.toolReg.Schemas(), modelCfg.EntryID)
+	// 能力门控：条目声明 SupportsTools=false 时不绑定任何工具定义
+	//（往不支持 function calling 的端点下发 tools 会直接报错）。
+	var tools []*schema.ToolSchema
+	if modelCfg.ToolsEnabled() {
+		tools = c.toolReg.Schemas()
+	}
+	provider, err := llm.NewProvider(chatModel, tools, modelCfg.EntryID)
 	if err != nil {
 		EmitError(sink, c.sessionMgr.GetID(), assistantID, fmt.Errorf("failed to bind tools: %w", err), "", 0)
 		return

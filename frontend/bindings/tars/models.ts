@@ -224,6 +224,22 @@ export class ModelInfo {
      */
     "active": boolean;
 
+    /**
+     * 能力声明（前端门控用：图片入口显隐、推理 UI 等）。
+     * 模型支持推理/思考过程
+     */
+    "supportsReasoning": boolean;
+
+    /**
+     * 模型可接收图片输入
+     */
+    "supportsImages": boolean;
+
+    /**
+     * 模型可调用工具
+     */
+    "supportsTools": boolean;
+
     /** Creates a new ModelInfo instance. */
     constructor($$source: Partial<ModelInfo> = {}) {
         if (!("entryId" in $$source)) {
@@ -243,6 +259,15 @@ export class ModelInfo {
         }
         if (!("active" in $$source)) {
             this["active"] = false;
+        }
+        if (!("supportsReasoning" in $$source)) {
+            this["supportsReasoning"] = false;
+        }
+        if (!("supportsImages" in $$source)) {
+            this["supportsImages"] = false;
+        }
+        if (!("supportsTools" in $$source)) {
+            this["supportsTools"] = false;
         }
 
         Object.assign(this, $$source);

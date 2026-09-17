@@ -109,9 +109,10 @@ type SubmitResult struct {
 	AssistantMessageID string `json:"assistantMessageId"`
 }
 
-// SubmitMessage submits a user message and starts the agent loop.
-func (s *AgentService) SubmitMessage(sessionID, content string) (*SubmitResult, error) {
-	userMsgID, assistantID, err := boot.Current().SubmitMessage(sessionID, content)
+// SubmitMessage submits a user message (with optional image data URLs)
+// and starts the agent loop.
+func (s *AgentService) SubmitMessage(sessionID, content string, images []string) (*SubmitResult, error) {
+	userMsgID, assistantID, err := boot.Current().SubmitMessage(sessionID, content, images)
 	if err != nil {
 		return nil, err
 	}

@@ -34,6 +34,13 @@ export class Message {
      */
     "iteration"?: number;
     "content": string;
+
+    /**
+     * Images 用户消息附带的图片（data URL，RFC-2397：data:image/png;base64,...）。
+     * 仅 user 消息使用；随消息持久化。压缩链路（提取/归档/体量估算）只读
+     * Content/Reasoning/Args 文本，图片数据天然不进入压缩器。
+     */
+    "images"?: string[];
     "toolCalls"?: ToolCall[];
     "toolCallId"?: string;
     "createdAt": number;
@@ -63,14 +70,18 @@ export class Message {
      * Creates a new Message instance from a string or object.
      */
     static createFrom($$source: any = {}): Message {
-        const $$createField5_0 = $$createType1;
-        const $$createField9_0 = $$createType3;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType2;
+        const $$createField10_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("images" in $$parsedSource) {
+            $$parsedSource["images"] = $$createField5_0($$parsedSource["images"]);
+        }
         if ("toolCalls" in $$parsedSource) {
-            $$parsedSource["toolCalls"] = $$createField5_0($$parsedSource["toolCalls"]);
+            $$parsedSource["toolCalls"] = $$createField6_0($$parsedSource["toolCalls"]);
         }
         if ("usage" in $$parsedSource) {
-            $$parsedSource["usage"] = $$createField9_0($$parsedSource["usage"]);
+            $$parsedSource["usage"] = $$createField10_0($$parsedSource["usage"]);
         }
         return new Message($$parsedSource as Partial<Message>);
     }
@@ -165,7 +176,8 @@ export class UsageInfo {
 }
 
 // Private type creation functions
-const $$createType0 = ToolCall.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = UsageInfo.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = ToolCall.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = UsageInfo.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);

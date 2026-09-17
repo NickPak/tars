@@ -133,10 +133,11 @@ export function RetryMessage(sessionID: string, messageID: string): $Cancellable
 }
 
 /**
- * SubmitMessage submits a user message and starts the agent loop.
+ * SubmitMessage submits a user message (with optional image data URLs)
+ * and starts the agent loop.
  */
-export function SubmitMessage(sessionID: string, content: string): $CancellablePromise<$models.SubmitResult | null> {
-    return $Call.ByID(382211931, sessionID, content).then(($result: any) => {
+export function SubmitMessage(sessionID: string, content: string, images: string[]): $CancellablePromise<$models.SubmitResult | null> {
+    return $Call.ByID(382211931, sessionID, content, images).then(($result: any) => {
         return $$createType6($result);
     });
 }

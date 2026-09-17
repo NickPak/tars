@@ -10,10 +10,10 @@ import (
 // 写入侧：user 消息自带轮键，其后 assistant/tool 继承同一键。
 func TestTurnIDStamping(t *testing.T) {
 	m := newTestManager(t)
-	uid := m.AppendUserMessage("hi")
+	uid := m.AppendUserMessage("hi", nil)
 	m.AppendMessage(1, &schema.Message{ID: "a1", Role: schema.RoleAssistant, Iteration: 1})
 	m.AppendMessage(2, &schema.Message{ID: "r1", Role: schema.RoleTool, Iteration: 1, ToolCallID: "tc"})
-	uid2 := m.AppendUserMessage("again")
+	uid2 := m.AppendUserMessage("again", nil)
 	m.AppendMessage(3, &schema.Message{ID: "a2", Role: schema.RoleAssistant, Iteration: 1})
 
 	msgs := m.data.Messages
@@ -107,7 +107,7 @@ func TestTurnStartsSkipsSyntheticMessage(t *testing.T) {
 // 重试截断到轮起点：TurnID 跨重试稳定（复用同一 user 消息）。
 func TestPrepareRetryUsesTurnBoundary(t *testing.T) {
 	m := newTestManager(t)
-	uid := m.AppendUserMessage("q")
+	uid := m.AppendUserMessage("q", nil)
 	m.AppendMessage(1, &schema.Message{ID: "a1", Role: schema.RoleAssistant, Iteration: 1,
 		ToolCalls: []schema.ToolCall{{ID: "tc", Name: "x"}}})
 	m.AppendMessage(2, &schema.Message{ID: "r1", Role: schema.RoleTool, Iteration: 1, ToolCallID: "tc"})

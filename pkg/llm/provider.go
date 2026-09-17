@@ -39,6 +39,11 @@ type Stream interface {
 // 里没有这个概念（它是本地配置的），由适配层在产出 Usage 时标注——
 // agent 与 Controller 都无需再回填。
 func NewProvider(m model.ToolCallingChatModel, tools []*schema.ToolSchema, entryID string) (Provider, error) {
+	if len(tools) == 0 {
+		// 无工具可绑（或能力门控关闭）：跳过 WithTools，部分实现对
+		// 空 tools 数组敏感。
+		return &einoProvider{model: m, entryID: entryID}, nil
+	}
 	bound, err := m.WithTools(toEinoToolInfos(tools))
 	if err != nil {
 		return nil, err

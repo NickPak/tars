@@ -27,6 +27,29 @@ func ToEinoMessage(m *schema.Message) *eino.Message {
 		sm.Role = eino.Tool
 	default:
 		sm.Role = eino.User
+		// 多模态：带图片的 user 消息转为 UserInputMultiContent。
+		// 关键：Content 必须清空——eino 的 openai 组件禁止 Content 与
+		// MultiContent 并存（MarshalJSON 报错），文本只留在 parts 里。
+		if len(m.Images) > 0 {
+			sm.Content = ""
+			parts := make([]eino.MessageInputPart, 0, len(m.Images)+1)
+			if m.Content != "" {
+				parts = append(parts, eino.MessageInputPart{
+					Type: eino.ChatMessagePartTypeText,
+					Text: m.Content,
+				})
+			}
+			for _, u := range m.Images {
+				url := u
+				parts = append(parts, eino.MessageInputPart{
+					Type: eino.ChatMessagePartTypeImageURL,
+					Image: &eino.MessageInputImage{
+						URL: &url,
+					},
+				})
+			}
+			sm.UserInputMultiContent = parts
+		}
 	}
 	return sm
 }

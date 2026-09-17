@@ -24,6 +24,26 @@ const (
 	DefaultMaxTokens     = 50000   // 单次最大输出（token）
 )
 
+// 能力声明的默认值（Validate 期把 nil 归一化为确定值）：
+//   - 工具默认开：现状所有模型都下发工具定义，保持行为不变；
+//   - 图片/推理默认关：显式声明才开启——不声明绝不往模型发图片或
+//     reasoning 参数（不支持的端点会直接报错）。
+var (
+	DefaultSupportsTools     = true
+	DefaultSupportsImages    = false
+	DefaultSupportsReasoning = false
+)
+
+// 推理强度/摘要的合法值（空串 = 不下发，跟随服务端默认）。
+// 强度含 minimal/xhigh 以覆盖 OpenAI 新档位；不在表内的值拒绝
+// （UI 走下拉，没有自由输入的供应商私有档位需求；新增档位先扩表）。
+var reasoningEffortValues = map[string]bool{
+	"minimal": true, "low": true, "medium": true, "high": true, "xhigh": true,
+}
+var reasoningSummaryValues = map[string]bool{
+	"auto": true, "concise": true, "detailed": true,
+}
+
 // ProviderTypes 返回全部受支持的供应商类型（UI 枚举用）。
 func ProviderTypes() []string {
 	return []string{
@@ -70,7 +90,7 @@ type ProviderConfig struct {
 
 // ModelConfig 是一个可用模型条目。
 // EntryID 不进 YAML——文件中 map key 即条目 ID，Validate 时归一化回填。
-type ModelConfig struct {	// EntryID 配置条目的唯一键（= models map 的 key），"provider/modelId"
+type ModelConfig struct { // EntryID 配置条目的唯一键（= models map 的 key），"provider/modelId"
 	// 形式，如 "gemini/gemini-3.1-flash-lite"。与 ModelId（发给 API 的
 	// 真实模型名）区分：同一真实模型可配多个条目。
 	EntryID  string `yaml:"-" json:"entryId"`
@@ -93,6 +113,48 @@ type ModelConfig struct {	// EntryID 配置条目的唯一键（= models map 的
 	//（映射：deepseek ThinkingConfig.type、qwen enable_thinking、
 	// ark Thinking.type、ollama ThinkValue）
 	EnableThinking *bool `yaml:"enableThinking,omitempty" json:"enableThinking,omitempty"`
+
+	// ---- 能力声明（Validate 归一化：nil 回填默认值，下游经
+	// ToolsEnabled/ImagesEnabled/ReasoningEnabled 读取确定值）----
+
+	// SupportsReasoning 模型支持推理/思考过程：控制 Reasoning 配置项
+	// 是否展示与 reasoning 参数是否下发。
+	SupportsReasoning *bool `yaml:"supportsReasoning,omitempty" json:"supportsReasoning,omitempty"`
+	// SupportsImages 模型可接收图片输入：多模态输入的门禁。
+	SupportsImages *bool `yaml:"supportsImages,omitempty" json:"supportsImages,omitempty"`
+	// SupportsTools 模型可调用工具：false 时 agent 不下发工具定义。
+	SupportsTools *bool `yaml:"supportsTools,omitempty" json:"supportsTools,omitempty"`
+
+	// ---- Reasoning 配置（跨供应商统一抽象；空串 = 不下发）----
+
+	// ReasoningEffort 推理强度：minimal/low/medium/high/xhigh，
+	// 构建请求时按供应商映射（openai reasoning.effort；gemini 换算
+	// thinking 预算；不支持的类型忽略）。
+	ReasoningEffort string `yaml:"reasoningEffort,omitempty" json:"reasoningEffort,omitempty"`
+	// ReasoningSummary 推理摘要：auto/concise/detailed（openai
+	// reasoning.summary；其余类型忽略）。
+	ReasoningSummary string `yaml:"reasoningSummary,omitempty" json:"reasoningSummary,omitempty"`
+
+	// ---- 请求默认值 ----
+
+	// Temperature 请求默认温度：nil 不下发（跟随服务端默认）；设置后
+	// 每次请求携带。合法区间 [0, 2]。
+	Temperature *float64 `yaml:"temperature,omitempty" json:"temperature,omitempty"`
+}
+
+// ToolsEnabled 报告模型是否可调用工具（Validate 后 SupportsTools 非 nil）。
+func (m *ModelConfig) ToolsEnabled() bool {
+	return m.SupportsTools == nil || *m.SupportsTools // 未归一化时按默认开
+}
+
+// ImagesEnabled 报告模型是否可接收图片输入。
+func (m *ModelConfig) ImagesEnabled() bool {
+	return m.SupportsImages != nil && *m.SupportsImages
+}
+
+// ReasoningEnabled 报告模型是否声明支持推理过程。
+func (m *ModelConfig) ReasoningEnabled() bool {
+	return m.SupportsReasoning != nil && *m.SupportsReasoning
 }
 
 // Config 是 LLM 配置：供应商 + 模型条目注册表 + 当前激活条目。
@@ -178,6 +240,29 @@ func (c *Config) Validate() error {
 		}
 		if m.MaxTokens <= 0 {
 			m.MaxTokens = DefaultMaxTokens
+		}
+		// 能力声明归一化：nil（老配置未写过）回填默认值，下游读到的
+		// 永远是确定值，无需区分"未设置"与"显式关闭"。
+		if m.SupportsTools == nil {
+			m.SupportsTools = new(DefaultSupportsTools)
+		}
+		if m.SupportsImages == nil {
+			m.SupportsImages = new(DefaultSupportsImages)
+		}
+		if m.SupportsReasoning == nil {
+			m.SupportsReasoning = new(DefaultSupportsReasoning)
+		}
+		// Reasoning 配置：小写归一；空串合法（不下发）。
+		m.ReasoningEffort = strings.ToLower(strings.TrimSpace(m.ReasoningEffort))
+		m.ReasoningSummary = strings.ToLower(strings.TrimSpace(m.ReasoningSummary))
+		if m.ReasoningEffort != "" && !reasoningEffortValues[m.ReasoningEffort] {
+			return fmt.Errorf("模型条目 %q 的推理强度 %q 无法识别（可选：minimal/low/medium/high/xhigh；供应商私有档位请留空）", id, m.ReasoningEffort)
+		}
+		if m.ReasoningSummary != "" && !reasoningSummaryValues[m.ReasoningSummary] {
+			return fmt.Errorf("模型条目 %q 的推理摘要 %q 无法识别（可选：auto/concise/detailed）", id, m.ReasoningSummary)
+		}
+		if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
+			return fmt.Errorf("模型条目 %q 的 temperature 超出合法区间 [0, 2]：%v", id, *m.Temperature)
 		}
 	}
 	if len(c.Models) == 0 {

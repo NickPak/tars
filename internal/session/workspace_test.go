@@ -58,7 +58,7 @@ func TestFirstMessageAutoTitlesAndEmits(t *testing.T) {
 	m, _ := newManagerWithSink(t, sink, nil)
 
 	long := strings.Repeat("帮我把这个模块重构一下，", 10) // 远超 50 字截断
-	m.AppendUserMessage(long)
+	m.AppendUserMessage(long, nil)
 
 	if m.GetData().Title == DefaultSessionTitle {
 		t.Fatal("title should be renamed from the first user message")
@@ -79,7 +79,7 @@ func TestFirstMessageAutoTitlesAndEmits(t *testing.T) {
 
 	// 第二条消息不再改名（标题已被占用），也不再发事件
 	before := len(sink.events)
-	m.AppendUserMessage("第二条")
+	m.AppendUserMessage("第二条", nil)
 	for _, e := range sink.events[before:] {
 		if e.Kind == event.KindSessionRenamed {
 			t.Fatal("second message must not re-emit rename")
@@ -93,7 +93,7 @@ func TestFirstMessageAutoTitlesAndEmits(t *testing.T) {
 // user 消息必须落盘 messages.jsonl（缺失会导致重启后用户输入丢失）。
 func TestAppendUserMessagePersists(t *testing.T) {
 	m := newTestManager(t)
-	id := m.AppendUserMessage("hello world")
+	id := m.AppendUserMessage("hello world", nil)
 	if id == "" {
 		t.Fatal("empty message id")
 	}

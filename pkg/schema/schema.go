@@ -63,6 +63,10 @@ type Message struct {
 	//     （删除/重试）与压缩投影都会让它出现缺口或非 1 起始。
 	Iteration  int        `json:"iteration,omitempty"`
 	Content    string     `json:"content"`
+	// Images 用户消息附带的图片（data URL，RFC-2397：data:image/png;base64,...）。
+	// 仅 user 消息使用；随消息持久化。压缩链路（提取/归档/体量估算）只读
+	// Content/Reasoning/Args 文本，图片数据天然不进入压缩器。
+	Images     []string   `json:"images,omitempty"`
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	CreatedAt  int64      `json:"createdAt"`
