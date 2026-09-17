@@ -60,14 +60,15 @@ func (s *WorkspaceService) SetWorkspaceDir(sessionID string, dir string) error {
 	return nil
 }
 
-// GetWorkspaceInfo returns the current workspace info for a session.
+// GetWorkspaceInfo returns the workspace info for the session's PROJECT
+// （工作区是项目属性：sessionID → FindProject → GetWorkspaceDir）。
 func (s *WorkspaceService) GetWorkspaceInfo(sessionID string) (*WorkspaceInfo, error) {
-	ctrl, ok := boot.GetApp().FindController(sessionID)
+	proj, ok := boot.GetApp().FindProject(sessionID)
 	if !ok {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	workspaceDir := ctrl.GetSessionMgr().GetWorkspaceDir()
+	workspaceDir := proj.GetWorkspaceDir()
 
 	return &WorkspaceInfo{
 		Path: workspaceDir,

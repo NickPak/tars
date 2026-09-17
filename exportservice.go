@@ -1,41 +1,35 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"tars/pkg/schema"
-	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"tars/internal/boot"
+	"tars/internal/session"
+	"tars/pkg/schema"
 )
 
-// ExportService —— 会话导出（渲染 Markdown + 系统保存对话框）。
+// ExportService —— 导出交互层：查找目标、弹系统对话框；
+// 渲染与落盘机制在 session 包（ExportMarkdown）与 schema 包（WriteImage）。
 type ExportService struct{}
 
-// ExportSession renders the session as Markdown, prompts the user
-// for a destination via the OS save dialog, and writes the file.
-// Returns the chosen path ("" if the user cancelled).
+// ExportSession 导出会话为 Markdown：弹出系统保存对话框，
+// 用户确认后委托 session.ExportMarkdown 渲染并写盘。
+// 返回保存路径（"" 表示用户取消）。
 func (s *ExportService) ExportSession(sessionID string) (string, error) {
-	// 渲染 Markdown（拷贝切片头做只读快照）
 	sess, ok := boot.GetApp().FindSession(sessionID)
 	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
-	title := sess.Title
-	msgs := append([]*schema.Message{}, sess.Messages...)
-
-	md := renderSessionMarkdown(title, msgs)
 
 	// 弹出保存对话框，默认文件名从标题生成
 	target, err := application.Get().Dialog.SaveFile().
 		SetMessage("导出对话").
-		SetFilename(sanitizeFilename(title)+".md").
+		SetFilename(sanitizeFilename(sess.Title)+".md").
 		AddFilter("Markdown 文件", "*.md").
 		SetButtonText("导出").
 		CanCreateDirectories(true).
@@ -50,27 +44,19 @@ func (s *ExportService) ExportSession(sessionID string) (string, error) {
 		return "", nil // 用户取消
 	}
 
-	if err := os.WriteFile(target, []byte(md), 0644); err != nil {
-		return "", fmt.Errorf("write export file: %w", err)
+	if err := session.ExportMarkdown(sess, target); err != nil {
+		return "", err
 	}
 	return target, nil
 }
 
 // SaveImage 把 data URL 图片保存到用户选择的位置（消息图片右键"保存图片"）。
+// 解析扩展名用于对话框默认文件名；解析与落盘机制在 schema 包（WriteImage）。
 // 返回保存路径（"" 表示用户取消）。
 func (s *ExportService) SaveImage(dataURL string) (string, error) {
-	mime, data, err := parseImageDataURL(dataURL)
+	_, ext, _, err := schema.ParseImageDataURL(dataURL)
 	if err != nil {
 		return "", err
-	}
-	ext := ".png"
-	switch mime {
-	case "image/jpeg":
-		ext = ".jpg"
-	case "image/gif":
-		ext = ".gif"
-	case "image/webp":
-		ext = ".webp"
 	}
 
 	target, err := application.Get().Dialog.SaveFile().
@@ -91,81 +77,10 @@ func (s *ExportService) SaveImage(dataURL string) (string, error) {
 		return "", nil // 用户取消
 	}
 
-	if err := os.WriteFile(target, data, 0644); err != nil {
-		return "", fmt.Errorf("write image file: %w", err)
+	if _, err := schema.WriteImage(dataURL, target); err != nil {
+		return "", err
 	}
 	return target, nil
-}
-
-// parseImageDataURL 解析 data:image/<mime>;base64,<data> 形式的 data URL，
-// 返回 MIME 类型与解码后的字节。
-func parseImageDataURL(dataURL string) (string, []byte, error) {
-	if !strings.HasPrefix(dataURL, "data:") {
-		return "", nil, fmt.Errorf("not a data URL")
-	}
-	head, b64, ok := strings.Cut(dataURL, ",")
-	if !ok || !strings.HasSuffix(head, ";base64") {
-		return "", nil, fmt.Errorf("invalid image data URL format")
-	}
-	mime := strings.TrimSuffix(strings.TrimPrefix(head, "data:"), ";base64")
-	if !strings.HasPrefix(mime, "image/") {
-		return "", nil, fmt.Errorf("not an image data URL: %s", mime)
-	}
-	data, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return "", nil, fmt.Errorf("decode image data: %w", err)
-	}
-	return mime, data, nil
-}
-
-// renderSessionMarkdown 把会话消息渲染为可读的 Markdown 文档：
-//   - user → ## 👤 用户
-//   - assistant → ## 🤖 TARS（工具调用以状态行 + 折叠块呈现）
-//   - tool 消息不单独渲染（其结果已通过 assistant 的 ToolCalls.Output 合并）
-func renderSessionMarkdown(title string, msgs []*schema.Message) string {
-	var b strings.Builder
-	b.WriteString("# " + title + "\n\n")
-	if len(msgs) > 0 {
-		b.WriteString("> 导出于 " + time.Now().Format("2006-01-02 15:04") + "\n")
-	}
-	b.WriteString("\n---\n\n")
-
-	for _, m := range msgs {
-		switch m.Role {
-		case schema.RoleUser:
-			b.WriteString("## 👤 用户\n\n")
-			b.WriteString(strings.TrimSpace(m.Content) + "\n\n")
-
-		case schema.RoleAssistant:
-			b.WriteString("## 🤖 TARS\n\n")
-			if m.Reasoning != "" {
-				reasoning := m.Reasoning
-				if len(reasoning) > 3000 {
-					reasoning = reasoning[:3000] + "\n…(已截断)"
-				}
-				b.WriteString("<details><summary>💭 思考过程</summary>\n\n")
-				b.WriteString(reasoning + "\n\n</details>\n\n")
-			}
-			if len(m.ToolCalls) > 0 {
-				for _, tc := range m.ToolCalls {
-					b.WriteString("**🔧 " + tc.Name + "**")
-					if tc.Args != "" {
-						args := tc.Args
-						if len(args) > 120 {
-							args = args[:120] + "…"
-						}
-						b.WriteString(" `" + args + "`")
-					}
-					b.WriteString("\n\n")
-				}
-			}
-			if strings.TrimSpace(m.Content) != "" {
-				b.WriteString(strings.TrimSpace(m.Content) + "\n\n")
-			}
-		}
-		// tool/system 角色不导出（工具结果已合并进 assistant 消息）
-	}
-	return b.String()
 }
 
 // sanitizeFilename 把会话标题转换为安全的文件名（去除非法字符、限长）。

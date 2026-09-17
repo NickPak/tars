@@ -29,12 +29,13 @@ type FileEntry struct {
 const maxTreeDepth = 5
 
 // workspaceDirOf 解析会话所属项目的生效工作区（项目属性，多会话共享）。
+// 层级表达：sessionID → FindProject 定位所属 Project → GetWorkspaceDir。
 func (s *FileService) workspaceDirOf(sessionID string) (string, error) {
-	ctrl, ok := boot.GetApp().FindController(sessionID)
+	proj, ok := boot.GetApp().FindProject(sessionID)
 	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
-	return ctrl.GetSessionMgr().GetWorkspaceDir(), nil
+	return proj.GetWorkspaceDir(), nil
 }
 
 // ListWorkspaceFiles returns a recursive file tree of the given session's
