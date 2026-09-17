@@ -65,10 +65,10 @@ func (m *Manager) GetProjectMemoryDir(projectDir string) string {
 	return filepath.Join(projectDir, MemoryDir)
 }
 
-// GlobalAgentsFile 返回用户级指令记忆路径（<workDir>/AGENTS.md，即
+// GetGlobalAgentsFile 返回用户级指令记忆路径（<workDir>/AGENTS.md，即
 // ~/.tars/AGENTS.md——P4 全局指令记忆，与项目级 AGENTS.md 合并注入，
 // 冲突时项目级优先）。
-func (m *Manager) GlobalAgentsFile() string {
+func (m *Manager) GetGlobalAgentsFile() string {
 	return filepath.Join(m.workDir, AgentsFile)
 }
 

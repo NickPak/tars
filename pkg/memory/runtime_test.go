@@ -195,10 +195,10 @@ func TestRuntimeSuggest(t *testing.T) {
 // slugify：中英文保留、符号折叠、长度截断。
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
-		"以后都用 pnpm 安装依赖":            "以后都用-pnpm-安装依赖",
-		"remember to always run gofmt!":   "remember-to-always-run-gofmt",
-		"!!!":                             "",
-		"prefer dark-mode over light":     "prefer-dark-mode-over-light",
+		"以后都用 pnpm 安装依赖":                "以后都用-pnpm-安装依赖",
+		"remember to always run gofmt!": "remember-to-always-run-gofmt",
+		"!!!":                           "",
+		"prefer dark-mode over light":   "prefer-dark-mode-over-light",
 	}
 	for in, want := range cases {
 		if got := slugify(in); got != want {
@@ -213,7 +213,7 @@ func TestRenderProjectMemory_GlobalAndProject(t *testing.T) {
 	rt.maxBytes = DefaultMaxBytes
 
 	// 仅用户级
-	if err := os.WriteFile(mgr.GlobalAgentsFile(), []byte("全局规矩"), 0644); err != nil {
+	if err := os.WriteFile(mgr.GetGlobalAgentsFile(), []byte("全局规矩"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	msg := rt.RenderMemoryBlock()

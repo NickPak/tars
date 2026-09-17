@@ -224,6 +224,11 @@ func (a *App) GetProjectWorkspaceDir(projectID string) (string, error) {
 	return a.projMgr.GetWorkspaceDir(projectID)
 }
 
+// FindProject 按会话 ID 反查所属 Project。
+func (a *App) FindProject(sessionID string) (*Project, bool) {
+	return a.projMgr.FindProject(sessionID)
+}
+
 // RenameProject 显式重命名项目（此后标题不再跟随会话自动命名）。
 func (a *App) RenameProject(id, title string) error {
 	return a.projMgr.Rename(id, title)

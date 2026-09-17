@@ -216,7 +216,17 @@ func (m *ProjectManager) GetWorkspaceDir(projectID string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("project not found: %s", projectID)
 	}
-	return p.GetMetadata().GetWorkspaceDir(), nil
+	return p.GetWorkspaceDir(), nil
+}
+
+// FindProject 按会话 ID 反查所属 Project（bySession 索引；
+// Restore/Create 保证索引总是全的）。项目级资源（工作区、todo 等）
+// 按会话解析时经此直达项目层级，不绕 Controller（会话级封装）。
+func (m *ProjectManager) FindProject(sessionID string) (*Project, bool) {
+	m.mu.RLock()
+	p, ok := m.bySession[sessionID]
+	m.mu.RUnlock()
+	return p, ok
 }
 
 // GetProjectDir 返回项目目录（projects/<pid>）。

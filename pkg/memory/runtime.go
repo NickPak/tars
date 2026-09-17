@@ -68,7 +68,7 @@ func (r *Runtime) RenderMemoryBlock() *schema.Message {
 func (r *Runtime) renderProjectMemory() string {
 	var global, project string
 	if r.mgr != nil {
-		if raw, err := os.ReadFile(r.mgr.GlobalAgentsFile()); err == nil {
+		if raw, err := os.ReadFile(r.mgr.GetGlobalAgentsFile()); err == nil {
 			global = strings.TrimSpace(string(raw))
 		}
 	}

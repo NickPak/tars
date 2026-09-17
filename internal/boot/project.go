@@ -43,6 +43,9 @@ func (p *Project) GetID() string { return p.meta.GetID() }
 // GetProjectDir 返回项目目录（projects/<pid>）。
 func (p *Project) GetProjectDir() string { return p.meta.GetProjectDir() }
 
+// GetWorkspaceDir 返回项目的生效工作区路径（自定义或默认目录）。
+func (p *Project) GetWorkspaceDir() string { return p.meta.GetWorkspaceDir() }
+
 // GetTodoMgr 返回项目级共享的 TODO 状态机。
 func (p *Project) GetTodoMgr() *todo.Manager { return p.todoMgr }
 
