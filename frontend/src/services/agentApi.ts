@@ -67,6 +67,14 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
           maxTokens: v.maxTokens ?? 0,
           thinkingBudget: v.thinkingBudget ?? null,
           enableThinking: v.enableThinking ?? null,
+          // 能力声明：后端 Validate 已归一化非空；缺省值与后端默认对齐
+          // （工具默认开、图片/推理默认关），仅兜底老版本后端。
+          supportsReasoning: v.supportsReasoning ?? false,
+          supportsImages: v.supportsImages ?? false,
+          supportsTools: v.supportsTools ?? true,
+          reasoningEffort: v.reasoningEffort ?? "",
+          reasoningSummary: v.reasoningSummary ?? "",
+          temperature: v.temperature ?? null,
         };
       }),
     },
@@ -208,10 +216,11 @@ export const agentApi = {
   renameSession: (id: string, title: string): Promise<void> =>
     AgentService.RenameSession(id, title),
 
-  /** 提交用户消息并启动一轮对话；返回后端分配的 user/assistant 消息 ID
-   *  （回填本地占位消息；assistant 回复内容仍经流式事件推送） */
-  submitMessage: async (sessionId: string, text: string): Promise<SubmitResult> =>
-    (await AgentService.SubmitMessage(sessionId, text)) as SubmitResult,
+  /** 提交用户消息（可附图片 data URL）并启动一轮对话；返回后端分配的
+   *  user/assistant 消息 ID（回填本地占位消息；assistant 回复内容仍经
+   *  流式事件推送）。图片须经能力门控：模型未声明图片能力时后端拒绝。 */
+  submitMessage: async (sessionId: string, text: string, images?: string[]): Promise<SubmitResult> =>
+    (await AgentService.SubmitMessage(sessionId, text, images ?? [])) as SubmitResult,
 
   cancelMessage: (sessionId: string): Promise<void> =>
     AgentService.CancelMessage(sessionId),
@@ -283,6 +292,10 @@ export const agentApi = {
   /** 导出会话为 Markdown（弹出系统保存对话框），返回保存路径（取消返回空串） */
   exportSession: async (sessionId: string): Promise<string> =>
     await ExportService.ExportSession(sessionId),
+
+  /** 保存图片（data URL）到用户选择的位置，返回保存路径（取消返回空串） */
+  saveImage: async (dataUrl: string): Promise<string> =>
+    await ExportService.SaveImage(dataUrl),
 
   /** 提交一次询问/审批的用户答复（requestID 即工具调用 ID） */
   answerAskUser: async (

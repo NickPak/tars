@@ -65,7 +65,8 @@ interface ChatState {
   closeOtherTabs: (id: string) => Promise<void>;
   /** 关闭当前项目的全部 Tab（仅视图标记，项目保留） */
   closeAllTabs: () => Promise<void>;
-  send: (text: string) => Promise<void>;
+  /** 发送一轮对话（可附图片 data URL；图片须经模型能力门控） */
+  send: (text: string, images?: string[]) => Promise<void>;
   cancel: () => Promise<void>;
   /** 重试生成最后一条 assistant 回复（先回撤已渲染内容，再重新流式） */
   retry: () => Promise<void>;
@@ -541,9 +542,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  send: async (text) => {
+  send: async (text, images) => {
     const content = text.trim();
-    if (!content || get().isStreaming) return;
+    const imgs = images ?? [];
+    // 文本与图片至少其一；空消息不发送
+    if ((!content && imgs.length === 0) || get().isStreaming) return;
 
     // 无活动会话时首次发送才落盘：有激活项目则在其中补建会话（Tab 全关
     // 后的空项目态），否则创建新项目（含默认会话）
@@ -583,6 +586,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       id: crypto.randomUUID(),
       role: "user",
       content,
+      images: imgs.length > 0 ? imgs : undefined,
       createdAt: now,
     };
     // 助手占位消息，内容由 "agent:chunk" 事件增量填充
@@ -599,7 +603,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const res = await agentApi.submitMessage(sessId, content);
+      const res = await agentApi.submitMessage(sessId, content, imgs);
       // 后端分配的消息 ID 回填本地占位（回填前的流式事件经 streamAnchorId
       // 归属首轮气泡，无竞态）；之后 DeleteMessage 等按 ID 操作无需等待
       // 会话重载即可生效。

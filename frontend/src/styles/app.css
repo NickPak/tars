@@ -563,11 +563,16 @@ body.resizing-col .resize-handle::after {
 /* ===== 消息区 ===== */
 .message-list {
   flex: 1;
+  /* min-height:0 是 flex 收缩的前提：缺省 min-height:auto 会拒绝
+     收缩到内容高度以下——输入框拉高时消息区必须让位并内部滚动 */
+  min-height: 0;
   overflow-y: auto;
 }
 
 .message-list-inner {
-  max-width: 800px;
+  /* 自适应列宽：窗口越宽内容越宽，上限 1100px 保可读性；
+     消息区/输入区/欢迎页/错误横幅共用同一宽度口径 */
+  max-width: min(92%, 1400px);
   margin: 0 auto;
   padding: 24px 24px 12px;
   display: flex;
@@ -600,6 +605,89 @@ body.resizing-col .resize-handle::after {
   padding: 10px 18px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.user-bubble-image {
+  max-width: 200px;
+  max-height: 160px;
+  border-radius: 10px;
+  object-fit: cover;
+  display: block;
+  margin: 8px 0;
+}
+
+/* 图片预览 lightbox（复用 dialog-overlay 遮罩） */
+.image-preview-stage {
+  position: relative;
+  display: inline-block;
+  transform-origin: center;
+}
+
+.image-preview {
+  max-width: 88vw;
+  max-height: 88vh;
+  border-radius: 10px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 关闭按钮：贴近图片右上角（半压边界），随 stage 缩放/平移 */
+.image-preview-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(60, 60, 64, 0.95);
+  color: #eee;
+  cursor: pointer;
+  transition: background 0.15s;
+  z-index: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.image-preview-close:hover {
+  /* 实心高亮：按钮半压在图片上，半透明会"镂空"看到图片（残留自
+     按钮位于深色遮罩角落时的设计，压图后不再适用） */
+  background: var(--accent);
+  color: #1f1f1f;
+}
+
+/* 图片右键菜单（复制/保存） */
+.image-ctx-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 120px;
+  background: var(--bg, #2a2a2c);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.image-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.image-ctx-item:hover {
+  background: var(--bubble-user);
 }
 
 .user-bubble-actions {
@@ -1187,7 +1275,7 @@ body.resizing-col .resize-handle::after {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  max-width: 800px;
+  max-width: min(92%, 1400px);
   width: 100%;
   margin: 0 auto;
   padding: 24px;
@@ -1235,7 +1323,7 @@ body.resizing-col .resize-handle::after {
 /* ===== 输入区 ===== */
 .composer {
   flex-shrink: 0;
-  max-width: 800px;
+  max-width: min(92%, 1400px);
   width: 100%;
   margin: 0 auto;
   padding: 8px 24px 16px;
@@ -1273,6 +1361,135 @@ body.resizing-col .resize-handle::after {
   color: var(--text-dim);
 }
 
+/* TipTap 编辑器主体（与 composer-input 同款排版） */
+.composer-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 格式工具栏（所见即所得 markdown） */
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.composer-toolbar-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.composer-toolbar-btn:hover {
+  background: var(--bubble-user);
+  color: var(--text);
+}
+
+.composer-toolbar-btn.on {
+  background: var(--bubble-user);
+  color: var(--accent);
+}
+
+.composer-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+/* 高度与滚动由 wrapper 承担（拖拽把手经内联 height 控制；
+     未拖拽时无内联高度，随内容自适应） */
+.composer-editor-wrap {
+  overflow-y: auto;
+}
+
+/* 固定高度时编辑区填满 wrapper（空白处可点击聚焦）；自适应时退化为 60px */
+.composer-editor-wrap .tiptap {
+  min-height: max(60px, 100%);
+}
+
+.composer-editor .tiptap {
+  outline: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px; /* 比全局小一号：小输入框里容纳更多文字 */
+  line-height: 1.5;
+  min-height: 60px; /* 默认三行高度，减少"一打字就撑满"的局促感 */
+  padding: 4px 0;
+}
+
+/* 输入区顶部拖拽把手（调整输入区高度） */
+.composer-grip {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 10px;
+  margin: -4px 0 2px;
+  cursor: ns-resize;
+}
+
+.composer-grip span {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.composer-grip:hover span,
+.composer-grip:active span {
+  background: var(--text-dim);
+}
+
+.composer-editor .tiptap p {
+  margin: 0 0 0.4em;
+}
+
+.composer-editor .tiptap p:last-child {
+  margin-bottom: 0;
+}
+
+.composer-editor .tiptap pre {
+  background: var(--bubble-user);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+
+.composer-editor .tiptap code {
+  background: var(--bubble-user);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.92em;
+}
+
+.composer-editor .tiptap pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Placeholder 扩展：空文档时在首段前显示提示文本 */
+.composer-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-dim);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 .composer-btn {
   display: grid;
   place-items: center;
@@ -1301,6 +1518,21 @@ body.resizing-col .resize-handle::after {
   color: #1f1f1f;
 }
 
+/* 文档内联图片节点（粘贴/拖放/按钮插入） */
+.composer-editor .tiptap img {
+  max-width: 220px;
+  max-height: 140px;
+  border-radius: 10px;
+  display: block;
+  margin: 6px 0;
+  cursor: default;
+}
+
+.composer-editor .tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .composer-hint {
   margin-top: 8px;
   text-align: center;
@@ -1314,7 +1546,7 @@ body.resizing-col .resize-handle::after {
   align-items: center;
   gap: 12px;
   margin: 8px 24px 0;
-  max-width: 800px;
+  max-width: min(92%, 1400px);
   width: calc(100% - 48px);
   margin-left: auto;
   margin-right: auto;
@@ -2604,6 +2836,23 @@ body.resizing-col .resize-handle::after {
 
 .settings-item-body {
   padding: 2px 0 10px 26px;
+}
+
+/* 条目编辑区内的分组小标题（模型身份/上下文能力/能力/Reasoning 配置/请求默认值） */
+.settings-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  padding: 14px 0 2px;
+}
+
+.settings-group-title:first-child {
+  padding-top: 4px;
+}
+
+.settings-group-title + .settings-field {
+  border-top: none;
 }
 
 .settings-add-btn {

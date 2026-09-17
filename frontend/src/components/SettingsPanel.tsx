@@ -316,6 +316,26 @@ function Field({
 }
 
 /** 分段选择控件（枚举类选项的首选） */
+/** 布尔开关（switch 样式的语义化封装，能力声明等布尔配置项用） */
+function BoolSwitch({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      className={`switch${value ? " on" : ""}`}
+      role="switch"
+      aria-checked={value}
+      onClick={() => onChange(!value)}
+    >
+      <span className="switch-thumb" />
+    </button>
+  );
+}
+
 function Seg<T extends string>({
   value,
   options,
@@ -583,6 +603,13 @@ function ModelPage({
       maxTokens: 0,
       thinkingBudget: null,
       enableThinking: null,
+      // 能力声明默认值与后端对齐：工具默认开、图片/推理默认关
+      supportsReasoning: false,
+      supportsImages: false,
+      supportsTools: true,
+      reasoningEffort: "",
+      reasoningSummary: "",
+      temperature: null,
     };
     updateLLM({ models: [...llm.models, m] });
     setExpanded("m:" + llm.models.length); // 新条目的索引
@@ -651,6 +678,8 @@ function ModelPage({
               </div>
               {isOpen && (
                 <div className="settings-item-body">
+                  {/* 第一块：模型身份 */}
+                  <div className="settings-group-title">模型身份</div>
                   <Field label="供应商">
                     <select
                       className="settings-select"
@@ -690,28 +719,10 @@ function ModelPage({
                       {m.entryId || "（输入模型 ID 后自动生成）"}
                     </span>
                   </Field>
-                  <Field
-                    label="最大输出 tokens"
-                    hint={
-                      pType === "claude"
-                        ? "Claude 必填（Anthropic API 强制要求）。"
-                        : pType === "deepseek"
-                          ? "DeepSeek 默认 4096，上限 8192。0 = 用默认。"
-                          : "0 = 不设置（用服务端默认）。"
-                    }
-                  >
-                    <input
-                      className="settings-input small"
-                      type="number"
-                      min={0}
-                      placeholder="0"
-                      value={m.maxTokens || ""}
-                      onChange={(e) =>
-                        patchModel(idx, { maxTokens: e.target.valueAsNumber || 0 })
-                      }
-                    />
-                  </Field>
-                  <Field label="上下文窗口" hint="tokens 数，0 = 未知。">
+
+                  {/* 第二块：上下文能力 */}
+                  <div className="settings-group-title">上下文能力</div>
+                  <Field label="最大输入 Tokens" hint="模型的最大输入上下文（tokens），0 = 未知。">
                     <input
                       className="settings-input small"
                       type="number"
@@ -722,6 +733,27 @@ function ModelPage({
                         patchModel(idx, {
                           contextWindow: e.target.valueAsNumber || 0,
                         })
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="最大输出 Tokens"
+                    hint={
+                      pType === "claude"
+                        ? "模型单次响应允许的最大输出 Tokens 数。Claude 必填（Anthropic API 强制要求）。"
+                        : pType === "deepseek"
+                          ? "模型单次响应允许的最大输出 Tokens 数。DeepSeek 默认 4096，上限 8192。0 = 用默认。"
+                          : "模型单次响应允许的最大输出 Tokens 数。0 = 不设置（用服务端默认）。"
+                    }
+                  >
+                    <input
+                      className="settings-input small"
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={m.maxTokens || ""}
+                      onChange={(e) =>
+                        patchModel(idx, { maxTokens: e.target.valueAsNumber || 0 })
                       }
                     />
                   </Field>
@@ -755,43 +787,143 @@ function ModelPage({
                       }
                     />
                   </Field>
-                  {pType === "gemini" && (
-                    <Field
-                      label="思考预算"
-                      hint="仅 gemini 供应商生效。flash-lite 系列默认关闭，需显式开启动态思考。"
-                    >
-                      <ThinkingBudgetSeg
-                        value={m.thinkingBudget}
-                        onChange={(v) => patchModel(idx, { thinkingBudget: v })}
-                      />
-                    </Field>
+
+                  {/* 第三块：能力 */}
+                  <div className="settings-group-title">能力</div>
+                  <Field
+                    label="推理"
+                    hint="声明模型支持推理或思考过程；开启后下方出现 Reasoning 配置。"
+                  >
+                    <BoolSwitch
+                      value={m.supportsReasoning}
+                      onChange={(v) => patchModel(idx, { supportsReasoning: v })}
+                    />
+                  </Field>
+                  <Field
+                    label="图片"
+                    hint="声明模型可接收图片输入；关闭时不会向该模型发送图片。"
+                  >
+                    <BoolSwitch
+                      value={m.supportsImages}
+                      onChange={(v) => patchModel(idx, { supportsImages: v })}
+                    />
+                  </Field>
+                  <Field
+                    label="工具"
+                    hint="声明模型可调用工具；关闭后对话中不会向该模型下发工具定义。"
+                  >
+                    <BoolSwitch
+                      value={m.supportsTools}
+                      onChange={(v) => patchModel(idx, { supportsTools: v })}
+                    />
+                  </Field>
+
+                  {/* 第四块：Reasoning 配置（声明推理能力或供应商有私有推理控件时显示） */}
+                  {(m.supportsReasoning ||
+                    pType === "gemini" ||
+                    THINKING_SWITCH_TYPES.includes(pType)) && (
+                    <>
+                      <div className="settings-group-title">Reasoning 配置</div>
+                      {m.supportsReasoning && (
+                        <>
+                          <Field
+                            label="推理强度"
+                            hint="跨供应商统一抽象，目前仅 openai 类型映射（reasoning_effort）；空 = 不下发。"
+                          >
+                            <select
+                              className="settings-select"
+                              value={m.reasoningEffort}
+                              onChange={(e) =>
+                                patchModel(idx, { reasoningEffort: e.target.value })
+                              }
+                            >
+                              <option value="">（不下发）</option>
+                              <option value="minimal">minimal</option>
+                              <option value="low">low</option>
+                              <option value="medium">medium</option>
+                              <option value="high">high</option>
+                              <option value="xhigh">xhigh</option>
+                            </select>
+                          </Field>
+                          <Field
+                            label="推理摘要"
+                            hint="OpenAI Responses API 的 reasoning.summary；当前版本不下发（预留配置）。"
+                          >
+                            <select
+                              className="settings-select"
+                              value={m.reasoningSummary}
+                              onChange={(e) =>
+                                patchModel(idx, { reasoningSummary: e.target.value })
+                              }
+                            >
+                              <option value="">（不下发）</option>
+                              <option value="auto">auto</option>
+                              <option value="concise">concise</option>
+                              <option value="detailed">detailed</option>
+                            </select>
+                          </Field>
+                        </>
+                      )}
+                      {pType === "gemini" && (
+                        <Field
+                          label="思考预算"
+                          hint="仅 gemini 供应商生效。flash-lite 系列默认关闭，需显式开启动态思考。"
+                        >
+                          <ThinkingBudgetSeg
+                            value={m.thinkingBudget}
+                            onChange={(v) => patchModel(idx, { thinkingBudget: v })}
+                          />
+                        </Field>
+                      )}
+                      {THINKING_SWITCH_TYPES.includes(pType) && (
+                        <Field
+                          label="思考模式"
+                          hint="映射到供应商原生字段：DeepSeek thinking.type / Qwen enable_thinking / ARK thinking.type / Ollama think。"
+                        >
+                          <Seg
+                            value={
+                              m.enableThinking === true
+                                ? "on"
+                                : m.enableThinking === false
+                                  ? "off"
+                                  : "default"
+                            }
+                            options={[
+                              { value: "default", label: "默认" },
+                              { value: "on", label: "开启" },
+                              { value: "off", label: "关闭" },
+                            ]}
+                            onChange={(v) =>
+                              patchModel(idx, {
+                                enableThinking: v === "default" ? null : v === "on",
+                              })
+                            }
+                          />
+                        </Field>
+                      )}
+                    </>
                   )}
-                  {THINKING_SWITCH_TYPES.includes(pType) && (
-                    <Field
-                      label="思考模式"
-                      hint="映射到供应商原生字段：DeepSeek thinking.type / Qwen enable_thinking / ARK thinking.type / Ollama think。"
-                    >
-                      <Seg
-                        value={
-                          m.enableThinking === true
-                            ? "on"
-                            : m.enableThinking === false
-                              ? "off"
-                              : "default"
-                        }
-                        options={[
-                          { value: "default", label: "默认" },
-                          { value: "on", label: "开启" },
-                          { value: "off", label: "关闭" },
-                        ]}
-                        onChange={(v) =>
-                          patchModel(idx, {
-                            enableThinking: v === "default" ? null : v === "on",
-                          })
-                        }
-                      />
-                    </Field>
-                  )}
+
+                  {/* 第五块：请求默认值 */}
+                  <div className="settings-group-title">请求默认值</div>
+                  <Field
+                    label="Temperature"
+                    hint="请求默认温度，合法区间 [0, 2]；留空 = 不下发（跟随服务端默认）。"
+                  >
+                    <input
+                      className="settings-input small"
+                      type="number"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      placeholder="默认"
+                      value={m.temperature ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.valueAsNumber;
+                        patchModel(idx, { temperature: Number.isNaN(v) ? null : v });
+                      }}
+                    />
+                  </Field>
                 </div>
               )}
             </div>

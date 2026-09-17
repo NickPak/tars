@@ -15,8 +15,11 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
+import { useLayoutStore } from "../store/layoutStore";
 import type { ChatMessage, CompressionMark, ToolCallInfo, UsageInfo } from "../types";
 import Markdown from "./Markdown";
+import ImagePreview from "./ImagePreview";
+import { useImageContextMenu } from "./ImageContextMenu";
 import { ApprovalCard, AskUserCard } from "./AskCards";
 
 /** 时间线条目：消息 + 压缩标记按时间合并渲染。标记是本地运行时状态，
@@ -130,6 +133,7 @@ export default function MessageList() {
   const deleteMessage = useChatStore((s) => s.deleteMessage);
   const pickAndSetWorkspace = useChatStore((s) => s.pickAndSetWorkspace);
   const compressionMarks = useChatStore((s) => s.compressionMarks);
+  const composerHeight = useLayoutStore((s) => s.composerHeight);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 进行中轮次的起点。交错式一轮产生多条 assistant 气泡：轮级状态栏
@@ -161,7 +165,10 @@ export default function MessageList() {
       behavior: "instant" as ScrollBehavior,
       block: "end",
     });
-  }, [messages]);
+    // composerHeight 变化（输入框拖拽）会挤压消息视口：scrollTop 不动
+    // 会让正在阅读的内容被推出视口下沿（看似"滑到输入框背后"），
+    // 与消息更新同款策略——重新锚定到底部。
+  }, [messages, composerHeight]);
 
   if (messages.length === 0) {
     return (
@@ -204,6 +211,7 @@ export default function MessageList() {
               {m.role === "user" ? (
                 <UserBubble
                   content={m.content}
+                  images={m.images}
                   onDelete={
                     isStreaming ? undefined : () => void deleteMessage(m.id)
                   }
@@ -260,12 +268,16 @@ export default function MessageList() {
 /** 用户消息气泡：hover 显示复制/删除按钮；流式进行中隐藏删除（onDelete 缺省） */
 function UserBubble({
   content,
+  images,
   onDelete,
 }: {
   content: string;
+  images?: string[];
   onDelete?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const { openMenu, menuEl } = useImageContextMenu();
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -274,9 +286,50 @@ function UserBubble({
     });
   };
 
+  // 按 [图片N] 占位符位置内联渲染图片（占位符顺序 = images[] 下标，
+  // 与发送侧的文档序遍历约定一致）；占位符之外的图片追加在末尾。
+  const renderContent = () => {
+    if (!images || images.length === 0) return content;
+    const segs = content.split(/\[图片\d*\]/g);
+    const out: React.ReactNode[] = [];
+    segs.forEach((seg, i) => {
+      if (seg) out.push(<span key={`t${i}`}>{seg}</span>);
+      const u = images[i];
+      if (u) {
+        out.push(
+          <img
+            key={`img${i}`}
+            className="user-bubble-image"
+            src={u}
+            alt={`图片 ${i + 1}`}
+            title="双击预览 · 右键复制/保存"
+            onDoubleClick={() => setPreview(u)}
+            onContextMenu={(e) => openMenu(e, u)}
+          />,
+        );
+      }
+    });
+    for (let i = segs.length - 1; i < images.length; i++) {
+      out.push(
+        <img
+          key={`imgx${i}`}
+          className="user-bubble-image"
+          src={images[i]}
+          alt={`图片 ${i + 1}`}
+          title="双击预览 · 右键复制/保存"
+          onDoubleClick={() => setPreview(images[i])}
+          onContextMenu={(e) => openMenu(e, images[i])}
+        />,
+      );
+    }
+    return out;
+  };
+
   return (
     <div className="user-bubble-group">
-      <div className="user-bubble">{content}</div>
+      <div className="user-bubble">{renderContent()}</div>
+      <ImagePreview src={preview} onClose={() => setPreview(null)} />
+      {menuEl}
       <div className="user-bubble-actions">
         <button className="msg-action" title="复制" onClick={handleCopy}>
           {copied ? <Check size={15} /> : <Copy size={15} />}

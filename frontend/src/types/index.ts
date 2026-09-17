@@ -6,6 +6,8 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: string;
+  /** 用户消息附带的图片（data URL）；仅 user 消息有值 */
+  images?: string[];
   createdAt: number;
   /** 轮分组键：一轮内所有消息共享（= 该轮 user 消息 ID）；旧数据为空 */
   turnId?: string;
@@ -137,6 +139,12 @@ export interface ModelInfo {
   contextWindow: number;
   /** 是否为当前使用中的模型 */
   active: boolean;
+  /** 能力-推理：模型支持推理/思考过程 */
+  supportsReasoning: boolean;
+  /** 能力-图片：模型可接收图片输入（聊天图片入口的门禁） */
+  supportsImages: boolean;
+  /** 能力-工具：模型可调用工具 */
+  supportsTools: boolean;
 }
 
 /** "model:changed" 事件 payload：当前模型已切换 */
@@ -290,6 +298,18 @@ export interface ModelConfig {
   thinkingBudget: number | null;
   /** 思考模式开关：null 默认 / true 开 / false 关（仅 deepseek/qwen/ark/ollama） */
   enableThinking: boolean | null;
+  /** 能力-推理：模型支持推理/思考过程（控制 Reasoning 配置展示与参数下发） */
+  supportsReasoning: boolean;
+  /** 能力-图片：模型可接收图片输入（多模态输入门禁） */
+  supportsImages: boolean;
+  /** 能力-工具：模型可调用工具（false 时 agent 不下发工具定义） */
+  supportsTools: boolean;
+  /** 推理强度："" 不下发 / minimal / low / medium / high / xhigh */
+  reasoningEffort: string;
+  /** 推理摘要："" 不下发 / auto / concise / detailed */
+  reasoningSummary: string;
+  /** 请求默认温度：null 不下发（跟随服务端默认），合法区间 [0, 2] */
+  temperature: number | null;
 }
 
 /** LLM 配置（llm.Config）：供应商列表 + 模型列表 + 当前激活条目 */

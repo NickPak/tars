@@ -46,6 +46,10 @@ interface LayoutState {
   workspaceVisible: boolean;
   /** 右侧工作区面板宽度（px） */
   workspaceWidth: number;
+  /** 输入框高度（px；null = 随内容自适应）。消息列表订阅它做底部
+   *  滚动锚定：输入框变高挤压消息视口时，把列表重新滚到底部，
+   *  避免正在阅读的内容被推出视口下沿（看似"滑到输入框背后"）。 */
+  composerHeight: number | null;
 
   toggleSidebar: () => void;
   toggleWorkspace: () => void;
@@ -53,6 +57,8 @@ interface LayoutState {
   setSidebarWidth: (w: number) => void;
   /** 设置工作区面板宽度（自动 clamp 并持久化） */
   setWorkspaceWidth: (w: number) => void;
+  /** 设置输入框高度（拖拽把手调用；不持久化） */
+  setComposerHeight: (h: number | null) => void;
 }
 
 export const useLayoutStore = create<LayoutState>((set) => ({
@@ -60,6 +66,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   sidebarCollapsed: false,
   workspaceVisible: true,
   workspaceWidth: loadWidth(LS_WORKSPACE, WORKSPACE_DEFAULT, WORKSPACE_MIN, WORKSPACE_MAX),
+  composerHeight: null,
 
   toggleSidebar: () =>
     set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -75,4 +82,5 @@ export const useLayoutStore = create<LayoutState>((set) => ({
     saveWidth(LS_WORKSPACE, clamped);
     set({ workspaceWidth: clamped });
   },
+  setComposerHeight: (h) => set({ composerHeight: h }),
 }));
