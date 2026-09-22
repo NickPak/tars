@@ -82,6 +82,7 @@ export default function ChatInput() {
 
 
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const activeId = useChatStore((s) => s.activeId);
   const send = useChatStore((s) => s.send);
   const cancel = useChatStore((s) => s.cancel);
   const supportsImages = useChatStore((s) => s.model?.supportsImages ?? false);
@@ -260,7 +261,7 @@ export default function ChatInput() {
               <ToolbarBtn title="行内公式（$...$）" onClick={() => editor.chain().focus().insertInlineMath({ latex: "" }).run()}><Sigma size={14} /></ToolbarBtn>
               <ToolbarBtn title="公式块（$$...$$）" onClick={() => editor.chain().focus().insertBlockMath({ latex: "" }).run()}><Radical size={14} /></ToolbarBtn>
               <span className="composer-toolbar-sep" />
-              <ToolbarBtn title="画板：独立窗口绘制草图并插入" onClick={() => void agentApi.openCanvasWindow()}><Palette size={14} /></ToolbarBtn>
+              <ToolbarBtn title="画板：独立窗口绘制草图并插入（内容随会话暂存，可续编）" onClick={() => void agentApi.openCanvasWindow(activeId ?? "")}><Palette size={14} /></ToolbarBtn>
               {supportsImages && (
                 <>
                   <span className="composer-toolbar-sep" />

@@ -317,8 +317,17 @@ export const agentApi = {
   openLibraryBrowser: async (siteUrl: string): Promise<void> =>
     await CanvasService.OpenLibraryBrowser(siteUrl),
 
-  /** 打开独立画板窗口（重复调用聚焦既有窗口） */
-  openCanvasWindow: async (): Promise<void> => await CanvasService.OpenCanvasWindow(),
+  /** 打开独立画板窗口（重复调用聚焦既有窗口；sessionID 决定草稿归属） */
+  openCanvasWindow: async (sessionID: string): Promise<void> =>
+    await CanvasService.OpenCanvasWindow(sessionID),
+
+  /** 读取会话的画板草稿 JSON（无草稿返回空串） */
+  getCanvasDraft: async (sessionID: string): Promise<string> =>
+    await CanvasService.GetCanvasDraft(sessionID),
+
+  /** 保存会话的画板草稿 JSON（防抖写盘 / pagehide 兜底） */
+  setCanvasDraft: async (sessionID: string, json: string): Promise<void> =>
+    await CanvasService.SetCanvasDraft(sessionID, json),
 
   /** 画板窗口产出：PNG dataURL → 广播 canvas:insert-image 给主窗口 */
   canvasInsertImage: async (dataUrl: string): Promise<void> =>
@@ -327,6 +336,10 @@ export const agentApi = {
   /** 画板窗口产出：Mermaid 代码 → 广播 canvas:insert-mermaid 给主窗口 */
   canvasInsertMermaid: async (code: string): Promise<void> =>
     await CanvasService.CanvasInsertMermaid(code),
+
+  /** 另存画板场景为 .excalidraw 文件（保存对话框；取消返回空串） */
+  exportCanvasScene: async (json: string): Promise<string> =>
+    await CanvasService.ExportCanvasScene(json),
 
   /** 提交一次询问/审批的用户答复（requestID 即工具调用 ID） */
   answerAskUser: async (

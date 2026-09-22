@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI, ExcalidrawInitialDataState, LibraryItems } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
-import { X, ImageDown, Workflow } from "lucide-react";
+import { ImageDown, Workflow, Save, FileDown } from "lucide-react";
 import { Events } from "@wailsio/runtime";
 import { sceneToMermaid } from "../utils/excalidrawMermaid";
 import type { ConvertResult } from "../utils/excalidrawMermaid";
@@ -16,15 +16,16 @@ import { agentApi } from "../services/agentApi";
  */
 export default function CanvasBoard({
   canInsertImage,
+  draftSid,
   onInsert,
   onInsertMermaid,
-  onClose,
 }: {
   /** 当前模型是否声明图片能力（false 时导出按钮禁用并提示） */
   canInsertImage: boolean;
+  /** 草稿归属会话 ID：非空时启用草稿持久化（关窗重开恢复内容） */
+  draftSid?: string;
   onInsert: (dataUrl: string) => void;
   onInsertMermaid: (mermaid: string) => void;
-  onClose: () => void;
 }) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -40,15 +41,132 @@ export default function CanvasBoard({
     },
     [],
   );
+  // 画板草稿持久化（draftSid 存在时启用）：按会话存到会话目录的
+  // canvas_draft.json，关窗重开可增量续编。onChange 800ms 防抖写盘，
+  // pagehide 兜底冲掉最后一次未落盘的编辑。
   const loadLibrary = async (): Promise<ExcalidrawInitialDataState | null> => {
     const json = await agentApi.getCanvasLibrary().catch(() => "");
-    if (!json) return null;
+    let libraryItems: LibraryItems | undefined;
+    if (json) {
+      try {
+        libraryItems = JSON.parse(json) as LibraryItems;
+      } catch {
+        libraryItems = undefined; // 磁盘素材损坏时按空库工作（不影响画板主流程）
+      }
+    }
+    if (!draftSid) return libraryItems ? { libraryItems } : null;
+    const draftJson = await agentApi.getCanvasDraft(draftSid).catch(() => "");
+    if (!draftJson) return libraryItems ? { libraryItems } : null;
     try {
-      return { libraryItems: JSON.parse(json) as LibraryItems };
+      const draft = JSON.parse(draftJson) as {
+        elements?: unknown[];
+        files?: unknown;
+        appState?: { scrollX?: number; scrollY?: number; zoom?: { value: number } };
+      };
+      return {
+        libraryItems,
+        elements: (draft.elements ?? []) as ExcalidrawInitialDataState["elements"],
+        files: draft.files as ExcalidrawInitialDataState["files"],
+        appState: draft.appState as ExcalidrawInitialDataState["appState"],
+      };
     } catch {
-      return null; // 磁盘素材损坏时按空库工作（不影响画板主流程）
+      return libraryItems ? { libraryItems } : null; // 草稿损坏按空白画布工作
     }
   };
+
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestDraftRef = useRef<string>("");
+  const saveDraft = (elements: unknown, appState: unknown, files: unknown) => {
+    if (!draftSid) return;
+    const st = appState as { scrollX?: number; scrollY?: number; zoom?: { value: number } };
+    latestDraftRef.current = JSON.stringify({
+      elements,
+      files,
+      appState: { scrollX: st.scrollX, scrollY: st.scrollY, zoom: st.zoom },
+    });
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      void agentApi.setCanvasDraft(draftSid, latestDraftRef.current).catch(() => {});
+    }, 800);
+  };
+  // 显式保存（按钮 / Ctrl+S）：立即冲掉防抖落盘并给反馈
+  const saveNow = () => {
+    if (!draftSid) return;
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
+    if (!latestDraftRef.current) {
+      setImportNote("画布还没有内容");
+      setTimeout(() => setImportNote(null), 2000);
+      return;
+    }
+    void agentApi
+      .setCanvasDraft(draftSid, latestDraftRef.current)
+      .then(() => {
+        setImportNote("草稿已保存");
+        setTimeout(() => setImportNote(null), 2000);
+      })
+      .catch((err) => {
+        setImportNote(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+        setTimeout(() => setImportNote(null), 4000);
+      });
+  };
+  // 另存为（Ctrl+Shift+S）：导出 .excalidraw 场景文件（Excalidraw
+  // 原生格式，可分享/备份/再导入），走系统保存对话框
+  const saveAs = () => {
+    const api = apiRef.current;
+    if (!api) return;
+    const scene = JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      elements: api.getSceneElements(),
+      appState: api.getAppState(),
+      files: api.getFiles(),
+    });
+    void agentApi
+      .exportCanvasScene(scene)
+      .then((path) => {
+        if (!path) return; // 用户取消
+        setImportNote(`已另存为 ${path}`);
+        setTimeout(() => setImportNote(null), 4000);
+      })
+      .catch((err) => {
+        setImportNote(`另存失败：${err instanceof Error ? err.message : String(err)}`);
+        setTimeout(() => setImportNote(null), 4000);
+      });
+  };
+
+  // 快捷键（桌面惯例）：Ctrl+S 静默保存草稿到会话目录；
+  // Ctrl+Shift+S 另存为对话框导出 .excalidraw 文件。
+  // 捕获阶段拦截——Excalidraw 原生也监听 Ctrl+S（弹保存对话框），
+  // 需要抢在它前面并阻断传播。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) saveAs();
+      else saveNow();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+
+  // 关窗兜底：防抖窗口期内最后一次编辑可能未落盘
+  useEffect(() => {
+    if (!draftSid) return;
+    const flush = () => {
+      if (latestDraftRef.current) {
+        void agentApi.setCanvasDraft(draftSid, latestDraftRef.current).catch(() => {});
+      }
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [draftSid]);
   const onLibraryChange = (items: unknown) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -157,8 +275,7 @@ export default function CanvasBoard({
         r.onerror = () => reject(r.error);
         r.readAsDataURL(blob);
       });
-      onInsert(dataUrl);
-      onClose();
+      onInsert(dataUrl); // 关窗由调用方（CanvasWindow 的回调）负责
     } finally {
       setExporting(false);
     }
@@ -170,8 +287,21 @@ export default function CanvasBoard({
         <span className="canvas-title">画板</span>
         <span className="canvas-hint">{importNote ?? "绘制完成后导出为图片或 Mermaid 代码插入输入框"}</span>
         <div className="canvas-actions">
-          <button className="dialog-btn secondary" onClick={onClose}>
-            <X size={14} /> 取消
+          {draftSid && (
+            <button
+              className="dialog-btn secondary"
+              title="保存草稿到会话目录（Ctrl+S）；Ctrl+Shift+S 另存为 .excalidraw 文件"
+              onClick={saveNow}
+            >
+              <Save size={14} /> 保存
+            </button>
+          )}
+          <button
+            className="dialog-btn secondary"
+            title="另存为 .excalidraw 场景文件（Ctrl+Shift+S），可分享/备份/再导入"
+            onClick={saveAs}
+          >
+            <FileDown size={14} /> 另存为
           </button>
           <button
             className="dialog-btn secondary"
@@ -184,8 +314,7 @@ export default function CanvasBoard({
             onClick={() => {
               const latest = convRef.current; // 点击取最新转换结果（state 有渲染延迟）
               if (!latest.ok) return;
-              onInsertMermaid(latest.mermaid);
-              onClose();
+              onInsertMermaid(latest.mermaid); // 关窗由调用方负责
             }}
           >
             <Workflow size={14} /> 插入 Mermaid 到输入框
@@ -210,7 +339,8 @@ export default function CanvasBoard({
           theme="dark"
           initialData={loadLibrary}
           onLibraryChange={onLibraryChange}
-          onChange={(els) => {
+          onChange={(els, appState, files) => {
+            saveDraft(els, appState, files);
             const next = sceneToMermaid(els.filter((e) => !e.isDeleted));
             convRef.current = next;
             // 仅结果实质变化才驱动重渲染（详见 conv state 注释）

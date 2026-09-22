@@ -13,7 +13,9 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"tars/internal/boot"
 	"tars/internal/config"
+	"tars/internal/session"
 )
 
 // CanvasService —— 画板素材库（Excalidraw Library）的持久化。
@@ -154,13 +156,17 @@ const libraryBrowserWindowName = "excalidraw-library"
 const canvasWindowName = "tars-canvas"
 
 // OpenCanvasWindow 在独立窗口打开画板（加载本应用 ?view=canvas 极简视图，
-// 由前端 CanvasWindow 全屏渲染 Excalidraw）。重复打开时聚焦既有窗口。
-func (s *CanvasService) OpenCanvasWindow() error {
+// 由前端 CanvasWindow 全屏渲染 Excalidraw）。重复打开时聚焦既有窗口；
+// 若来自不同会话则 SetURL 换绑（页面重载后载入新会话的草稿，旧草稿
+// 已由防抖落盘保住）。
+func (s *CanvasService) OpenCanvasWindow(sessionID string) error {
 	app := application.Get()
 	if app == nil {
 		return fmt.Errorf("应用尚未就绪")
 	}
+	url := "/?view=canvas&sid=" + url.QueryEscape(sessionID)
 	if win, ok := app.Window.GetByName(canvasWindowName); ok {
+		win.SetURL(url)
 		win.Show().Focus()
 		return nil
 	}
@@ -169,8 +175,60 @@ func (s *CanvasService) OpenCanvasWindow() error {
 		Title:  "TARS 画板",
 		Width:  1200,
 		Height: 840,
-		URL:    "/?view=canvas",
+		URL:    url,
 	})
+	return nil
+}
+
+// draftPath 会话画板草稿文件（随会话生命周期，删会话即清理）。
+func draftPath(sessionID string) (string, error) {
+	proj, ok := boot.GetApp().FindProject(sessionID)
+	if !ok {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+	return filepath.Join(session.GetSessionDir(proj.GetProjectDir(), sessionID), "canvas_draft.json"), nil
+}
+
+// GetCanvasDraft 读取会话的画板草稿 JSON（不存在返回空串）。
+func (s *CanvasService) GetCanvasDraft(sessionID string) (string, error) {
+	path, err := draftPath(sessionID)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read canvas draft: %w", err)
+	}
+	return string(data), nil
+}
+
+// SetCanvasDraft 保存会话的画板草稿（JSON object，含 elements/files/
+// 视口 appState；原子写；20MB 上限——图片走 files dataURL 可能较大）。
+func (s *CanvasService) SetCanvasDraft(sessionID string, jsonStr string) error {
+	if len(jsonStr) > 20<<20 {
+		return fmt.Errorf("草稿过大（>20MB）")
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &probe); err != nil {
+		return fmt.Errorf("canvas draft must be a JSON object: %w", err)
+	}
+	path, err := draftPath(sessionID)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(jsonStr), 0644); err != nil {
+		return fmt.Errorf("write canvas draft: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("commit canvas draft: %w", err)
+	}
 	return nil
 }
 
@@ -183,6 +241,39 @@ func (s *CanvasService) CanvasInsertImage(dataURL string) error {
 		app.Event.Emit("canvas:insert-image", dataURL)
 	}
 	return nil
+}
+
+// ExportCanvasScene 另存为（Ctrl+Shift+S）：保存对话框导出 .excalidraw
+// 场景文件（可分享/备份，Excalidraw 原生格式）。返回保存路径，取消返回空串。
+func (s *CanvasService) ExportCanvasScene(jsonStr string) (string, error) {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &probe); err != nil {
+		return "", fmt.Errorf("scene must be a JSON object: %w", err)
+	}
+	app := application.Get()
+	if app == nil {
+		return "", fmt.Errorf("应用尚未就绪")
+	}
+	target, err := app.Dialog.SaveFile().
+		SetMessage("另存画板场景").
+		SetFilename("canvas.excalidraw").
+		AddFilter("Excalidraw 场景", "*.excalidraw").
+		SetButtonText("保存").
+		CanCreateDirectories(true).
+		PromptForSingleSelection()
+	if err != nil {
+		if isDialogCancelled(err) {
+			return "", nil // 用户取消
+		}
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if !strings.HasSuffix(target, ".excalidraw") {
+		target += ".excalidraw"
+	}
+	if err := os.WriteFile(target, []byte(jsonStr), 0644); err != nil {
+		return "", fmt.Errorf("write scene file: %w", err)
+	}
+	return target, nil
 }
 
 // CanvasInsertMermaid 画板窗口产出 Mermaid 代码 → 广播给主窗口插入输入框。

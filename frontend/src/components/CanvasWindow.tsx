@@ -14,6 +14,9 @@ import { agentApi } from "../services/agentApi";
  */
 export default function CanvasWindow() {
   const [supportsImages, setSupportsImages] = useState(false);
+  // 草稿归属会话：打开窗口时由主窗口经 URL 传入；换会话重开时
+  // 后端 SetURL 触发整页重载，此处按最新 URL 取
+  const sid = new URLSearchParams(window.location.search).get("sid") ?? undefined;
 
   useEffect(() => {
     void agentApi
@@ -28,13 +31,13 @@ export default function CanvasWindow() {
     <div className="canvas-window">
       <CanvasBoard
         canInsertImage={supportsImages}
+        draftSid={sid}
         onInsert={(dataUrl) => {
           void agentApi.canvasInsertImage(dataUrl).finally(closeWindow);
         }}
         onInsertMermaid={(mermaid) => {
           void agentApi.canvasInsertMermaid(mermaid).finally(closeWindow);
         }}
-        onClose={closeWindow}
       />
     </div>
   );

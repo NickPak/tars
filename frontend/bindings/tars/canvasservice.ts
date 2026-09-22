@@ -28,6 +28,21 @@ export function CanvasInsertMermaid(code: string): $CancellablePromise<void> {
 }
 
 /**
+ * ExportCanvasScene 另存为（Ctrl+Shift+S）：保存对话框导出 .excalidraw
+ * 场景文件（可分享/备份，Excalidraw 原生格式）。返回保存路径，取消返回空串。
+ */
+export function ExportCanvasScene(jsonStr: string): $CancellablePromise<string> {
+    return $Call.ByID(1458492969, jsonStr);
+}
+
+/**
+ * GetCanvasDraft 读取会话的画板草稿 JSON（不存在返回空串）。
+ */
+export function GetCanvasDraft(sessionID: string): $CancellablePromise<string> {
+    return $Call.ByID(2215496290, sessionID);
+}
+
+/**
  * GetCanvasLibrary 返回素材库 JSON（Excalidraw LibraryItems 数组）。
  * 文件不存在返回 ""（前端视为空库）。
  */
@@ -48,10 +63,12 @@ export function ImportCanvasLibrary(sourceURL: string): $CancellablePromise<[str
 
 /**
  * OpenCanvasWindow 在独立窗口打开画板（加载本应用 ?view=canvas 极简视图，
- * 由前端 CanvasWindow 全屏渲染 Excalidraw）。重复打开时聚焦既有窗口。
+ * 由前端 CanvasWindow 全屏渲染 Excalidraw）。重复打开时聚焦既有窗口；
+ * 若来自不同会话则 SetURL 换绑（页面重载后载入新会话的草稿，旧草稿
+ * 已由防抖落盘保住）。
  */
-export function OpenCanvasWindow(): $CancellablePromise<void> {
-    return $Call.ByID(1085437633);
+export function OpenCanvasWindow(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(1085437633, sessionID);
 }
 
 /**
@@ -63,6 +80,14 @@ export function OpenCanvasWindow(): $CancellablePromise<void> {
  */
 export function OpenLibraryBrowser(siteURL: string): $CancellablePromise<void> {
     return $Call.ByID(1781691816, siteURL);
+}
+
+/**
+ * SetCanvasDraft 保存会话的画板草稿（JSON object，含 elements/files/
+ * 视口 appState；原子写；20MB 上限——图片走 files dataURL 可能较大）。
+ */
+export function SetCanvasDraft(sessionID: string, jsonStr: string): $CancellablePromise<void> {
+    return $Call.ByID(3524040262, sessionID, jsonStr);
 }
 
 /**
