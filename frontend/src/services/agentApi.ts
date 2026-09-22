@@ -317,6 +317,17 @@ export const agentApi = {
   openLibraryBrowser: async (siteUrl: string): Promise<void> =>
     await CanvasService.OpenLibraryBrowser(siteUrl),
 
+  /** 打开独立画板窗口（重复调用聚焦既有窗口） */
+  openCanvasWindow: async (): Promise<void> => await CanvasService.OpenCanvasWindow(),
+
+  /** 画板窗口产出：PNG dataURL → 广播 canvas:insert-image 给主窗口 */
+  canvasInsertImage: async (dataUrl: string): Promise<void> =>
+    await CanvasService.CanvasInsertImage(dataUrl),
+
+  /** 画板窗口产出：Mermaid 代码 → 广播 canvas:insert-mermaid 给主窗口 */
+  canvasInsertMermaid: async (code: string): Promise<void> =>
+    await CanvasService.CanvasInsertMermaid(code),
+
   /** 提交一次询问/审批的用户答复（requestID 即工具调用 ID） */
   answerAskUser: async (
     requestId: string,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { ExcalidrawImperativeAPI, ExcalidrawInitialDataState, LibraryItems } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 import { X, ImageDown, Workflow } from "lucide-react";
 import { Events } from "@wailsio/runtime";
@@ -40,11 +40,11 @@ export default function CanvasBoard({
     },
     [],
   );
-  const loadLibrary = async () => {
+  const loadLibrary = async (): Promise<ExcalidrawInitialDataState | null> => {
     const json = await agentApi.getCanvasLibrary().catch(() => "");
     if (!json) return null;
     try {
-      return { libraryItems: JSON.parse(json) };
+      return { libraryItems: JSON.parse(json) as LibraryItems };
     } catch {
       return null; // 磁盘素材损坏时按空库工作（不影响画板主流程）
     }

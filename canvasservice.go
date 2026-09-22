@@ -150,6 +150,52 @@ func (s *CanvasService) ImportCanvasLibrary(sourceURL string) (string, int, erro
 // libraryBrowserWindowName 素材库浏览窗口的固定名（重复打开时聚焦复用）。
 const libraryBrowserWindowName = "excalidraw-library"
 
+// canvasWindowName 画板窗口的固定名（重复打开时聚焦复用）。
+const canvasWindowName = "tars-canvas"
+
+// OpenCanvasWindow 在独立窗口打开画板（加载本应用 ?view=canvas 极简视图，
+// 由前端 CanvasWindow 全屏渲染 Excalidraw）。重复打开时聚焦既有窗口。
+func (s *CanvasService) OpenCanvasWindow() error {
+	app := application.Get()
+	if app == nil {
+		return fmt.Errorf("应用尚未就绪")
+	}
+	if win, ok := app.Window.GetByName(canvasWindowName); ok {
+		win.Show().Focus()
+		return nil
+	}
+	app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:   canvasWindowName,
+		Title:  "TARS 画板",
+		Width:  1200,
+		Height: 840,
+		URL:    "/?view=canvas",
+	})
+	return nil
+}
+
+// CanvasInsertImage 画板窗口产出 PNG（dataURL）→ 广播给主窗口插入输入框。
+func (s *CanvasService) CanvasInsertImage(dataURL string) error {
+	if !strings.HasPrefix(dataURL, "data:image/") {
+		return fmt.Errorf("非法的图片数据")
+	}
+	if app := application.Get(); app != nil {
+		app.Event.Emit("canvas:insert-image", dataURL)
+	}
+	return nil
+}
+
+// CanvasInsertMermaid 画板窗口产出 Mermaid 代码 → 广播给主窗口插入输入框。
+func (s *CanvasService) CanvasInsertMermaid(code string) error {
+	if strings.TrimSpace(code) == "" {
+		return fmt.Errorf("内容为空")
+	}
+	if app := application.Get(); app != nil {
+		app.Event.Emit("canvas:insert-mermaid", code)
+	}
+	return nil
+}
+
 // OpenLibraryBrowser 在应用内窗口打开 Excalidraw 素材站点。
 // 一键安装链路的另一半：站点上点 "Add to Excalidraw" 会把窗口重定向到
 // <应用origin>/#addLibrary=<url>&token=...——外链在系统浏览器里不可达，

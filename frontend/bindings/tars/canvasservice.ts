@@ -14,6 +14,20 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
+ * CanvasInsertImage 画板窗口产出 PNG（dataURL）→ 广播给主窗口插入输入框。
+ */
+export function CanvasInsertImage(dataURL: string): $CancellablePromise<void> {
+    return $Call.ByID(4260962165, dataURL);
+}
+
+/**
+ * CanvasInsertMermaid 画板窗口产出 Mermaid 代码 → 广播给主窗口插入输入框。
+ */
+export function CanvasInsertMermaid(code: string): $CancellablePromise<void> {
+    return $Call.ByID(3785857107, code);
+}
+
+/**
  * GetCanvasLibrary 返回素材库 JSON（Excalidraw LibraryItems 数组）。
  * 文件不存在返回 ""（前端视为空库）。
  */
@@ -30,6 +44,14 @@ export function GetCanvasLibrary(): $CancellablePromise<string> {
  */
 export function ImportCanvasLibrary(sourceURL: string): $CancellablePromise<[string, number]> {
     return $Call.ByID(3310472743, sourceURL);
+}
+
+/**
+ * OpenCanvasWindow 在独立窗口打开画板（加载本应用 ?view=canvas 极简视图，
+ * 由前端 CanvasWindow 全屏渲染 Excalidraw）。重复打开时聚焦既有窗口。
+ */
+export function OpenCanvasWindow(): $CancellablePromise<void> {
+    return $Call.ByID(1085437633);
 }
 
 /**
