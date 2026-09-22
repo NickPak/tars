@@ -1147,6 +1147,28 @@ function AgentPage({
           />
         </Field>
         <Field
+          label="迭代超时（秒）"
+          hint="单次模型调用（一次迭代，含流式响应）的最大时长，默认 120 秒；超时后轮终止并报错。复杂推理或慢速端点可调大。"
+        >
+          <input
+            className="settings-input small"
+            type="number"
+            min={10}
+            step={10}
+            // 线缆格式是纳秒（Go time.Duration），UI 以秒呈现
+            value={Math.round(draft.agent.iterationTimeout / 1e9) || ""}
+            onChange={(e) =>
+              update((d) => ({
+                ...d,
+                agent: {
+                  ...d.agent,
+                  iterationTimeout: Math.max(10, e.target.valueAsNumber || 10) * 1e9,
+                },
+              }))
+            }
+          />
+        </Field>
+        <Field
           label="上下文压缩阈值"
           hint="上下文使用占比超过该值时触发历史压缩（归档早期轮次为摘要条目，原始记录保留在磁盘）。"
         >
