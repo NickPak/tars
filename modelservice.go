@@ -130,7 +130,7 @@ func (s *ModelService) persistConfigFile() error {
 		providers := make(map[string]*llm.ProviderConfig, len(llmCopy.Providers))
 		for id, p := range llmCopy.Providers {
 			cp := *p
-			cp.ApiKey, cp.AccessKey, cp.SecretKey = "", "", ""
+			cp.ApiKey = ""
 			providers[id] = &cp
 		}
 		llmCopy.Providers = providers

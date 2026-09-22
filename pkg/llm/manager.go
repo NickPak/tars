@@ -14,7 +14,6 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/gemini"
 	"github.com/cloudwego/eino-ext/components/model/ollama"
 	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino-ext/components/model/qianfan"
 	"github.com/cloudwego/eino-ext/components/model/qwen"
 	"github.com/cloudwego/eino/components/model"
 	arkmodel "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
@@ -155,8 +154,6 @@ func buildOne(ctx context.Context, cfg *Config, m *ModelConfig) (model.ToolCalli
 		return buildArk(ctx, p, m)
 	case ProviderOllama:
 		return buildOllama(ctx, p, m)
-	case ProviderQianfan:
-		return buildQianfan(ctx, p, m)
 	default:
 		return nil, fmt.Errorf("供应商 %q 的类型 %q 不支持", p.ID, p.Type)
 	}
@@ -171,7 +168,7 @@ func f32p(v *float64) *float32 {
 	return &f
 }
 
-// f32pClamped 同 f32p，但收敛到供应商文档的更窄区间（如 claude/qianfan
+// f32pClamped 同 f32p，但收敛到供应商文档的更窄区间（如 claude
 // 的 [0,1]）——全局 Validate 放行 [0,2]，超界值在构建期收敛而非报错。
 func f32pClamped(v *float64, hi float32) *float32 {
 	f := f32p(v)
@@ -342,21 +339,4 @@ func buildOllama(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 		cfg.Options = &ollama.Options{Temperature: float32(*m.Temperature)}
 	}
 	return ollama.NewChatModel(ctx, cfg)
-}
-
-func buildQianfan(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
-	// 千帆 SDK 走全局单例配置，构建前注入 AK/SK
-	if p.AccessKey == "" || p.SecretKey == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 Access Key / Secret Key（qianfan 类型必填）", p.ID)
-	}
-	qianfan.GetQianfanSingletonConfig().AccessKey = p.AccessKey
-	qianfan.GetQianfanSingletonConfig().SecretKey = p.SecretKey
-	cfg := &qianfan.ChatModelConfig{
-		Model:       m.ModelId,
-		Temperature: f32pClamped(m.Temperature, 1.0), // 千帆区间 (0,1]，组件默认 0.95
-	}
-	if m.MaxTokens > 0 {
-		cfg.MaxCompletionTokens = &m.MaxTokens
-	}
-	return qianfan.NewChatModel(ctx, cfg)
 }

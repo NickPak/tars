@@ -453,51 +453,46 @@ const PROVIDER_TYPES: {
   value: string;
   label: string;
   needApiKey: boolean;
-  needAkSk: boolean;
   needBaseUrl: boolean;
   baseUrlHint: string;
   hasRegion: boolean;
   hasCacheTTL: boolean;
 }[] = [
   {
-    value: "gemini", label: "Gemini", needApiKey: true, needAkSk: false,
+    value: "gemini", label: "Gemini", needApiKey: true,
     needBaseUrl: false, baseUrlHint: "", hasRegion: false, hasCacheTTL: false,
   },
   {
-    value: "openai", label: "OpenAI 兼容", needApiKey: true, needAkSk: false,
+    value: "openai", label: "OpenAI 兼容", needApiKey: true,
     needBaseUrl: true,
     baseUrlHint: "必填。覆盖 OpenAI 官方与所有兼容端点（Moonshot/OpenRouter/本地 vLLM 等），如 https://api.openai.com/v1",
     hasRegion: false, hasCacheTTL: false,
   },
   {
-    value: "claude", label: "Claude", needApiKey: true, needAkSk: false,
+    value: "claude", label: "Claude", needApiKey: true,
     needBaseUrl: false, baseUrlHint: "可选，自定义 Anthropic 端点",
     hasRegion: false, hasCacheTTL: true,
   },
   {
-    value: "deepseek", label: "DeepSeek", needApiKey: true, needAkSk: false,
+    value: "deepseek", label: "DeepSeek", needApiKey: true,
     needBaseUrl: false, baseUrlHint: "可选，默认官方端点",
     hasRegion: false, hasCacheTTL: false,
   },
   {
-    value: "qwen", label: "Qwen（百炼）", needApiKey: true, needAkSk: false,
+    value: "qwen", label: "Qwen（百炼）", needApiKey: true,
     needBaseUrl: true,
     baseUrlHint: "必填，如 https://dashscope.aliyuncs.com/compatible-mode/v1",
     hasRegion: false, hasCacheTTL: false,
   },
   {
-    value: "ark", label: "火山方舟 ARK", needApiKey: true, needAkSk: false,
+    value: "ark", label: "火山方舟 ARK", needApiKey: true,
     needBaseUrl: false, baseUrlHint: "可选，默认官方端点",
     hasRegion: true, hasCacheTTL: false,
   },
   {
-    value: "ollama", label: "Ollama（本地）", needApiKey: false, needAkSk: false,
+    value: "ollama", label: "Ollama（本地）", needApiKey: false,
     needBaseUrl: false, baseUrlHint: "可选，默认 http://localhost:11434",
     hasRegion: false, hasCacheTTL: false,
-  },
-  {
-    value: "qianfan", label: "百度千帆", needApiKey: false, needAkSk: true,
-    needBaseUrl: false, baseUrlHint: "", hasRegion: false, hasCacheTTL: false,
   },
 ];
 
@@ -563,7 +558,6 @@ function ModelPage({
         ...llm.providers,
         {
           id, type: "openai", apiKey: "", baseUrl: "",
-          accessKey: "", secretKey: "",
           region: "", cacheTTL: "",
         },
       ],
@@ -944,15 +938,11 @@ function ModelPage({
                 <span className="settings-item-name">{p.id}</span>
                 <span className="settings-item-sub">
                   {providerMeta(p.type).label}
-                  {providerMeta(p.type).needAkSk
-                    ? p.accessKey && p.secretKey
-                      ? " · 已配置 AK/SK"
-                      : " · 未配置 AK/SK"
-                    : providerMeta(p.type).needApiKey
-                      ? p.apiKey
-                        ? " · 已配置 Key"
-                        : " · 未配置 Key"
-                      : ""}
+                  {providerMeta(p.type).needApiKey
+                    ? p.apiKey
+                      ? " · 已配置 Key"
+                      : " · 未配置 Key"
+                    : ""}
                 </span>
                 <button
                   className="settings-item-del"
@@ -1001,27 +991,6 @@ function ModelPage({
                         onChange={(v) => patchProvider(idx, { apiKey: v })}
                       />
                     </Field>
-                  )}
-                  {providerMeta(p.type).needAkSk && (
-                    <>
-                      <Field
-                        label="Access Key"
-                        hint={p.accessKey ? "已配置，点击眼睛图标查看明文。" : "千帆平台 AK。"}
-                      >
-                        <SecretInput
-                          value={p.accessKey}
-                          placeholder="输入 Access Key"
-                          onChange={(v) => patchProvider(idx, { accessKey: v })}
-                        />
-                      </Field>
-                      <Field label="Secret Key" hint="千帆平台 SK。">
-                        <SecretInput
-                          value={p.secretKey}
-                          placeholder="输入 Secret Key"
-                          onChange={(v) => patchProvider(idx, { secretKey: v })}
-                        />
-                      </Field>
-                    </>
                   )}
                   <Field label="Base URL" hint={providerMeta(p.type).baseUrlHint}>
                     <input

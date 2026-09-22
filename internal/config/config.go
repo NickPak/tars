@@ -128,9 +128,8 @@ func SaveAppConfigFile(cfg *AppConfig) error {
 
 	if cfg.LLM != nil {
 		// llm 段为 map 结构，键级合并成本高且易错，改为整段替换：
-		// 段内注释会丢失（段外注释保留）；密钥类字段（apiKey/accessKey/
-		// secretKey）为空时按供应商 ID（map key）沿用文件中的原值
-		//（保留 ${ENV_VAR} 引用）。
+		// 段内注释会丢失（段外注释保留）；密钥字段（apiKey）为空时按
+		// 供应商 ID（map key）沿用文件中的原值（保留 ${ENV_VAR} 引用）。
 		llmCopy := *cfg.LLM
 		oldKeys := readFileProviderKeys(m)
 		providers := make(map[string]*llm.ProviderConfig, len(llmCopy.Providers))
@@ -139,12 +138,6 @@ func SaveAppConfigFile(cfg *AppConfig) error {
 			saved := oldKeys[id]
 			if cp.ApiKey == "" {
 				cp.ApiKey = saved["apiKey"]
-			}
-			if cp.AccessKey == "" {
-				cp.AccessKey = saved["accessKey"]
-			}
-			if cp.SecretKey == "" {
-				cp.SecretKey = saved["secretKey"]
 			}
 			providers[id] = &cp
 		}

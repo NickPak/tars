@@ -264,14 +264,10 @@ export interface CompressionMark {
 /** 供应商配置（llm.ProviderConfig） */
 export interface ProviderConfig {
   id: string;
-  /** 供应商类型（对应 eino 原生组件）：gemini | openai | claude | deepseek | qwen | ark | ollama | qianfan */
+  /** 供应商类型（对应 eino 原生组件）：gemini | openai | claude | deepseek | qwen | ark | ollama */
   type: string;
   apiKey: string;
   baseUrl: string;
-  /** 千帆 Access Key */
-  accessKey: string;
-  /** 千帆 Secret Key */
-  secretKey: string;
   /** 火山引擎区域（ark），默认 cn-beijing */
   region: string;
   /** Claude 自动前缀缓存："5m" | "1h" | "" 关闭 */

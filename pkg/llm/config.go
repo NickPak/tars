@@ -14,7 +14,6 @@ const (
 	ProviderQwen     = "qwen"    // 阿里百炼 DashScope
 	ProviderArk      = "ark"     // 火山引擎方舟（豆包等）
 	ProviderOllama   = "ollama"  // 本地 Ollama 服务（无需 API Key）
-	ProviderQianfan  = "qianfan" // 百度千帆（AK/SK 鉴权）
 )
 
 // 模型计量字段的默认值：Validate 期回填，保证下游（压缩阈值判定、状态栏
@@ -48,7 +47,7 @@ var reasoningSummaryValues = map[string]bool{
 func ProviderTypes() []string {
 	return []string{
 		ProviderGemini, ProviderOpenAI, ProviderClaude, ProviderDeepSeek,
-		ProviderQwen, ProviderArk, ProviderOllama, ProviderQianfan,
+		ProviderQwen, ProviderArk, ProviderOllama,
 	}
 }
 
@@ -56,7 +55,7 @@ func ProviderTypes() []string {
 func IsValidProviderType(t string) bool {
 	switch t {
 	case ProviderGemini, ProviderOpenAI, ProviderClaude, ProviderDeepSeek,
-		ProviderQwen, ProviderArk, ProviderOllama, ProviderQianfan:
+		ProviderQwen, ProviderArk, ProviderOllama:
 		return true
 	default:
 		return false
@@ -74,10 +73,6 @@ type ProviderConfig struct {
 
 	// ---- 供应商私有字段 ----
 
-	// AccessKey/SecretKey 千帆（qianfan）类型的 AK/SK 鉴权
-	//（该 SDK 走全局单例配置，构建时注入）。
-	AccessKey string `yaml:"accessKey,omitempty" json:"accessKey,omitempty"`
-	SecretKey string `yaml:"secretKey,omitempty" json:"secretKey,omitempty"`
 	// Region 火山引擎区域（ark 类型），默认 cn-beijing。
 	Region string `yaml:"region,omitempty" json:"region,omitempty"`
 	// CacheTTL Claude 自动前缀缓存（claude 类型）："5m"/"1h"，

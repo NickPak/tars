@@ -50,8 +50,6 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
           type: v.type ?? "",
           apiKey: v.apiKey ?? "",
           baseUrl: v.baseUrl ?? "",
-          accessKey: v.accessKey ?? "",
-          secretKey: v.secretKey ?? "",
           region: v.region ?? "",
           cacheTTL: v.cacheTTL ?? "",
         };

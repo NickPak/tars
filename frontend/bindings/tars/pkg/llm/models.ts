@@ -171,13 +171,6 @@ export class ProviderConfig {
     "baseUrl"?: string;
 
     /**
-     * AccessKey/SecretKey 千帆（qianfan）类型的 AK/SK 鉴权
-     * （该 SDK 走全局单例配置，构建时注入）。
-     */
-    "accessKey"?: string;
-    "secretKey"?: string;
-
-    /**
      * Region 火山引擎区域（ark 类型），默认 cn-beijing。
      */
     "region"?: string;
