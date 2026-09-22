@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
-  PanelRightClose,
   FileText,
   Folder,
   FolderOpen,
@@ -25,12 +24,12 @@ import type { AgentsMdStatus, FileEntry } from "../types";
 
 /**
  * 右侧工作区面板 —— 模仿 DeepSeek-Reasonix 的"项目"面板设计：
- *   - 顶部"项目"标题 + 右上角图标按钮（历史/刷新/折叠全部/更多/添加/收起）
+ *   - 顶部"工作区"标题 + 右上角图标按钮（历史/刷新/折叠全部/更多/添加）
+ *     （收起/展开开关在右侧常驻图标栏，不在本面板内）
  *   - 主体是简洁的文件树，单击展开/折叠，双击用系统默认程序打开
  *   - Agent 生成文件后自动刷新（监听工具执行事件，防抖 300ms）
  */
 export default function WorkspacePanel() {
-  const toggleWorkspace = useLayoutStore((s) => s.toggleWorkspace);
   const workspaceWidth = useLayoutStore((s) => s.workspaceWidth);
   const setWorkspaceWidth = useLayoutStore((s) => s.setWorkspaceWidth);
   const refresh = useWorkspaceStore((s) => s.refresh);
@@ -66,7 +65,7 @@ export default function WorkspacePanel() {
       {/* 左边缘拖拽把手（调整工作区宽度） */}
       <ResizeHandle side="left" width={workspaceWidth} onResize={setWorkspaceWidth} />
       <div className="workspace-section-header">
-        <span className="workspace-section-title">项目</span>
+        <span className="workspace-section-title">工作区</span>
         <div className="workspace-section-actions">
           <button
             className="ws-icon-btn"
@@ -106,13 +105,7 @@ export default function WorkspacePanel() {
               </div>
             )}
           </div>
-          <button
-            className="ws-icon-btn"
-            title="收起面板"
-            onClick={toggleWorkspace}
-          >
-            <PanelRightClose size={16} />
-          </button>
+          {/* 收起/展开开关在右侧常驻图标栏（App.tsx 的 right-rail） */}
         </div>
       </div>
 

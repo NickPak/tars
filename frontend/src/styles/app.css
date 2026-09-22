@@ -17,6 +17,7 @@
   --statusbar-height: 28px;
   --sidebar-width: 280px;
   --workspace-width: 320px;
+  --rail-width: 40px;
 }
 
 * {
@@ -45,29 +46,29 @@ body {
   display: grid;
   height: 100%;
   grid-template-rows: var(--topbar-height) minmax(0, 1fr) var(--statusbar-height);
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--workspace-width);
+  grid-template-columns: var(--rail-width) var(--sidebar-width) minmax(0, 1fr) var(--workspace-width) var(--rail-width);
   grid-template-areas:
-    "topbar    topbar    topbar"
-    "sidebar   chat      workspace"
-    "statusbar statusbar statusbar";
+    "topbar    topbar    topbar    topbar    topbar"
+    "lrail     sidebar   chat      workspace rrail"
+    "statusbar statusbar statusbar statusbar statusbar";
 }
 
 .app.sidebar-collapsed {
-  grid-template-columns: 0 minmax(0, 1fr) var(--workspace-width);
+  grid-template-columns: var(--rail-width) 0 minmax(0, 1fr) var(--workspace-width) var(--rail-width);
 }
 .app.sidebar-collapsed .sidebar {
   display: none;
 }
 
 .app.workspace-hidden {
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 0;
+  grid-template-columns: var(--rail-width) var(--sidebar-width) minmax(0, 1fr) 0 var(--rail-width);
 }
 .app.workspace-hidden .workspace {
   display: none;
 }
 
 .app.sidebar-collapsed.workspace-hidden {
-  grid-template-columns: 0 minmax(0, 1fr) 0;
+  grid-template-columns: var(--rail-width) 0 minmax(0, 1fr) 0 var(--rail-width);
 }
 
 /* ===== 面板拖拽把手 ===== */
@@ -137,13 +138,35 @@ body.resizing-col .resize-handle::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  /* Wails 窗口拖拽 */
-  --wails-drag-frame: drag;
+  /* 窗口拖拽：app-region 走 WebView2 非客户区命中（Windows 无边框），
+     --wails-draggable 为 Wails JS 拖拽兜底 */
+  app-region: drag;
+  --wails-draggable: drag;
 }
 
 /* 拖拽区内的按钮必须退出拖拽命中，否则点击被窗口拖动吃掉 */
 .topbar-drag .topbar-btn {
-  --wails-drag-frame: no-drag;
+  app-region: no-drag;
+  --wails-draggable: no-drag;
+}
+
+/* 窗口控制按钮（Windows 无边框标题栏）：操作区整组退出拖拽命中 */
+.topbar-actions {
+  app-region: no-drag;
+  --wails-draggable: no-drag;
+}
+
+.topbar-win-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 6px 0 10px;
+  background: var(--border);
+}
+
+/* 关闭按钮悬停红——Windows 桌面惯例 */
+.topbar-btn-close:hover {
+  background: #e81123;
+  color: #fff;
 }
 
 .topbar-brand {
@@ -183,6 +206,60 @@ body.resizing-col .resize-handle::after {
   background: rgba(168, 199, 250, 0.12);
 }
 
+/* ===== 左右常驻图标栏 ===== */
+.right-rail,
+.left-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  background: var(--sidebar-bg);
+}
+
+.right-rail {
+  grid-area: rrail;
+  border-left: 1px solid var(--border);
+}
+
+.left-rail {
+  grid-area: lrail;
+  border-right: 1px solid var(--border);
+}
+
+.rail-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.rail-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.rail-btn.active {
+  color: var(--accent);
+  background: rgba(168, 199, 250, 0.12);
+}
+
+/* 图标栏底部固定区（设置等全局入口） */
+.rail-bottom {
+  margin-top: auto;
+  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
 /* ===== 侧边栏 ===== */
 .sidebar {
   grid-area: sidebar;
@@ -193,31 +270,6 @@ body.resizing-col .resize-handle::after {
   padding: 8px 12px;
   gap: 8px;
   overflow: hidden;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  padding: 2px 4px;
-  min-height: 32px;
-}
-
-.sidebar-collapse-btn {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.sidebar-collapse-btn:hover {
-  background: var(--hover);
-  color: var(--text);
 }
 
 .new-chat-btn {
@@ -306,32 +358,6 @@ body.resizing-col .resize-handle::after {
 }
 
 .session-actions button:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.sidebar-footer {
-  flex-shrink: 0;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.sidebar-settings-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 12px;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.sidebar-settings-btn:hover {
   background: var(--hover);
   color: var(--text);
 }

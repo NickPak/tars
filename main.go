@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	goruntime "runtime"
 
 	"tars/pkg/event"
 
@@ -77,6 +78,16 @@ func main() {
 		// 窗口最小尺寸：防止三栏布局（侧边栏+聊天+工作区）被过度挤压
 		MinWidth:  960,
 		MinHeight: 600,
+		// Windows 下无边框：自定义标题栏由前端 TopBar 承担（拖拽区
+		// app-region: drag + 最小化/最大化/关闭按钮）。macOS 保持
+		// HiddenInset 原生样式（红绿灯按钮由系统提供），不受影响。
+		Frameless: goruntime.GOOS == "windows",
+		Windows: application.WindowsWindow{
+			// WebView2 原生非客户区命中测试：让 app-region: drag 的
+			// 拖拽/双击最大化走系统级处理（老 WebView2 静默退化，
+			// 由 --wails-draggable JS 拖拽兜底）。
+			NonClientRegionSupport: true,
+		},
 		Linux: application.LinuxWindow{
 			Icon: iconPNG,
 		},

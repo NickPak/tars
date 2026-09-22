@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Folder, ListTree, Settings } from "lucide-react";
 import Sidebar from "./components/Sidebar";
 import MessageList from "./components/MessageList";
 import ChatInput from "./components/ChatInput";
@@ -19,6 +20,8 @@ export default function App() {
   const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
   const workspaceVisible = useLayoutStore((s) => s.workspaceVisible);
   const workspaceWidth = useLayoutStore((s) => s.workspaceWidth);
+  const toggleWorkspace = useLayoutStore((s) => s.toggleWorkspace);
+  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
 
   useEffect(() => {
     const cleanup = useChatStore.getState().init();
@@ -69,6 +72,28 @@ export default function App() {
       }
     >
       <TopBar />
+      {/* 左侧常驻图标栏：项目列表（文件夹图标）等左侧功能的开关入口 */}
+      <aside className="left-rail">
+        <button
+          className={`rail-btn${sidebarCollapsed ? "" : " active"}`}
+          title={sidebarCollapsed ? "展开项目列表" : "收起项目列表"}
+          aria-label={sidebarCollapsed ? "展开项目列表" : "收起项目列表"}
+          onClick={toggleSidebar}
+        >
+          <Folder size={17} />
+        </button>
+        {/* 底部固定区：设置等全局入口（sidebar 折叠后也始终可达） */}
+        <div className="rail-bottom">
+          <button
+            className="rail-btn"
+            title="设置 (Ctrl+,)"
+            aria-label="设置"
+            onClick={() => useSettingsStore.getState().openSettings()}
+          >
+            <Settings size={17} />
+          </button>
+        </div>
+      </aside>
       <Sidebar />
       <main className="chat-pane">
         <SessionTabs />
@@ -85,6 +110,17 @@ export default function App() {
         <ChatInput />
       </main>
       {workspaceVisible && <WorkspacePanel />}
+      {/* 右侧常驻图标栏：工作区等右侧功能的开关入口 */}
+      <aside className="right-rail">
+        <button
+          className={`rail-btn${workspaceVisible ? " active" : ""}`}
+          title={workspaceVisible ? "收起工作区" : "展开工作区"}
+          aria-label={workspaceVisible ? "收起工作区" : "展开工作区"}
+          onClick={toggleWorkspace}
+        >
+          <ListTree size={17} />
+        </button>
+      </aside>
       <StatusBar />
       <SettingsPanel />
     </div>

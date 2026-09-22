@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, Settings, PanelLeftClose } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useLayoutStore } from "../store/layoutStore";
-import { useSettingsStore } from "../store/settingsStore";
 import { agentApi } from "../services/agentApi";
 import RenameDialog, { ConfirmDialog } from "./Dialog";
 import ResizeHandle from "./ResizeHandle";
@@ -16,7 +15,6 @@ export default function Sidebar() {
   const deleteProject = useChatStore((s) => s.deleteProject);
   const renameProject = useChatStore((s) => s.renameProject);
   const setBackendError = useChatStore((s) => s.setBackendError);
-  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
 
@@ -84,17 +82,7 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <button
-          className="sidebar-collapse-btn"
-          onClick={toggleSidebar}
-          title="收起侧边栏"
-          aria-label="收起侧边栏"
-        >
-          <PanelLeftClose size={18} />
-        </button>
-      </div>
-
+      {/* 收起/展开开关在左侧常驻图标栏（App.tsx 的 left-rail） */}
       <button className="new-chat-btn" onClick={newSession}>
         <Plus size={16} />
         新项目
@@ -144,16 +132,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="sidebar-footer">
-        <button
-          className="sidebar-settings-btn"
-          title="设置 (Ctrl+,)"
-          onClick={() => useSettingsStore.getState().openSettings()}
-        >
-          <Settings size={16} />
-          <span>设置</span>
-        </button>
-      </div>
+      {/* 设置入口固定在左侧常驻图标栏底部（App.tsx 的 left-rail） */}
 
       {/* 项目右键菜单（与会话 Tab 菜单同款交互） */}
       {ctxMenu && ctxItem && (
