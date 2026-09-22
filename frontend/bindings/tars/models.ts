@@ -10,7 +10,7 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as memory$0 from "./pkg/memory/models.js";
 
 /**
- * AgentsMdStatus 是会话工作区的 AGENTS.md 发现状态（项目指令记忆的可发现性入口）。
+ * AgentsMdStatus 是项目工作区的 AGENTS.md 发现状态（项目指令记忆的可发现性入口）。
  */
 export class AgentsMdStatus {
     "exists": boolean;

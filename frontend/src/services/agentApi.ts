@@ -10,6 +10,7 @@ import { Events } from "@wailsio/runtime";
 import {
   AgentService,
   AgentsMDService,
+  CanvasService,
   ConfigService,
   ExportService,
   FileService,
@@ -84,7 +85,7 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
       compressionKeepTurns: cfg.agent?.compressionKeepTurns ?? 6,
       compressionMinBatch: cfg.agent?.compressionMinBatch ?? 8,
       compressionMaxFailures: cfg.agent?.compressionMaxFailures ?? 3,
-      iterationTimeout: cfg.agent?.iterationTimeout ?? 0,
+      iterationTimeout: cfg.agent?.iterationTimeout ?? 120e9, // 默认 120s（线缆格式为纳秒）
     },
     trace: {
       enabled: cfg.trace?.enabled ?? false,
@@ -296,6 +297,25 @@ export const agentApi = {
   /** 保存图片（data URL）到用户选择的位置，返回保存路径（取消返回空串） */
   saveImage: async (dataUrl: string): Promise<string> =>
     await ExportService.SaveImage(dataUrl),
+
+  /** 读取画板素材库（Excalidraw LibraryItems JSON；空串 = 空库） */
+  getCanvasLibrary: async (): Promise<string> => await CanvasService.GetCanvasLibrary(),
+
+  /** 保存画板素材库（JSON 数组字符串） */
+  setCanvasLibrary: async (json: string): Promise<void> =>
+    await CanvasService.SetCanvasLibrary(json),
+
+  /** 从 .excalidrawlib URL 导入素材库（后端代抓，避开 WebView CORS）；
+   *  返回合并后的完整库 JSON 与新增条数 */
+  importCanvasLibrary: async (sourceUrl: string): Promise<{ json: string; added: number }> => {
+    const res = await CanvasService.ImportCanvasLibrary(sourceUrl);
+    return { json: res[0], added: res[1] };
+  },
+
+  /** 在应用内窗口打开 Excalidraw 素材站点（一键安装链路：
+   *  站点的 Add to Excalidraw 重定向回到应用 origin 时由导入门接管） */
+  openLibraryBrowser: async (siteUrl: string): Promise<void> =>
+    await CanvasService.OpenLibraryBrowser(siteUrl),
 
   /** 提交一次询问/审批的用户答复（requestID 即工具调用 ID） */
   answerAskUser: async (

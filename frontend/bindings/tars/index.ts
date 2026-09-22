@@ -3,6 +3,7 @@
 
 import * as AgentService from "./agentservice.js";
 import * as AgentsMDService from "./agentsmdservice.js";
+import * as CanvasService from "./canvasservice.js";
 import * as ConfigService from "./configservice.js";
 import * as ExportService from "./exportservice.js";
 import * as FileService from "./fileservice.js";
@@ -15,6 +16,7 @@ import * as WorkspaceService from "./workspaceservice.js";
 export {
     AgentService,
     AgentsMDService,
+    CanvasService,
     ConfigService,
     ExportService,
     FileService,

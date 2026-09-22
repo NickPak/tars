@@ -1,4 +1,4 @@
-import { useState, isValidElement } from "react";
+import { useEffect, useRef, useState, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -90,6 +90,27 @@ function CodeBlock(props: { children?: ReactNode }) {
     });
   };
 
+  // mermaid 代码块：渲染为图（失败回退源码 + 错误提示）
+  if (language === "mermaid") {
+    return (
+      <div className="codeblock">
+        <div className="codeblock-header">
+          <span className="codeblock-lang">mermaid</span>
+          <button
+            className="codeblock-copy"
+            onClick={handleCopy}
+            title="复制源码到剪贴板"
+            aria-label="复制源码"
+          >
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? "已复制" : "复制"}
+          </button>
+        </div>
+        <MermaidDiagram code={text} />
+      </div>
+    );
+  }
+
   return (
     <div className="codeblock">
       <div className="codeblock-header">
@@ -111,5 +132,67 @@ function CodeBlock(props: { children?: ReactNode }) {
       </div>
       <pre className="codeblock-pre">{props.children}</pre>
     </div>
+  );
+}
+
+let mermaidReady = false;
+
+/**
+ * mermaid 代码块 → SVG 图（懒加载 mermaid.js，不进主 bundle）。
+ * 流式场景下 code 逐帧变化：300ms 防抖，文本稳定后才渲染。
+ * 渲染容器 div 常驻挂载（即使出错）——流式中途的部分代码解析失败是
+ * 常态，若容器随错误态卸载，后续 code 到达时 ref 为空、渲染被跳过，
+ * 错误态将永远无法自愈。语法错误时隐藏图、回退显示源码 + 错误提示。
+ */
+function MermaidDiagram({ code }: { code: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!code.trim()) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const { default: mermaid } = await import("mermaid");
+      if (cancelled) return;
+      if (!mermaidReady) {
+        mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
+        mermaidReady = true;
+      }
+      // 渲染 ID 唯一化；mermaid.render 失败时会在 body 残留错误占位元素，需清理
+      const id = `mmd-${Math.random().toString(36).slice(2)}`;
+      try {
+        await mermaid.parse(code); // 先校验：parse 失败不产生任何 DOM 残留
+        const { svg } = await mermaid.render(id, code);
+        if (cancelled || !ref.current) return;
+        ref.current.innerHTML = svg;
+        setError(null);
+      } catch (e) {
+        document.getElementById(id)?.remove();
+        if (!cancelled) {
+          if (ref.current) ref.current.innerHTML = ""; // 清掉上一版成功的图，避免新旧混淆
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [code]);
+
+  return (
+    <>
+      <div
+        ref={ref}
+        className="mermaid-diagram"
+        style={error ? { display: "none" } : undefined}
+      />
+      {error && (
+        <>
+          <div className="mermaid-error">图表渲染失败（语法错误），显示源码</div>
+          <pre className="codeblock-pre">{code}</pre>
+        </>
+      )}
+    </>
   );
 }

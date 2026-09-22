@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
@@ -14,6 +14,7 @@ import {
   ImagePlus,
   List,
   ListOrdered,
+  Palette,
   Radical,
   Sigma,
   Square,
@@ -23,6 +24,9 @@ import {
 import { useChatStore } from "../store/chatStore";
 import { useLayoutStore } from "../store/layoutStore";
 import ImagePreview from "./ImagePreview";
+
+// 画板弹层懒加载：excalidraw 资源只在打开画板时拉取，不进主 bundle
+const CanvasBoard = lazy(() => import("./CanvasBoard"));
 
 /**
  * 图片节点（内联文档）：markdown 序列化时输出占位符 [图片] 而非
@@ -71,6 +75,8 @@ function ToolbarBtn({
 export default function ChatInput() {
   /** 图片双击预览（lightbox） */
   const [preview, setPreview] = useState<string | null>(null);
+  /** 画板弹层开关 */
+  const [canvasOpen, setCanvasOpen] = useState(false);
   /** 编辑器高度（顶部把手拖拽后固定为该值；null = 随内容自适应）。
    *  存 layoutStore：消息列表订阅它做底部滚动锚定。 */
   const editorH = useLayoutStore((s) => s.composerHeight);
@@ -237,6 +243,8 @@ export default function ChatInput() {
               <span className="composer-toolbar-sep" />
               <ToolbarBtn title="行内公式（$...$）" onClick={() => editor.chain().focus().insertInlineMath({ latex: "" }).run()}><Sigma size={14} /></ToolbarBtn>
               <ToolbarBtn title="公式块（$$...$$）" onClick={() => editor.chain().focus().insertBlockMath({ latex: "" }).run()}><Radical size={14} /></ToolbarBtn>
+              <span className="composer-toolbar-sep" />
+              <ToolbarBtn title="画板：绘制草图并插入" onClick={() => setCanvasOpen(true)}><Palette size={14} /></ToolbarBtn>
               {supportsImages && (
                 <>
                   <span className="composer-toolbar-sep" />
@@ -290,6 +298,21 @@ export default function ChatInput() {
       </div>
       <div className="composer-hint">Enter 发送 · Shift + Enter 换行 · 支持 Markdown</div>
       <ImagePreview src={preview} onClose={() => setPreview(null)} />
+      {canvasOpen && (
+        <Suspense fallback={null}>
+          <CanvasBoard
+            canInsertImage={supportsImages}
+            onInsert={(dataUrl) => {
+              editor?.chain().focus().setImage({ src: dataUrl }).run();
+            }}
+            onInsertMermaid={(mermaid) => {
+              // 以代码块插入；markdown 扩展会解析为 code block 节点
+              editor?.chain().focus().insertContent(`\n\`\`\`mermaid\n${mermaid}\n\`\`\`\n`).run();
+            }}
+            onClose={() => setCanvasOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

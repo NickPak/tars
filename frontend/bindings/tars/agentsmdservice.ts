@@ -15,7 +15,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
- * CreateAgentsMd 在工作区根写入 AGENTS.md 骨架模板；已存在时拒绝
+ * CreateAgentsMd 在项目工作区根写入 AGENTS.md 骨架模板；已存在时拒绝
  * （防覆盖用户内容——创建动作必须显式且幂等失败可见）。
  */
 export function CreateAgentsMd(sessionID: string): $CancellablePromise<void> {
@@ -23,7 +23,8 @@ export function CreateAgentsMd(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
- * GetAgentsMdStatus 报告会话工作区根是否存在 AGENTS.md。
+ * GetAgentsMdStatus 报告项目工作区根是否存在 AGENTS.md。
+ * 层级表达：sessionID → FindProject 定位所属 Project → GetWorkspaceDir。
  */
 export function GetAgentsMdStatus(sessionID: string): $CancellablePromise<$models.AgentsMdStatus | null> {
     return $Call.ByID(1097388647, sessionID).then(($result: any) => {

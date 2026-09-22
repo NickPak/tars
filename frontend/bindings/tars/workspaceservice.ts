@@ -15,7 +15,8 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
- * GetWorkspaceInfo returns the current workspace info for a session.
+ * GetWorkspaceInfo returns the workspace info for the session's PROJECT
+ * （工作区是项目属性：sessionID → FindProject → GetWorkspaceDir）。
  */
 export function GetWorkspaceInfo(sessionID: string): $CancellablePromise<$models.WorkspaceInfo | null> {
     return $Call.ByID(3857467001, sessionID).then(($result: any) => {

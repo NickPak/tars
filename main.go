@@ -51,6 +51,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(&AgentService{}),
 			application.NewService(&AgentsMDService{}),
+			application.NewService(&CanvasService{}),
 			application.NewService(&ConfigService{}),
 			application.NewService(&ExportService{}),
 			application.NewService(&FileService{}),
