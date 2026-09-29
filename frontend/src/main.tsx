@@ -9,16 +9,16 @@ import "./styles/app.css";
 // 本窗口是素材浏览窗口，渲染极简导入门而非完整应用。
 const isLibraryImport = /#addLibrary=/.test(window.location.hash);
 
-// 画板独立窗口：?view=canvas 时渲染极简画布视图（懒加载，excalidraw
-// 不进主 bundle）。
-const CanvasWindow = lazy(() => import("./components/CanvasWindow"));
-const isCanvasView = new URLSearchParams(window.location.search).get("view") === "canvas";
+// 副面板窗口：?view=aux 时渲染画板/编辑器的 Tab 容器（懒加载，
+// excalidraw/monaco 不进主 bundle）。
+const AuxWindow = lazy(() => import("./components/AuxWindow"));
+const isAuxView = new URLSearchParams(window.location.search).get("view") === "aux";
 
 const root = isLibraryImport ? (
   <LibraryImportGate />
-) : isCanvasView ? (
+) : isAuxView ? (
   <Suspense fallback={null}>
-    <CanvasWindow />
+    <AuxWindow />
   </Suspense>
 ) : (
   <App />

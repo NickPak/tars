@@ -314,6 +314,14 @@ function FilesTab() {
     });
   };
 
+  // 内置编辑器：单击文件叶子在副面板窗口打开编辑 Tab（双击仍是系统默认程序）
+  const handleViewFile = (relPath: string) => {
+    if (!activeId) return;
+    agentApi.openAuxTab(activeId, "editor", relPath).catch((e) => {
+      setBackendError(`打开编辑器失败: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  };
+
   const handleRevealFile = (relPath: string) => {
     if (!activeId) return;
     agentApi.revealFileInExplorer(activeId, relPath).catch((e) => {
@@ -392,6 +400,7 @@ function FilesTab() {
             expanded={expanded}
             onToggle={toggleExpand}
             onOpenFile={handleOpenFile}
+            onViewFile={handleViewFile}
             onContextMenu={handleContextMenu}
           />
         ))}
@@ -425,6 +434,8 @@ function FilesTab() {
           </button>
         </div>
       )}
+
+      {/* 文件编辑栏是 App 网格列（工作区右侧），不在本面板渲染 */}
     </div>
   );
 }
@@ -436,6 +447,7 @@ function FileTreeNode({
   expanded,
   onToggle,
   onOpenFile,
+  onViewFile,
   onContextMenu,
 }: {
   entry: FileEntry;
@@ -443,6 +455,7 @@ function FileTreeNode({
   expanded: Set<string>;
   onToggle: (path: string) => void;
   onOpenFile: (relPath: string) => void;
+  onViewFile: (relPath: string) => void;
   onContextMenu: (e: React.MouseEvent, entry: FileEntry) => void;
 }) {
   const isExpanded = expanded.has(entry.path);
@@ -477,6 +490,7 @@ function FileTreeNode({
                 expanded={expanded}
                 onToggle={onToggle}
                 onOpenFile={onOpenFile}
+                onViewFile={onViewFile}
                 onContextMenu={onContextMenu}
               />
             ))}
@@ -490,9 +504,10 @@ function FileTreeNode({
     <div
       className="ws-file-item ws-file-leaf"
       style={{ paddingLeft: 8 + depth * 14 + 13 }}
+      onClick={() => onViewFile(entry.path)}
       onDoubleClick={() => onOpenFile(entry.path)}
       onContextMenu={(e) => onContextMenu(e, entry)}
-      title="双击用默认程序打开 · 右键更多操作"
+      title="单击内置查看 · 双击用默认程序打开 · 右键更多操作"
     >
       <FileText size={13} className="ws-file-icon" />
       <span className="ws-file-name">{entry.name}</span>

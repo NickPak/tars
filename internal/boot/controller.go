@@ -261,6 +261,9 @@ func (c *Controller) SubmitMessage(content string, images []string) (string, str
 			}
 		}
 	}
+	// 文件引用展开（path:Lx-Ly → 真实代码片段）：入库前完成，
+	// 存储的消息即展开后版本——模型、回放、导出看到同一内容。
+	content = session.ExpandReferences(c.proj.GetWorkspaceDir(), content)
 	userMsgID := c.sessionMgr.AppendUserMessage(content, images)
 	assistantID := uuid.NewString()
 	c.start(content, assistantID)

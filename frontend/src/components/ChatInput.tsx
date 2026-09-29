@@ -114,7 +114,15 @@ export default function ChatInput() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        link: {
+          // 引用链接（tarsref:path:Lx-Ly）自定义 scheme 需显式放行；
+          // 点击行为由 handleDOMEvents 拦截（跳编辑器而非浏览器）
+          protocols: ["tarsref"],
+          openOnClick: false,
+          autolink: false,
+        },
+      }),
       Markdown,
       Mathematics, // katex 样式已由 Markdown.tsx 全局引入；$...$/$$...$$ 与 markdown 双向序列化
       ComposerImage,
@@ -142,6 +150,21 @@ export default function ChatInput() {
         return false;
       },
       handleDOMEvents: {
+        // 点击引用链接 → 打开对应文件并定位/高亮行范围
+        click: (_view, event) => {
+          const t = (event.target as HTMLElement).closest?.("a.composer-ref");
+          if (!t) return false;
+          event.preventDefault();
+          const href = t.getAttribute("href") ?? "";
+          const payload = decodeURIComponent(href.slice("tarsref:".length));
+          const m = /^(.*):L(\d+)(?:-(\d+))?$/.exec(payload);
+          if (!m) return true;
+          const sid = useChatStore.getState().activeId;
+          if (sid) {
+            void agentApi.revealEditorRange(sid, m[1], Number(m[2]), Number(m[3] ?? m[2]));
+          }
+          return true;
+        },
         // 双击图片节点 → 预览（target 即 <img>，无需坐标换算）
         dblclick: (_view, event) => {
           const t = event.target as HTMLElement;
@@ -156,6 +179,15 @@ export default function ChatInput() {
     },
   });
 
+  // 跨组件插入通道（文件查看器的"引用到输入框"等）：消费后即清空
+  const composerInsert = useLayoutStore((s) => s.composerInsert);
+  const setComposerInsert = useLayoutStore((s) => s.setComposerInsert);
+  useEffect(() => {
+    if (!editor || !composerInsert) return;
+    editor.chain().focus().insertContent(composerInsert).run();
+    setComposerInsert(null);
+  }, [editor, composerInsert, setComposerInsert]);
+
   // 画板独立窗口的产出回流：后端把 canvas:insert-image /
   // canvas:insert-mermaid 广播到本窗口，插入光标处
   useEffect(() => {
@@ -167,9 +199,20 @@ export default function ChatInput() {
       // 以代码块插入；markdown 扩展会解析为 code block 节点
       editor.chain().focus().insertContent(`\n\`\`\`mermaid\n${ev.data}\n\`\`\`\n`).run();
     });
+    // 编辑器独立窗口的框选引用回流（path:Lx-Ly）：以链接形态插入，
+    // 点击可回跳编辑器定位高亮；发送时序列化后还原为纯文本引用。
+    const offRef = Events.On("editor:insert-reference", (ev) => {
+      const ref = String(ev.data);
+      editor
+        .chain()
+        .focus()
+        .insertContent(`<a href="tarsref:${encodeURIComponent(ref)}" class="composer-ref">${ref}</a>`)
+        .run();
+    });
     return () => {
       offImg();
       offMmd();
+      offRef();
     };
   }, [editor]);
 
@@ -200,6 +243,9 @@ export default function ChatInput() {
       if (node.type.name === "image" && node.attrs.src) imgs.push(node.attrs.src);
     });
     let text = editor.getMarkdown().trim();
+    // 引用链接还原为纯文本引用（path:Lx-Ly）——后端按此格式展开为
+    // 真实代码片段，tarsref: 协议只是输入框内的展示/交互外壳。
+    text = text.replace(/\[([^\]]+)\]\(tarsref:[^)]*\)/g, "$1");
     // 过滤剪贴板残留的 IDE 图片引用文本（如从 CodeBuddy 复制时带入的
     // "@image:C:\..."——该引用只在原 IDE 内有意义，属于粘贴垃圾）。
     text = text.replace(/@image:\S+/g, "").trim();
@@ -261,7 +307,7 @@ export default function ChatInput() {
               <ToolbarBtn title="行内公式（$...$）" onClick={() => editor.chain().focus().insertInlineMath({ latex: "" }).run()}><Sigma size={14} /></ToolbarBtn>
               <ToolbarBtn title="公式块（$$...$$）" onClick={() => editor.chain().focus().insertBlockMath({ latex: "" }).run()}><Radical size={14} /></ToolbarBtn>
               <span className="composer-toolbar-sep" />
-              <ToolbarBtn title="画板：独立窗口绘制草图并插入（内容随会话暂存，可续编）" onClick={() => void agentApi.openCanvasWindow(activeId ?? "")}><Palette size={14} /></ToolbarBtn>
+              <ToolbarBtn title="画板：在副面板窗口绘制草图并插入（内容随会话暂存，可续编）" onClick={() => void agentApi.openAuxTab(activeId ?? "", "canvas", "")}><Palette size={14} /></ToolbarBtn>
               {supportsImages && (
                 <>
                   <span className="composer-toolbar-sep" />

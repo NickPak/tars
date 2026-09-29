@@ -3,6 +3,7 @@ import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI, ExcalidrawInitialDataState, LibraryItems } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 import { ImageDown, Workflow, Save, FileDown } from "lucide-react";
+import WindowControls from "./WindowControls";
 import { Events } from "@wailsio/runtime";
 import { sceneToMermaid } from "../utils/excalidrawMermaid";
 import type { ConvertResult } from "../utils/excalidrawMermaid";
@@ -331,6 +332,7 @@ export default function CanvasBoard({
           >
             <ImageDown size={14} /> {exporting ? "导出中…" : "插入图片到输入框"}
           </button>
+          <WindowControls />
         </div>
       </div>
       <div className="canvas-body">

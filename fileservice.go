@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,7 +10,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"tars/internal/boot"
+	"tars/pkg/sandbox"
 )
 
 // FileService —— 工作区文件树浏览与系统级打开/定位（工作区页面）。
@@ -56,6 +60,105 @@ func (s *FileService) ListWorkspaceFiles(sessionID string) ([]FileEntry, error) 
 		return nil, fmt.Errorf("scan workspace: %w", err)
 	}
 	return entries, nil
+}
+
+// ---- 用户侧文件管理（文件树查看器/编辑器 + 右键 CRUD）----
+// 全部经 sandbox.NativeFs 的 confine 校验：相对路径解析到工作区根内，
+// 逃逸（../ 或绝对路径越界）一律拒绝。
+
+// maxEditorFileSize 编辑器读取上限（2MB）——超大文件交给外部程序打开。
+const maxEditorFileSize = 2 << 20
+
+// workspaceFs 解析会话工作区并构造受限文件系统（每次新建：无状态对象，
+// 根在构造时锁定，避免跨调用根变更窗口）。
+func (s *FileService) workspaceFs(sessionID string) (*sandbox.NativeFs, error) {
+	wsDir, err := s.workspaceDirOf(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return sandbox.NewNativeFs(wsDir), nil
+}
+
+// ReadWorkspaceFile 读取工作区文件内容（编辑器加载用）。超过 2MB 或
+// 内容含 NUL（二进制）时报错，引导用户用外部程序打开。
+func (s *FileService) ReadWorkspaceFile(sessionID string, relPath string) (string, error) {
+	fs, err := s.workspaceFs(sessionID)
+	if err != nil {
+		return "", err
+	}
+	info, err := fs.Stat(relPath)
+	if err != nil {
+		return "", fmt.Errorf("file not found: %s", relPath)
+	}
+	if info.IsDir {
+		return "", fmt.Errorf("path is a directory: %s", relPath)
+	}
+	if info.Size > maxEditorFileSize {
+		return "", fmt.Errorf("文件过大（>2MB），请用外部程序打开")
+	}
+	data, err := fs.ReadFile(relPath)
+	if err != nil {
+		return "", err
+	}
+	if bytes.IndexByte(data, 0) >= 0 {
+		return "", fmt.Errorf("二进制文件不支持编辑，请用外部程序打开")
+	}
+	return string(data), nil
+}
+
+// WriteWorkspaceFile 保存工作区文件（编辑器保存；不存在则创建）。
+func (s *FileService) WriteWorkspaceFile(sessionID string, relPath string, content string) error {
+	fs, err := s.workspaceFs(sessionID)
+	if err != nil {
+		return err
+	}
+	return fs.WriteFile(relPath, []byte(content))
+}
+
+// CreateWorkspaceEntry 新建文件或目录（父目录自动创建）。
+func (s *FileService) CreateWorkspaceEntry(sessionID string, relPath string, isDir bool) error {
+	fs, err := s.workspaceFs(sessionID)
+	if err != nil {
+		return err
+	}
+	if isDir {
+		return fs.MkdirAll(relPath)
+	}
+	// 文件：父目录先行，内容留空
+	if err := fs.MkdirAll(filepath.Dir(relPath)); err != nil {
+		return err
+	}
+	return fs.WriteFile(relPath, nil)
+}
+
+// RenameWorkspaceEntry 重命名/移动文件或目录。
+func (s *FileService) RenameWorkspaceEntry(sessionID string, oldRel string, newRel string) error {
+	fs, err := s.workspaceFs(sessionID)
+	if err != nil {
+		return err
+	}
+	return fs.Rename(oldRel, newRel)
+}
+
+// DeleteWorkspaceEntry 删除文件或目录（目录递归删除；前端负责确认）。
+func (s *FileService) DeleteWorkspaceEntry(sessionID string, relPath string) error {
+	fs, err := s.workspaceFs(sessionID)
+	if err != nil {
+		return err
+	}
+	return fs.RemoveAll(relPath)
+}
+
+// InsertEditorReference 编辑器窗口框选引用（path:Lx-Ly）→ 广播给主窗口
+// 插入对话输入框（发送时由 Controller 展开为真实代码片段）。
+func (s *FileService) InsertEditorReference(sessionID string, ref string) error {
+	if strings.TrimSpace(ref) == "" {
+		return fmt.Errorf("引用为空")
+	}
+	if app := application.Get(); app != nil {
+		app.Event.Emit("editor:insert-reference", ref)
+	}
+	return nil
 }
 
 // OpenFile opens a file with the OS default application (not hardcoded to any

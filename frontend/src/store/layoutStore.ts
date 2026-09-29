@@ -59,6 +59,10 @@ interface LayoutState {
   setWorkspaceWidth: (w: number) => void;
   /** 设置输入框高度（拖拽把手调用；不持久化） */
   setComposerHeight: (h: number | null) => void;
+
+  /** 待插入输入框的文本（跨组件一次性通道——ChatInput 消费后清空） */
+  composerInsert: string | null;
+  setComposerInsert: (text: string | null) => void;
 }
 
 export const useLayoutStore = create<LayoutState>((set) => ({
@@ -83,4 +87,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
     set({ workspaceWidth: clamped });
   },
   setComposerHeight: (h) => set({ composerHeight: h }),
+  composerInsert: null,
+  setComposerInsert: (text) => set({ composerInsert: text }),
 }));

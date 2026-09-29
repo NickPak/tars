@@ -53,6 +53,8 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+
+
   const gridClass = [
     "app",
     sidebarCollapsed ? "sidebar-collapsed" : "",
@@ -110,6 +112,7 @@ export default function App() {
         <ChatInput />
       </main>
       {workspaceVisible && <WorkspacePanel />}
+      {/* 文件编辑器是独立 OS 窗口（FileService.OpenEditorWindow），不在主窗口网格内 */}
       {/* 右侧常驻图标栏：工作区等右侧功能的开关入口 */}
       <aside className="right-rail">
         <button

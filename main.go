@@ -41,6 +41,9 @@ func init() {
 	application.RegisterEvent[*ModelChangedEvent]("model:changed")
 }
 
+// MainWindowName 主窗口的固定名（副面板停靠定位等跨窗口逻辑引用）。
+const MainWindowName = "tars-main"
+
 func main() {
 	app := application.New(application.Options{
 		Name:        "tars",
@@ -72,6 +75,8 @@ func main() {
 	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
+		// 固定名：副面板窗口停靠定位时按名引用（canvasservice.OpenAuxTab）
+		Name:   MainWindowName,
 		Title:  "TARS",
 		Width:  1280,
 		Height: 800,
@@ -79,15 +84,15 @@ func main() {
 		MinWidth:  960,
 		MinHeight: 600,
 		// Windows 下无边框：自定义标题栏由前端 TopBar 承担（拖拽区
-		// app-region: drag + 最小化/最大化/关闭按钮）。macOS 保持
+		// --wails-draggable + 最小化/最大化/关闭按钮）。macOS 保持
 		// HiddenInset 原生样式（红绿灯按钮由系统提供），不受影响。
+		//
+		// 注意：不要开 NonClientRegionSupport——WebView2 原生非客户区
+		// 命中的边框缩放 NC 循环会吞掉 mouseup，缩放状态卡死（表现为
+		// "点过标题栏后移动鼠标，窗口跟着缩放"）。与副面板窗口一致的
+		// 结论：拖拽/缩放都走 Wails JS 路径（能自愈，见 drag.js 按钮
+		// 合成逻辑）。
 		Frameless: goruntime.GOOS == "windows",
-		Windows: application.WindowsWindow{
-			// WebView2 原生非客户区命中测试：让 app-region: drag 的
-			// 拖拽/双击最大化走系统级处理（老 WebView2 静默退化，
-			// 由 --wails-draggable JS 拖拽兜底）。
-			NonClientRegionSupport: true,
-		},
 		Linux: application.LinuxWindow{
 			Icon: iconPNG,
 		},

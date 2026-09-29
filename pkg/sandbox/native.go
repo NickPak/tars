@@ -145,6 +145,30 @@ func (n *NativeFs) Remove(path string) error {
 	return os.Remove(abs)
 }
 
+// RemoveAll 递归删除（文件管理器删除非空目录用）。同样经 confine
+// 校验——逃逸路径在递归展开前即被拒绝。
+func (n *NativeFs) RemoveAll(path string) error {
+	abs, err := n.confine(path)
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(abs)
+}
+
+// Rename 移动/重命名。新旧路径都经 confine——禁止把文件移出工作区，
+// 也禁止把工作区外的文件移入（语义上等同于跨界写）。
+func (n *NativeFs) Rename(oldPath, newPath string) error {
+	oldAbs, err := n.confine(oldPath)
+	if err != nil {
+		return err
+	}
+	newAbs, err := n.confine(newPath)
+	if err != nil {
+		return err
+	}
+	return os.Rename(oldAbs, newAbs)
+}
+
 // pwshAvailable 探测 PATH 里是否有 PowerShell 7+（pwsh）。结果进程内
 // 缓存——用户装了/卸了 pwsh 需要重启才生效，与 python/shell 探测同策略。
 var pwshAvailable = sync.OnceValue(func() bool {

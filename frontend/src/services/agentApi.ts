@@ -25,7 +25,7 @@ import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
 import type * as mcpModels from "../../bindings/tars/pkg/mcp/models";
-import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, MCPToolHit, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus, Project, MemoryFactsView } from "../types";
+import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, MCPToolHit, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus, Project, MemoryFactsView, AuxTab } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { SessionRenamedEvent, ProjectRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, ApprovalEvent, CompressionDoneEvent, CompressionFailedEvent } from "../types";
@@ -250,6 +250,40 @@ export const agentApi = {
   revealFileInExplorer: (sessionId: string, relPath: string): Promise<void> =>
     FileService.RevealFileInExplorer(sessionId, relPath),
 
+  /** 读取工作区文件内容（内置编辑器加载；>2MB/二进制报错） */
+  readWorkspaceFile: (sessionId: string, relPath: string): Promise<string> =>
+    FileService.ReadWorkspaceFile(sessionId, relPath),
+
+  /** 保存工作区文件（内置编辑器保存；不存在则创建） */
+  writeWorkspaceFile: (sessionId: string, relPath: string, content: string): Promise<void> =>
+    FileService.WriteWorkspaceFile(sessionId, relPath, content),
+
+  /** 新建工作区文件/目录（父目录自动创建） */
+  createWorkspaceEntry: (sessionId: string, relPath: string, isDir: boolean): Promise<void> =>
+    FileService.CreateWorkspaceEntry(sessionId, relPath, isDir),
+
+  /** 重命名/移动工作区文件或目录 */
+  renameWorkspaceEntry: (sessionId: string, oldRel: string, newRel: string): Promise<void> =>
+    FileService.RenameWorkspaceEntry(sessionId, oldRel, newRel),
+
+  /** 删除工作区文件/目录（目录递归；调用方负责确认） */
+  deleteWorkspaceEntry: (sessionId: string, relPath: string): Promise<void> =>
+    FileService.DeleteWorkspaceEntry(sessionId, relPath),
+
+  /** 编辑器框选引用 → 广播 editor:insert-reference 给主窗口 */
+  editorInsertReference: (sessionId: string, ref: string): Promise<void> =>
+    FileService.InsertEditorReference(sessionId, ref),
+
+  /** 打开工作区文件并定位/高亮指定行范围（引用链接点击回流） */
+  revealEditorRange: (sessionId: string, path: string, startLine: number, endLine: number): Promise<void> =>
+    CanvasService.RevealEditorRange(sessionId, path, startLine, endLine),
+
+  /** 拉取并清除某文件的待定位请求（FileViewer 挂载兜底） */
+  takePendingReveal: async (path: string): Promise<{ start: number; end: number; ok: boolean }> => {
+    const res = await CanvasService.TakePendingReveal(path);
+    return { start: res[0]?.[0] ?? 0, end: res[0]?.[1] ?? 0, ok: res[1] };
+  },
+
   /** 查询会话工作区的 AGENTS.md 状态 */
   getAgentsMdStatus: async (sessionId: string): Promise<AgentsMdStatus | null> =>
     (await AgentsMDService.GetAgentsMdStatus(sessionId)) as AgentsMdStatus | null,
@@ -315,9 +349,28 @@ export const agentApi = {
   openLibraryBrowser: async (siteUrl: string): Promise<void> =>
     await CanvasService.OpenLibraryBrowser(siteUrl),
 
-  /** 打开独立画板窗口（重复调用聚焦既有窗口；sessionID 决定草稿归属） */
-  openCanvasWindow: async (sessionID: string): Promise<void> =>
-    await CanvasService.OpenCanvasWindow(sessionID),
+  /** 在副面板窗口打开一个 Tab（kind: "canvas" | "editor"，path 仅
+   *  editor 用；同 kind+path 去重激活，窗口未开则创建） */
+  openAuxTab: async (sessionID: string, kind: "canvas" | "editor", path: string): Promise<void> =>
+    await CanvasService.OpenAuxTab(sessionID, kind, path),
+
+  /** 副面板 Tab 列表 + 激活项（窗口加载时拉取） */
+  getAuxTabs: async (): Promise<{ tabs: AuxTab[]; activeId: string }> =>
+    (await CanvasService.GetAuxTabs()) as { tabs: AuxTab[]; activeId: string },
+
+  /** 关闭副面板的一个 Tab（最后一个关闭时收起窗口） */
+  closeAuxTab: async (tabID: string): Promise<void> => await CanvasService.CloseAuxTab(tabID),
+
+  /** 把 Tab 拖出为独立窗口（x/y 为落点屏幕坐标，窗口出现在落点） */
+  detachAuxTab: async (tabID: string, x: number, y: number): Promise<void> =>
+    await CanvasService.DetachAuxTab(tabID, x, y),
+
+  /** 独立窗口 Tab 拖拽松开：落点在副面板内则吸回（后端判定窗口几何） */
+  dropDetachedTab: async (tabID: string, x: number, y: number): Promise<void> =>
+    await CanvasService.DropDetachedTab(tabID, x, y),
+
+  /** 把独立窗口的 Tab 吸回副面板 */
+  reattachAuxTab: async (tabID: string): Promise<void> => await CanvasService.ReattachAuxTab(tabID),
 
   /** 读取会话的画板草稿 JSON（无草稿返回空串） */
   getCanvasDraft: async (sessionID: string): Promise<string> =>

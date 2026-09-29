@@ -367,6 +367,17 @@ export interface MCPServerConfig {
 }
 
 /** MCP 服务器展示视图（mcp.ServerInfo） */
+/** 副面板窗口的标签页（画板 / 文件编辑器） */
+export interface AuxTab {
+  /** canvas 或 editor:<path> */
+  id: string;
+  kind: "canvas" | "editor";
+  /** 归属会话（草稿/读写上下文） */
+  sessionId: string;
+  path?: string;
+  title: string;
+}
+
 /** MCP 工具检索命中（与 discover_tools 返回的候选同构） */
 export interface MCPToolHit {
   server: string;

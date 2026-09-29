@@ -36,6 +36,15 @@ func TestNative_ConfineRejectsEscape(t *testing.T) {
 		if err := sb.Remove(p); err == nil {
 			t.Errorf("Remove(%q) should be rejected", p)
 		}
+		if err := sb.RemoveAll(p); err == nil {
+			t.Errorf("RemoveAll(%q) should be rejected", p)
+		}
+		if err := sb.Rename("ok.txt", p); err == nil {
+			t.Errorf("Rename(to %q) should be rejected", p)
+		}
+		if err := sb.Rename(p, "ok.txt"); err == nil {
+			t.Errorf("Rename(from %q) should be rejected", p)
+		}
 	}
 
 	// 根内路径（相对/绝对）放行

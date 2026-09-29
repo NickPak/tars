@@ -15,6 +15,28 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
+ * CreateWorkspaceEntry 新建文件或目录（父目录自动创建）。
+ */
+export function CreateWorkspaceEntry(sessionID: string, relPath: string, isDir: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3397491204, sessionID, relPath, isDir);
+}
+
+/**
+ * DeleteWorkspaceEntry 删除文件或目录（目录递归删除；前端负责确认）。
+ */
+export function DeleteWorkspaceEntry(sessionID: string, relPath: string): $CancellablePromise<void> {
+    return $Call.ByID(288716723, sessionID, relPath);
+}
+
+/**
+ * InsertEditorReference 编辑器窗口框选引用（path:Lx-Ly）→ 广播给主窗口
+ * 插入对话输入框（发送时由 Controller 展开为真实代码片段）。
+ */
+export function InsertEditorReference(sessionID: string, ref: string): $CancellablePromise<void> {
+    return $Call.ByID(720907120, sessionID, ref);
+}
+
+/**
  * ListWorkspaceFiles returns a recursive file tree of the given session's
  * workspace directory（工作区是项目级：同项目多会话共享同一目录）。
  * If the directory doesn't exist yet (new project), an empty slice is returned.
@@ -31,6 +53,21 @@ export function ListWorkspaceFiles(sessionID: string): $CancellablePromise<$mode
  */
 export function OpenFile(sessionID: string, relPath: string): $CancellablePromise<void> {
     return $Call.ByID(2444982985, sessionID, relPath);
+}
+
+/**
+ * ReadWorkspaceFile 读取工作区文件内容（编辑器加载用）。超过 2MB 或
+ * 内容含 NUL（二进制）时报错，引导用户用外部程序打开。
+ */
+export function ReadWorkspaceFile(sessionID: string, relPath: string): $CancellablePromise<string> {
+    return $Call.ByID(3368951250, sessionID, relPath);
+}
+
+/**
+ * RenameWorkspaceEntry 重命名/移动文件或目录。
+ */
+export function RenameWorkspaceEntry(sessionID: string, oldRel: string, newRel: string): $CancellablePromise<void> {
+    return $Call.ByID(2335433450, sessionID, oldRel, newRel);
 }
 
 /**
@@ -57,6 +94,13 @@ export function RevealInExplorer(sessionID: string): $CancellablePromise<void> {
  */
 export function RevealProjectWorkspace(projectID: string): $CancellablePromise<void> {
     return $Call.ByID(3025360820, projectID);
+}
+
+/**
+ * WriteWorkspaceFile 保存工作区文件（编辑器保存；不存在则创建）。
+ */
+export function WriteWorkspaceFile(sessionID: string, relPath: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(973457633, sessionID, relPath, content);
 }
 
 // Private type creation functions

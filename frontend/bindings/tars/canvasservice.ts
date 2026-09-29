@@ -28,11 +28,44 @@ export function CanvasInsertMermaid(code: string): $CancellablePromise<void> {
 }
 
 /**
+ * CloseAuxTab 关闭一个 Tab；最后一个 Tab 关闭时收起窗口（状态保留，
+ * 再打开时恢复剩余标签）。
+ */
+export function CloseAuxTab(tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(2927238638, tabID);
+}
+
+/**
+ * DetachAuxTab 把 Tab 从副面板拖出为独立小窗口（无边框同款样式），
+ * 窗口出现在拖拽落点（屏幕坐标，以落点为窗口顶部中心）。
+ */
+export function DetachAuxTab(tabID: string, x: number, y: number): $CancellablePromise<void> {
+    return $Call.ByID(3063043167, tabID, x, y);
+}
+
+/**
+ * DropDetachedTab 独立窗口的 Tab 拖拽松开时调用：落点（屏幕坐标）在
+ * 副面板窗口内则吸回为 Tab，否则保持独立悬浮。
+ */
+export function DropDetachedTab(tabID: string, x: number, y: number): $CancellablePromise<void> {
+    return $Call.ByID(3452940709, tabID, x, y);
+}
+
+/**
  * ExportCanvasScene 另存为（Ctrl+Shift+S）：保存对话框导出 .excalidraw
  * 场景文件（可分享/备份，Excalidraw 原生格式）。返回保存路径，取消返回空串。
  */
 export function ExportCanvasScene(jsonStr: string): $CancellablePromise<string> {
     return $Call.ByID(1458492969, jsonStr);
+}
+
+/**
+ * GetAuxTabs 返回当前 Tab 列表与激活项（窗口加载时拉取）。
+ */
+export function GetAuxTabs(): $CancellablePromise<{ [_ in string]?: any }> {
+    return $Call.ByID(1508126963).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -62,13 +95,11 @@ export function ImportCanvasLibrary(sourceURL: string): $CancellablePromise<[str
 }
 
 /**
- * OpenCanvasWindow 在独立窗口打开画板（加载本应用 ?view=canvas 极简视图，
- * 由前端 CanvasWindow 全屏渲染 Excalidraw）。重复打开时聚焦既有窗口；
- * 若来自不同会话则 SetURL 换绑（页面重载后载入新会话的草稿，旧草稿
- * 已由防抖落盘保住）。
+ * OpenAuxTab 在副面板窗口打开（或激活）一个 Tab：kind 为 canvas / editor，
+ * path 仅 editor 使用（工作区相对路径）。同 kind+path 的标签去重激活。
  */
-export function OpenCanvasWindow(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(1085437633, sessionID);
+export function OpenAuxTab(sessionID: string, kind: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(4012293328, sessionID, kind, path);
 }
 
 /**
@@ -80,6 +111,22 @@ export function OpenCanvasWindow(sessionID: string): $CancellablePromise<void> {
  */
 export function OpenLibraryBrowser(siteURL: string): $CancellablePromise<void> {
     return $Call.ByID(1781691816, siteURL);
+}
+
+/**
+ * ReattachAuxTab 把独立窗口的 Tab 吸回副面板。
+ */
+export function ReattachAuxTab(tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(4047273116, tabID);
+}
+
+/**
+ * RevealEditorRange 打开工作区文件（复用编辑器 Tab），定位到起始行并
+ * 高亮 start~end 行。路径沿用 OpenAuxTab 的 confine 校验（在 FileViewer
+ * 读取内容时生效）。
+ */
+export function RevealEditorRange(sessionID: string, path: string, startLine: number, endLine: number): $CancellablePromise<void> {
+    return $Call.ByID(507815514, sessionID, path, startLine, endLine);
 }
 
 /**
@@ -97,3 +144,18 @@ export function SetCanvasDraft(sessionID: string, jsonStr: string): $Cancellable
 export function SetCanvasLibrary(jsonStr: string): $CancellablePromise<void> {
     return $Call.ByID(2573279262, jsonStr);
 }
+
+/**
+ * TakePendingReveal 拉取并清除某文件的待定位请求（FileViewer 挂载时调用）。
+ * 返回值 [start, end]；无待处理请求时 ok=false。
+ */
+export function TakePendingReveal(path: string): $CancellablePromise<[number[], boolean]> {
+    return $Call.ByID(2420835896, path).then(($result: any) => {
+        $result[0] = $$createType1($result[0]);
+        return $result;
+    });
+}
+
+// Private type creation functions
+const $$createType0 = $Create.Map($Create.Any, $Create.Any);
+const $$createType1 = $Create.Array($Create.Any);
