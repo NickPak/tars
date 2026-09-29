@@ -5,5 +5,6 @@ export {
     Risk,
     ServerConfig,
     ServerInfo,
+    ToolHit,
     ToolInfo
 } from "./models.js";

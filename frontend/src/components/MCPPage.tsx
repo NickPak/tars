@@ -9,9 +9,9 @@
  * 自动识别）、手动配置（逐项表单）、JSON（Claude Desktop 格式整段粘贴）。
  */
 import { useEffect, useState } from "react";
-import { Plug, RefreshCw, Trash2, Zap } from "lucide-react";
+import { Plug, RefreshCw, Search, Trash2, Zap } from "lucide-react";
 import { agentApi } from "../services/agentApi";
-import type { MCPServerConfig, MCPServerInfo } from "../types";
+import type { MCPServerConfig, MCPServerInfo, MCPToolHit } from "../types";
 import {
   deriveName,
   envToText,
@@ -45,6 +45,31 @@ type EditorMode = "quick" | "form" | "json";
 
 export default function MCPPage() {
   const [infos, setInfos] = useState<MCPServerInfo[] | null>(null);
+
+  // 工具检索（模型视角）：与 discover_tools 同款 bleve 检索和候选数
+  // 上限，页面所见 = 模型所得。防抖 300ms；空查询列出全部启用服务器
+  // 的工具（等价模型的全集视图）。
+  const [toolQuery, setToolQuery] = useState("");
+  const [toolResults, setToolResults] = useState<MCPToolHit[] | null>(null);
+  const [toolSearching, setToolSearching] = useState(false);
+
+  useEffect(() => {
+    const q = toolQuery.trim();
+    const timer = setTimeout(() => {
+      void (async () => {
+        setToolSearching(true);
+        try {
+          setToolResults(await agentApi.searchMCPTools(q));
+        } catch (e) {
+          setToolResults(null);
+          setError(errText(e));
+        } finally {
+          setToolSearching(false);
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [toolQuery]);
   const [error, setError] = useState<string | null>(null); // 列表加载错误（块顶部）
   const [notice, setNotice] = useState<string | null>(null); // 添加成功提示（添加按钮上方）
   const [probing, setProbing] = useState<string | null>(null);
@@ -691,6 +716,42 @@ export default function MCPPage() {
           );
         })
       )}
+      </section>
+
+      {/* 工具检索（模型视角）：验证工具清单是否会被 discover_tools 命中 */}
+      <section className="settings-section">
+        <div className="settings-section-title skills-list-title">
+          工具检索（{toolResults?.length ?? 0}）
+          <span className="skills-title-actions">
+            <span className="skills-search">
+              <Search size={12} />
+              <input
+                value={toolQuery}
+                onChange={(e) => setToolQuery(e.target.value)}
+                placeholder="模糊搜索工具（与模型同款检索）"
+                spellCheck={false}
+              />
+            </span>
+          </span>
+        </div>
+        {toolSearching && <div className="settings-loading">检索中…</div>}
+        {!toolSearching && toolResults && toolResults.length === 0 && (
+          <div className="skills-empty">无命中——模型用这个词也找不到，换个说法试试</div>
+        )}
+        {!toolSearching &&
+          toolResults?.map((t) => (
+            <div className="skill-item" key={t.fullName}>
+              <div className="skill-item-head">
+                <span className="skill-item-name">{t.name}</span>
+                <span className="skill-item-tag">{t.server}</span>
+                {t.sourceType && <span className="skill-item-tag">{t.sourceType}</span>}
+              </div>
+              {t.description && <div className="skill-item-desc">{t.description}</div>}
+              <div className="skill-item-meta">
+                <code>{t.fullName}</code>
+              </div>
+            </div>
+          ))}
       </section>
     </div>
   );

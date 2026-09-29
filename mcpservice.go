@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"tars/internal/boot"
 	"tars/pkg/mcp"
 	"time"
@@ -22,6 +23,43 @@ func (s *MCPService) ListMCPServers() ([]*mcp.ServerInfo, error) {
 		return nil, fmt.Errorf("mcp store not initialized")
 	}
 	return st.List(), nil
+}
+
+// SearchMCPTools 按自然语言检索启用服务器的工具——与 discover_tools 同款
+// bleve 检索和候选数上限，页面所见 = 模型所得。空查询返回全部启用服务器
+// 的工具（等价于模型的全集视图）。
+func (s *MCPService) SearchMCPTools(query string) ([]*mcp.ToolHit, error) {
+	st := boot.GetApp().GetMCPMgr()
+	if st == nil {
+		return nil, fmt.Errorf("mcp store not initialized")
+	}
+	limit := 5
+	if sk := boot.GetApp().GetSkillMgr(); sk != nil {
+		limit = sk.GetConfig().DiscoverResultLimit // 与 discover_tools 同上限
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		// 空查询：展开全部启用服务器的工具缓存
+		var all []*mcp.ToolHit
+		for _, srv := range st.Enabled() {
+			for _, ti := range st.Tools(srv.Name) {
+				all = append(all, &mcp.ToolHit{
+					Server:      srv.Name,
+					Name:        ti.Name,
+					FullName:    mcp.FullToolName(srv.Name, ti.Name),
+					Description: ti.Description,
+					SourceType:  srv.SourceType,
+				})
+			}
+		}
+		return all, nil
+	}
+	hits := st.Search(query, limit)
+	out := make([]*mcp.ToolHit, 0, len(hits))
+	for i := range hits {
+		out = append(out, &hits[i])
+	}
+	return out, nil
 }
 
 // UpsertMCPServer 登记/覆盖一个 MCP 服务器（立即落盘生效；

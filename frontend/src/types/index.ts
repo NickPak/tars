@@ -367,6 +367,16 @@ export interface MCPServerConfig {
 }
 
 /** MCP 服务器展示视图（mcp.ServerInfo） */
+/** MCP 工具检索命中（与 discover_tools 返回的候选同构） */
+export interface MCPToolHit {
+  server: string;
+  name: string;
+  /** 会话内调用全名 mcp__<server>__<tool> */
+  fullName: string;
+  description: string;
+  sourceType?: string;
+}
+
 export interface MCPServerInfo {
   name: string;
   command: string;

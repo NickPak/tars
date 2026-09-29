@@ -25,7 +25,7 @@ import type { SubmitResult } from "../../bindings/tars/models";
 import type * as configModels from "../../bindings/tars/internal/config/models";
 import type * as llmModels from "../../bindings/tars/pkg/llm/models";
 import type * as mcpModels from "../../bindings/tars/pkg/mcp/models";
-import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus, Project, MemoryFactsView } from "../types";
+import type { AppConfig, Session, FileEntry, MCPServerConfig, MCPServerInfo, MCPToolHit, ModelInfo, SessionStats, Skill, WorkspaceInfo, AgentsMdStatus, Project, MemoryFactsView } from "../types";
 import { AgentEvents } from "../types";
 import type { StreamChunk, StreamDone, StreamError } from "../types";
 import type { SessionRenamedEvent, ProjectRenamedEvent, ModelChangedEvent, ReasoningEvent, ToolEvent, ToolResultEvent, ApprovalEvent, CompressionDoneEvent, CompressionFailedEvent } from "../types";
@@ -383,6 +383,11 @@ export const agentApi = {
     (await SkillService.SearchSkills(query)) as Skill[],
 
   // ---- MCP 服务器管理 ----
+
+  /** 模糊搜索启用服务器的 MCP 工具（与 discover_tools 同款 bleve 检索和
+   *  候选数上限，页面所见 = 模型所得；空查询返回全部启用服务器的工具） */
+  searchMCPTools: async (query: string): Promise<MCPToolHit[]> =>
+    (await MCPService.SearchMCPTools(query)) as MCPToolHit[],
 
   /** 全部已配置 MCP 服务器（含禁用项与工具计数） */
   listMCPServers: async (): Promise<MCPServerInfo[]> =>

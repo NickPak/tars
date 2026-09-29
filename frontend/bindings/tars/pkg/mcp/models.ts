@@ -150,6 +150,49 @@ export class ServerInfo {
 }
 
 /**
+ * ToolHit 是 MCP 工具检索的命中视图（discover_tools 返回用）。
+ */
+export class ToolHit {
+    "server": string;
+    "name": string;
+
+    /**
+     * mcp__<server>__<tool>
+     */
+    "fullName": string;
+    "description"?: string;
+    "sourceType"?: string;
+    "inputSchema"?: { [_ in string]?: any };
+
+    /** Creates a new ToolHit instance. */
+    constructor($$source: Partial<ToolHit> = {}) {
+        if (!("server" in $$source)) {
+            this["server"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("fullName" in $$source)) {
+            this["fullName"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolHit instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ToolHit {
+        const $$createField5_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("inputSchema" in $$parsedSource) {
+            $$parsedSource["inputSchema"] = $$createField5_0($$parsedSource["inputSchema"]);
+        }
+        return new ToolHit($$parsedSource as Partial<ToolHit>);
+    }
+}
+
+/**
  * ToolInfo 是一个 MCP 工具的缓存视图（探测时抓取；模型可见文本均为英文）。
  */
 export class ToolInfo {

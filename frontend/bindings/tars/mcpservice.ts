@@ -50,6 +50,17 @@ export function RemoveMCPServer(name: string): $CancellablePromise<void> {
 }
 
 /**
+ * SearchMCPTools 按自然语言检索启用服务器的工具——与 discover_tools 同款
+ * bleve 检索和候选数上限，页面所见 = 模型所得。空查询返回全部启用服务器
+ * 的工具（等价于模型的全集视图）。
+ */
+export function SearchMCPTools(query: string): $CancellablePromise<(mcp$0.ToolHit | null)[]> {
+    return $Call.ByID(2309528450, query).then(($result: any) => {
+        return $$createType8($result);
+    });
+}
+
+/**
  * SetMCPServerEnabled 启用/禁用服务器（立即落盘生效；禁用后对 Agent
  * 不可见——索引/检索/连接排除，连接即回收，配置与探测缓存保留）。
  */
@@ -72,3 +83,6 @@ const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = mcp$0.ToolInfo.createFrom;
 const $$createType4 = $Create.Nullable($$createType3);
 const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = mcp$0.ToolHit.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $Create.Array($$createType7);
