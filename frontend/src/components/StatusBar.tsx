@@ -12,7 +12,7 @@ export default function StatusBar() {
   const backendError = useChatStore((s) => s.backendError);
 
   // 运行灯只表达即时状态：后端错误（红）/ 生成中（黄）/ 空闲（暗）
-  const lampColor = backendError ? "#f28b82" : isStreaming ? "#fdd663" : "#5f6368";
+  const lampColor = backendError ? "var(--error)" : isStreaming ? "var(--attention)" : "var(--idle)";
   const lampTitle = backendError
     ? "后端调用失败"
     : isStreaming ? "生成中…" : "空闲";

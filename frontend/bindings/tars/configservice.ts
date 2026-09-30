@@ -15,6 +15,16 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as config$0 from "./internal/config/models.js";
 
 /**
+ * BroadcastTheme 主题切换广播（theme:changed）到所有窗口，并落一份
+ * 主题小文件（Go 侧创建窗口时按它给底色，避免浅色主题开窗黑闪）。
+ * 主题的运行时持久化主通道是前端 localStorage（同 profile 各窗口共享），
+ * 不切 config.yaml。
+ */
+export function BroadcastTheme(theme: string): $CancellablePromise<void> {
+    return $Call.ByID(2558085395, theme);
+}
+
+/**
  * GetAppConfig 返回当前配置（密钥原样返回，前端用眼睛按钮控制显示）。
  */
 export function GetAppConfig(): $CancellablePromise<config$0.AppConfig | null> {

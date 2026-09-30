@@ -101,7 +101,7 @@ func main() {
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
-		BackgroundColour: application.NewRGB(19, 19, 20),
+		BackgroundColour: windowBackground(), // 跟随主题（浅色开窗不黑闪）
 		URL:              "/",
 	})
 

@@ -177,6 +177,17 @@ export default function CanvasBoard({
 
   const [importNote, setImportNote] = useState<string | null>(null);
 
+  // 画板主题跟随应用主题（窗口内 CustomEvent，由 theme.ts 广播）
+  const [appTheme, setAppTheme] = useState<"dark" | "light">(() =>
+    document.documentElement.dataset.theme === "light" ? "light" : "dark",
+  );
+  useEffect(() => {
+    const onTheme = (e: Event) =>
+      setAppTheme((e as CustomEvent).detail === "light" ? "light" : "dark");
+    window.addEventListener("tars:theme-change", onTheme);
+    return () => window.removeEventListener("tars:theme-change", onTheme);
+  }, []);
+
   // 素材库导入（#addLibrary hash 兜底路径使用；主链路是应用内素材
   // 浏览窗口 + 启动早期导入门 LibraryImportGate，不经由画板）。
   const importFrom = (sourceUrl: string) => {
@@ -264,7 +275,7 @@ export default function CanvasBoard({
         elements: api.getSceneElements(),
         appState: {
           ...api.getAppState(),
-          exportWithDarkMode: true, // 与暗色 UI 一致
+          exportWithDarkMode: appTheme === "dark", // 跟随应用主题
           exportBackground: true,
         },
         files: api.getFiles(),
@@ -286,7 +297,9 @@ export default function CanvasBoard({
     <div className="canvas-overlay">
       <div className="canvas-header">
         <span className="canvas-title">画板</span>
-        <span className="canvas-hint">{importNote ?? "绘制完成后导出为图片或 Mermaid 代码插入输入框"}</span>
+        {/* 常驻提示已移除（窄窗换行难看）；导出动作的去向见按钮 tooltip。
+            canvas-hint 仅在素材导入等瞬态通知时出现 */}
+        {importNote && <span className="canvas-hint">{importNote}</span>}
         <div className="canvas-actions">
           {draftSid && (
             <button
@@ -318,7 +331,7 @@ export default function CanvasBoard({
               onInsertMermaid(latest.mermaid); // 关窗由调用方负责
             }}
           >
-            <Workflow size={14} /> 插入 Mermaid 到输入框
+            <Workflow size={14} /> 导出为 Mermaid
           </button>
           <button
             className="dialog-btn primary"
@@ -330,7 +343,7 @@ export default function CanvasBoard({
             }
             onClick={() => void insertAsImage()}
           >
-            <ImageDown size={14} /> {exporting ? "导出中…" : "插入图片到输入框"}
+            <ImageDown size={14} /> {exporting ? "导出中…" : "导出为图片"}
           </button>
           <WindowControls />
         </div>
@@ -338,7 +351,7 @@ export default function CanvasBoard({
       <div className="canvas-body">
         <Excalidraw
           excalidrawAPI={(api) => (apiRef.current = api)}
-          theme="dark"
+          theme={appTheme}
           initialData={loadLibrary}
           onLibraryChange={onLibraryChange}
           onChange={(els, appState, files) => {

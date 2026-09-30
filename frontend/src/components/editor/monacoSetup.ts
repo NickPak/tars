@@ -65,7 +65,7 @@ import "monaco-editor/languages/definitions/php/register.js";
 import "monaco-editor/language/json/monaco.contribution.js";
 import JsonWorker from "monaco-editor/language/json/json.worker?worker";
 
-// ---- 暗色主题（对齐应用调色板）----
+// ---- 主题（对齐应用调色板；浅色为 Gemini/VS Code 浅色风）----
 monaco.editor.defineTheme("tars-dark", {
   base: "vs-dark",
   inherit: true,
@@ -77,6 +77,26 @@ monaco.editor.defineTheme("tars-dark", {
     "editorCursor.foreground": "#a8c7fa",
     "editor.selectionBackground": "#a8c7fa33",
   },
+});
+monaco.editor.defineTheme("tars-light", {
+  base: "vs",
+  inherit: true,
+  rules: [],
+  colors: {
+    "editor.background": "#ffffff",
+    "editor.lineHighlightBackground": "#f0f4f9",
+    "editorLineNumber.foreground": "#9aa0a6",
+    "editorCursor.foreground": "#0b57d0",
+    "editor.selectionBackground": "#0b57d033",
+  },
+});
+
+// 跟随应用主题切换（theme.ts 在窗口内广播 CustomEvent）
+function editorTheme(): string {
+  return document.documentElement.dataset.theme === "light" ? "tars-light" : "tars-dark";
+}
+window.addEventListener("tars:theme-change", () => {
+  monaco.editor.setTheme(editorTheme());
 });
 
 // ---- 扩展名 → 语言 ----
@@ -108,7 +128,7 @@ export function createEditor(
     value: opts.value,
     language: opts.language,
     readOnly: opts.readOnly,
-    theme: "tars-dark",
+    theme: editorTheme(),
     automaticLayout: true,
     // minimap：代码缩略图导航（Monarch 高亮着色，随主题）
     minimap: { enabled: true, maxColumn: 80 },

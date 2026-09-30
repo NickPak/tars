@@ -247,7 +247,7 @@ func (s *CanvasService) DetachAuxTab(tabID string, x, y int) error {
 		URL:       "/?view=aux&detached=" + url.QueryEscape(tabID),
 		// 同副面板主窗口：不开 NonClientRegionSupport（详见 OpenAuxTab 注释）
 		Frameless:        runtime.GOOS == "windows",
-		BackgroundColour: application.NewRGB(19, 19, 20),
+		BackgroundColour: windowBackground(), // 跟随主题
 	})
 	win.SetPosition(x-w/2, y-16)
 	emitAuxChanged()
@@ -361,7 +361,7 @@ func (s *CanvasService) OpenAuxTab(sessionID, kind, path string) error {
 			// "点一下边框后窗口跟随鼠标缩放"的卡死态。副面板改用 JS 拖拽
 			//（Tab 条 --wails-draggable），边框缩放走 Wails 默认无边框路径。
 			Frameless:        runtime.GOOS == "windows",
-			BackgroundColour: application.NewRGB(19, 19, 20),
+			BackgroundColour: windowBackground(), // 跟随主题
 			// InitialPosition 默认为 WindowCentered——此时 X/Y 被忽略，
 			// 必须显式 WindowXY 才能让下方计算的坐标生效。
 			InitialPosition: application.WindowXY,

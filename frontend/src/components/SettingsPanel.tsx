@@ -25,6 +25,7 @@ import { ConfirmDialog } from "./Dialog";
 import SkillsPage from "./SkillsPage";
 import MCPPage from "./MCPPage";
 import MemoryPage from "./MemoryPage";
+import AppearancePage from "./AppearancePage";
 
 interface NavItem {
   tab: SettingsTab;
@@ -42,7 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { tab: "memory", label: "记忆", icon: <BookMarked size={15} /> },
   { tab: "skills", label: "技能", icon: <Sparkles size={15} /> },
   { tab: "mcp", label: "MCP 与工具", icon: <Plug size={15} /> },
-  { tab: "appearance", label: "外观", icon: <Palette size={15} />, planned: true },
+  { tab: "appearance", label: "外观", icon: <Palette size={15} /> },
   { tab: "about", label: "关于", icon: <Info size={15} /> },
 ];
 
@@ -207,18 +208,7 @@ export default function SettingsPanel() {
                   <SkillsPage draft={draft} update={update} />
                 )}
                 {tab === "mcp" && <MCPPage />}
-                {tab === "appearance" && (
-                  <PlaceholderPage
-                    icon={<Palette size={28} />}
-                    title="外观"
-                    desc="主题与排版定制。"
-                    items={[
-                      "浅色 / 深色 / 跟随系统主题",
-                      "界面与会话字体、字号定制",
-                      "代码块与元数据排版",
-                    ]}
-                  />
-                )}
+                {tab === "appearance" && <AppearancePage />}
                 {tab === "about" && <AboutPage />}
               </>
             )}
@@ -1293,32 +1283,6 @@ function TracePage({
           />
         </Field>
       </Section>
-    </PageShell>
-  );
-}
-
-function PlaceholderPage({
-  icon,
-  title,
-  desc,
-  items,
-}: {
-  icon: ReactNode;
-  title: string;
-  desc: string;
-  items: string[];
-}) {
-  return (
-    <PageShell title={title} desc={desc}>
-      <div className="settings-placeholder">
-        <div className="settings-placeholder-icon">{icon}</div>
-        <ul className="settings-placeholder-list">
-          {items.map((it) => (
-            <li key={it}>{it}</li>
-          ))}
-        </ul>
-        <span className="settings-placeholder-badge">规划中 · 敬请期待</span>
-      </div>
     </PageShell>
   );
 }

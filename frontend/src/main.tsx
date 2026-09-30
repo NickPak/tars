@@ -2,7 +2,12 @@ import { StrictMode, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import LibraryImportGate from "./components/LibraryImportGate";
+import { initTheme } from "./theme/theme";
 import "./styles/app.css";
+
+// 主题必须在渲染前应用（同步读 localStorage 翻转 data-theme，零闪烁）；
+// 主窗口/副面板/导入门共用本入口，全部生效。
+initTheme();
 
 // 素材库浏览窗口的重定向着陆点：站点 "Add to Excalidraw" 会跳到
 // <应用origin>/#addLibrary=<url>&token=...——检测到该 hash 即说明

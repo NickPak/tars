@@ -8,6 +8,8 @@ import rehypeHighlight from "rehype-highlight";
 import { Copy, Check, Terminal } from "lucide-react";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";
+// 浅色主题下的高亮覆盖（选择器带 [data-theme="light"] 作用域，优先级天然更高）
+import "../styles/hljs-light.css";
 
 interface MarkdownProps {
   content: string;
@@ -135,7 +137,9 @@ function CodeBlock(props: { children?: ReactNode }) {
   );
 }
 
-let mermaidReady = false;
+// mermaid.initialize 是全局一次性配置——记录已初始化的主题，
+// 应用主题切换时按新主题重新初始化。
+let mermaidThemeInited: string | null = null;
 
 /**
  * mermaid 代码块 → SVG 图（懒加载 mermaid.js，不进主 bundle）。
@@ -147,6 +151,13 @@ let mermaidReady = false;
 function MermaidDiagram({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // 应用主题切换时重渲染（mermaid 主题在 initialize 时锁定）
+  const [themeTick, setThemeTick] = useState(0);
+  useEffect(() => {
+    const onTheme = () => setThemeTick((t) => t + 1);
+    window.addEventListener("tars:theme-change", onTheme);
+    return () => window.removeEventListener("tars:theme-change", onTheme);
+  }, []);
 
   useEffect(() => {
     if (!code.trim()) return;
@@ -154,9 +165,11 @@ function MermaidDiagram({ code }: { code: string }) {
     const timer = setTimeout(async () => {
       const { default: mermaid } = await import("mermaid");
       if (cancelled) return;
-      if (!mermaidReady) {
-        mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
-        mermaidReady = true;
+      // 主题变化时需要重新 initialize（mermaid 全局只认最近一次配置）
+      const mmdTheme = document.documentElement.dataset.theme === "light" ? "default" : "dark";
+      if (mermaidThemeInited !== mmdTheme) {
+        mermaid.initialize({ startOnLoad: false, theme: mmdTheme, securityLevel: "strict" });
+        mermaidThemeInited = mmdTheme;
       }
       // 渲染 ID 唯一化；mermaid.render 失败时会在 body 残留错误占位元素，需清理
       const id = `mmd-${Math.random().toString(36).slice(2)}`;
@@ -178,7 +191,7 @@ function MermaidDiagram({ code }: { code: string }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [code]);
+  }, [code, themeTick]);
 
   return (
     <>
