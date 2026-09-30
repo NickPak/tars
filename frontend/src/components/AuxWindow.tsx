@@ -95,14 +95,6 @@ export default function AuxWindow() {
     return () => window.removeEventListener("dragover", allow, true);
   }, []);
 
-  // [诊断] F12 打开 DevTools（无边框窗口无系统快捷方式）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "F12") void Window.OpenDevTools();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
 
 
