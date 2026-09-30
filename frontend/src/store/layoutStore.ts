@@ -3,11 +3,11 @@ import { create } from "zustand";
 /** 面板宽度约束（px）：两侧面板保持紧凑，把宽度留给中间的聊天主区 */
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 480;
-export const WORKSPACE_MIN = 240;
+export const WORKSPACE_MIN = 160;
 export const WORKSPACE_MAX = 560;
 
 const SIDEBAR_DEFAULT = 240;
-const WORKSPACE_DEFAULT = 280;
+const WORKSPACE_DEFAULT = 120;
 
 const LS_SIDEBAR = "tars.layout.sidebarWidth";
 const LS_WORKSPACE = "tars.layout.workspaceWidth";
