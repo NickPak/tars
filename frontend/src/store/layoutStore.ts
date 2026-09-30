@@ -7,7 +7,7 @@ export const WORKSPACE_MIN = 160;
 export const WORKSPACE_MAX = 560;
 
 const SIDEBAR_DEFAULT = 240;
-const WORKSPACE_DEFAULT = 120;
+const WORKSPACE_DEFAULT = 187;
 
 const LS_SIDEBAR = "tars.layout.sidebarWidth";
 const LS_WORKSPACE = "tars.layout.workspaceWidth";
