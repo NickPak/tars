@@ -7,7 +7,7 @@ import (
 
 // ErrContextOverflow 标记"请求超出模型上下文窗口"这一类供应商错误。
 // 宿主经 errors.Is 可靠识别（各家原始文案差异极大，见 contextOverflowMarkers）。
-var ErrContextOverflow = errors.New("上下文超出模型窗口上限")
+var ErrContextOverflow = errors.New("context exceeds the model's context window limit")
 
 // contextOverflowMarkers 是各供应商"上下文超限"错误的判别子串（小写匹配）。
 //

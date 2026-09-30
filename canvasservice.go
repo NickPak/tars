@@ -78,21 +78,21 @@ func writeLibraryFile(jsonStr string) error {
 func (s *CanvasService) ImportCanvasLibrary(sourceURL string) (string, int, error) {
 	u, err := url.Parse(sourceURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
-		return "", 0, fmt.Errorf("素材库地址必须是 https URL")
+		return "", 0, fmt.Errorf("library URL must be an https URL")
 	}
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Get(sourceURL)
 	if err != nil {
-		return "", 0, fmt.Errorf("下载素材库失败：%w", err)
+		return "", 0, fmt.Errorf("failed to download library: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", 0, fmt.Errorf("下载素材库失败：HTTP %d", resp.StatusCode)
+		return "", 0, fmt.Errorf("failed to download library: HTTP %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10MB 上限
 	if err != nil {
-		return "", 0, fmt.Errorf("读取素材库失败：%w", err)
+		return "", 0, fmt.Errorf("failed to read library: %w", err)
 	}
 
 	// .excalidrawlib 格式：{ "type": "excalidrawlib", "version": N, "libraryItems": [...] }
@@ -101,7 +101,7 @@ func (s *CanvasService) ImportCanvasLibrary(sourceURL string) (string, int, erro
 		LibraryItems []json.RawMessage `json:"libraryItems"`
 	}
 	if err := json.Unmarshal(body, &lib); err != nil || len(lib.LibraryItems) == 0 {
-		return "", 0, fmt.Errorf("素材库文件格式无效（缺少 libraryItems）")
+		return "", 0, fmt.Errorf("invalid library file format (missing libraryItems)")
 	}
 
 	// 读出现有库，按素材 id 去重（新素材与本地同 id 时保留本地版本）
@@ -112,7 +112,7 @@ func (s *CanvasService) ImportCanvasLibrary(sourceURL string) (string, int, erro
 	var existing []json.RawMessage
 	if existingJSON != "" {
 		if err := json.Unmarshal([]byte(existingJSON), &existing); err != nil {
-			return "", 0, fmt.Errorf("本地素材库损坏：%w", err)
+			return "", 0, fmt.Errorf("local library is corrupted: %w", err)
 		}
 	}
 	seen := map[string]bool{}
@@ -214,7 +214,7 @@ func emitAuxChanged() {
 func (s *CanvasService) DetachAuxTab(tabID string, x, y int) error {
 	app := application.Get()
 	if app == nil {
-		return fmt.Errorf("应用尚未就绪")
+		return fmt.Errorf("application is not ready")
 	}
 	aux.mu.Lock()
 	var tab *AuxTab
@@ -302,7 +302,7 @@ func (s *CanvasService) ReattachAuxTab(tabID string) {
 func (s *CanvasService) OpenAuxTab(sessionID, kind, path string) error {
 	app := application.Get()
 	if app == nil {
-		return fmt.Errorf("应用尚未就绪")
+		return fmt.Errorf("application is not ready")
 	}
 	id := kind
 	title := "画板"
@@ -414,7 +414,7 @@ var pendingReveals = struct {
 // 读取内容时生效）。
 func (s *CanvasService) RevealEditorRange(sessionID, path string, startLine, endLine int) error {
 	if startLine < 1 || endLine < startLine {
-		return fmt.Errorf("无效的行范围：%d-%d", startLine, endLine)
+		return fmt.Errorf("invalid line range: %d-%d", startLine, endLine)
 	}
 	pendingReveals.mu.Lock()
 	pendingReveals.m[path] = [2]int{startLine, endLine}
@@ -502,7 +502,7 @@ func (s *CanvasService) GetCanvasDraft(sessionID string) (string, error) {
 // 视口 appState；原子写；20MB 上限——图片走 files dataURL 可能较大）。
 func (s *CanvasService) SetCanvasDraft(sessionID string, jsonStr string) error {
 	if len(jsonStr) > 20<<20 {
-		return fmt.Errorf("草稿过大（>20MB）")
+		return fmt.Errorf("draft too large (>20MB)")
 	}
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(jsonStr), &probe); err != nil {
@@ -528,7 +528,7 @@ func (s *CanvasService) SetCanvasDraft(sessionID string, jsonStr string) error {
 // CanvasInsertImage 画板窗口产出 PNG（dataURL）→ 广播给主窗口插入输入框。
 func (s *CanvasService) CanvasInsertImage(dataURL string) error {
 	if !strings.HasPrefix(dataURL, "data:image/") {
-		return fmt.Errorf("非法的图片数据")
+		return fmt.Errorf("invalid image data")
 	}
 	if app := application.Get(); app != nil {
 		app.Event.Emit("canvas:insert-image", dataURL)
@@ -545,7 +545,7 @@ func (s *CanvasService) ExportCanvasScene(jsonStr string) (string, error) {
 	}
 	app := application.Get()
 	if app == nil {
-		return "", fmt.Errorf("应用尚未就绪")
+		return "", fmt.Errorf("application is not ready")
 	}
 	target, err := app.Dialog.SaveFile().
 		SetMessage("另存画板场景").
@@ -572,7 +572,7 @@ func (s *CanvasService) ExportCanvasScene(jsonStr string) (string, error) {
 // CanvasInsertMermaid 画板窗口产出 Mermaid 代码 → 广播给主窗口插入输入框。
 func (s *CanvasService) CanvasInsertMermaid(code string) error {
 	if strings.TrimSpace(code) == "" {
-		return fmt.Errorf("内容为空")
+		return fmt.Errorf("content is empty")
 	}
 	if app := application.Get(); app != nil {
 		app.Event.Emit("canvas:insert-mermaid", code)
@@ -587,11 +587,11 @@ func (s *CanvasService) CanvasInsertMermaid(code string) error {
 // 接管 hash、完成导入并自动关窗。
 func (s *CanvasService) OpenLibraryBrowser(siteURL string) error {
 	if !strings.HasPrefix(siteURL, "https://libraries.excalidraw.com") {
-		return fmt.Errorf("仅支持打开 libraries.excalidraw.com")
+		return fmt.Errorf("only libraries.excalidraw.com is allowed")
 	}
 	app := application.Get()
 	if app == nil {
-		return fmt.Errorf("应用尚未就绪")
+		return fmt.Errorf("application is not ready")
 	}
 	if win, ok := app.Window.GetByName(libraryBrowserWindowName); ok {
 		win.SetURL(siteURL).Show().Focus()

@@ -86,7 +86,7 @@ func (s *ModelService) ListModels() ([]ModelInfo, error) {
 func (s *ModelService) SetActiveModel(id string) error {
 	cfg := boot.GetApp().GetLLMMgr().Config()
 	if cfg.FindModel(id) == nil {
-		return fmt.Errorf("模型条目 %q 不存在", id)
+		return fmt.Errorf("model entry %q does not exist", id)
 	}
 	if active := cfg.ActiveModel(); active != nil && active.EntryID == id {
 		return nil // 已是当前模型

@@ -199,34 +199,34 @@ func (c *Config) ActiveModel() *ModelConfig {
 func (c *Config) Validate() error {
 	for id, p := range c.Providers {
 		if id == "" {
-			return fmt.Errorf("供应商 ID 不能为空")
+			return fmt.Errorf("provider ID must not be empty")
 		}
 		if p == nil {
-			return fmt.Errorf("供应商 %q 配置为空", id)
+			return fmt.Errorf("provider %q has empty config", id)
 		}
 		if p.ID != id {
 			p.ID = id // 归一化：map key 是身份的唯一来源
 		}
 		if !IsValidProviderType(p.Type) {
-			return fmt.Errorf("供应商 %q 的类型 %q 不支持（可选：%s）",
+			return fmt.Errorf("provider %q has unsupported type %q (supported: %s)",
 				id, p.Type, strings.Join(ProviderTypes(), " / "))
 		}
 	}
 	for id, m := range c.Models {
 		if id == "" {
-			return fmt.Errorf("模型条目 ID 不能为空")
+			return fmt.Errorf("model entry ID must not be empty")
 		}
 		if m == nil {
-			return fmt.Errorf("模型条目 %q 配置为空", id)
+			return fmt.Errorf("model entry %q has empty config", id)
 		}
 		if m.EntryID != id {
 			m.EntryID = id
 		}
 		if m.ModelId == "" {
-			return fmt.Errorf("模型条目 %q 的模型 ID 不能为空", id)
+			return fmt.Errorf("model entry %q has empty model ID", id)
 		}
 		if c.FindProvider(m.Provider) == nil {
-			return fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", id, m.Provider)
+			return fmt.Errorf("model entry %q references unknown provider %q", id, m.Provider)
 		}
 		// 计量字段回填默认值：构建期保证非零，下游（压缩阈值、状态栏、
 		// 请求参数）直接取用，不再各自兜底。
@@ -251,13 +251,13 @@ func (c *Config) Validate() error {
 		m.ReasoningEffort = strings.ToLower(strings.TrimSpace(m.ReasoningEffort))
 		m.ReasoningSummary = strings.ToLower(strings.TrimSpace(m.ReasoningSummary))
 		if m.ReasoningEffort != "" && !reasoningEffortValues[m.ReasoningEffort] {
-			return fmt.Errorf("模型条目 %q 的推理强度 %q 无法识别（可选：minimal/low/medium/high/xhigh；供应商私有档位请留空）", id, m.ReasoningEffort)
+			return fmt.Errorf("model entry %q has unrecognized reasoning effort %q (supported: minimal/low/medium/high/xhigh; leave empty for provider-specific levels)", id, m.ReasoningEffort)
 		}
 		if m.ReasoningSummary != "" && !reasoningSummaryValues[m.ReasoningSummary] {
-			return fmt.Errorf("模型条目 %q 的推理摘要 %q 无法识别（可选：auto/concise/detailed）", id, m.ReasoningSummary)
+			return fmt.Errorf("model entry %q has unrecognized reasoning summary %q (supported: auto/concise/detailed)", id, m.ReasoningSummary)
 		}
 		if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
-			return fmt.Errorf("模型条目 %q 的 temperature 超出合法区间 [0, 2]：%v", id, *m.Temperature)
+			return fmt.Errorf("model entry %q has temperature out of range [0, 2]: %v", id, *m.Temperature)
 		}
 	}
 	if len(c.Models) == 0 {
@@ -265,7 +265,7 @@ func (c *Config) Validate() error {
 		// 供应商与模型；首次对话时 Active() 才报"尚未配置任何模型"）。
 		c.Active = ""
 	} else if c.Active != "" && c.FindModel(c.Active) == nil {
-		return fmt.Errorf("当前模型 %q 不在模型列表中", c.Active)
+		return fmt.Errorf("active model %q is not in the model list", c.Active)
 	}
 	return nil
 }

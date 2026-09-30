@@ -253,11 +253,11 @@ func (c *Controller) SubmitMessage(content string, images []string) (string, str
 			total += len(u)
 		}
 		if total > maxSubmitImageBytes {
-			return "", "", fmt.Errorf("图片总量超过上限（%d MB），请压缩或减少图片", maxSubmitImageBytes>>20)
+			return "", "", fmt.Errorf("total image size exceeds the %d MB limit; compress or remove some images", maxSubmitImageBytes>>20)
 		}
 		if cfg := c.llmMgr.Config(); cfg != nil {
 			if m := cfg.ActiveModel(); m != nil && !m.ImagesEnabled() {
-				return "", "", fmt.Errorf("当前模型 %q 未声明图片能力，请在设置中开启或切换支持图片的模型", m.EntryID)
+				return "", "", fmt.Errorf("model %q does not declare image capability; enable it in settings or switch to a vision-capable model", m.EntryID)
 			}
 		}
 	}

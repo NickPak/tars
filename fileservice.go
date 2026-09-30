@@ -94,14 +94,14 @@ func (s *FileService) ReadWorkspaceFile(sessionID string, relPath string) (strin
 		return "", fmt.Errorf("path is a directory: %s", relPath)
 	}
 	if info.Size > maxEditorFileSize {
-		return "", fmt.Errorf("文件过大（>2MB），请用外部程序打开")
+		return "", fmt.Errorf("file too large (>2MB); open it with an external program")
 	}
 	data, err := fs.ReadFile(relPath)
 	if err != nil {
 		return "", err
 	}
 	if bytes.IndexByte(data, 0) >= 0 {
-		return "", fmt.Errorf("二进制文件不支持编辑，请用外部程序打开")
+		return "", fmt.Errorf("binary files cannot be edited; open it with an external program")
 	}
 	return string(data), nil
 }
@@ -153,7 +153,7 @@ func (s *FileService) DeleteWorkspaceEntry(sessionID string, relPath string) err
 // 插入对话输入框（发送时由 Controller 展开为真实代码片段）。
 func (s *FileService) InsertEditorReference(sessionID string, ref string) error {
 	if strings.TrimSpace(ref) == "" {
-		return fmt.Errorf("引用为空")
+		return fmt.Errorf("reference is empty")
 	}
 	if app := application.Get(); app != nil {
 		app.Event.Emit("editor:insert-reference", ref)

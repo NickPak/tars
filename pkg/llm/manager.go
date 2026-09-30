@@ -93,7 +93,7 @@ func (r *Manager) Active() (model.ToolCallingChatModel, *ModelConfig, error) {
 	cfg := r.Config()
 	m := cfg.ActiveModel()
 	if m == nil {
-		return nil, nil, errors.New("尚未配置任何模型，请在设置中添加")
+		return nil, nil, errors.New("no models configured; add one in settings")
 	}
 	cm, err := r.chatModel(m.EntryID)
 	return cm, m, err
@@ -114,7 +114,7 @@ func (r *Manager) chatModel(entryID string) (model.ToolCallingChatModel, error) 
 
 	m := cfg.FindModel(entryID)
 	if m == nil {
-		return nil, fmt.Errorf("模型条目 %q 不存在", entryID)
+		return nil, fmt.Errorf("model entry %q does not exist", entryID)
 	}
 	cm, err := buildOne(context.Background(), cfg, m)
 	if err != nil {
@@ -137,7 +137,7 @@ func buildChatModel(ctx context.Context, cfg *Config) (model.ToolCallingChatMode
 func buildOne(ctx context.Context, cfg *Config, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	p := cfg.FindProvider(m.Provider)
 	if p == nil {
-		return nil, fmt.Errorf("模型条目 %q 引用了不存在的供应商 %q", m.EntryID, m.Provider)
+		return nil, fmt.Errorf("model entry %q references unknown provider %q", m.EntryID, m.Provider)
 	}
 	switch p.Type {
 	case ProviderGemini:
@@ -155,7 +155,7 @@ func buildOne(ctx context.Context, cfg *Config, m *ModelConfig) (model.ToolCalli
 	case ProviderOllama:
 		return buildOllama(ctx, p, m)
 	default:
-		return nil, fmt.Errorf("供应商 %q 的类型 %q 不支持", p.ID, p.Type)
+		return nil, fmt.Errorf("provider %q has unsupported type %q", p.ID, p.Type)
 	}
 }
 
@@ -180,11 +180,11 @@ func f32pClamped(v *float64, hi float32) *float32 {
 
 func buildGemini(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	if p.ApiKey == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
+		return nil, fmt.Errorf("provider %q has no API key configured", p.ID)
 	}
 	genaiClient, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: p.ApiKey})
 	if err != nil {
-		return nil, fmt.Errorf("供应商 %q 初始化失败：%w", p.ID, err)
+		return nil, fmt.Errorf("provider %q initialization failed: %w", p.ID, err)
 	}
 	return gemini.NewChatModel(ctx, &gemini.Config{
 		Client:      genaiClient,
@@ -199,7 +199,7 @@ func buildGemini(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 
 func buildOpenAI(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	if p.BaseUrl == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 Base URL（openai 类型必填）", p.ID)
+		return nil, fmt.Errorf("provider %q has no base URL configured (required for openai type)", p.ID)
 	}
 	// BaseURL 只到服务根（如 .../v1）：客户端会自行拼接 /chat/completions。
 	// 用户误填完整端点时归一化，否则路径重复（.../chat/completions/chat/completions → 404）。
@@ -227,10 +227,10 @@ func buildOpenAI(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 
 func buildClaude(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	if p.ApiKey == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
+		return nil, fmt.Errorf("provider %q has no API key configured", p.ID)
 	}
 	if m.MaxTokens <= 0 {
-		return nil, fmt.Errorf("Claude 模型 %q 必须配置最大输出 tokens（maxTokens，Anthropic API 必填）", m.EntryID)
+		return nil, fmt.Errorf("Claude model %q requires max output tokens (maxTokens; required by the Anthropic API)", m.EntryID)
 	}
 	cfg := &claude.Config{
 		APIKey:      p.ApiKey,
@@ -254,7 +254,7 @@ func buildClaude(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.
 
 func buildDeepSeek(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	if p.ApiKey == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
+		return nil, fmt.Errorf("provider %q has no API key configured", p.ID)
 	}
 	cfg := &deepseek.ChatModelConfig{
 		APIKey: p.ApiKey,
@@ -281,10 +281,10 @@ func buildDeepSeek(ctx context.Context, p *ProviderConfig, m *ModelConfig) (mode
 
 func buildQwen(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	if p.ApiKey == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
+		return nil, fmt.Errorf("provider %q has no API key configured", p.ID)
 	}
 	if p.BaseUrl == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 Base URL（qwen 类型必填，如 https://dashscope.aliyuncs.com/compatible-mode/v1）", p.ID)
+		return nil, fmt.Errorf("provider %q has no base URL configured (required for qwen type, e.g. https://dashscope.aliyuncs.com/compatible-mode/v1)", p.ID)
 	}
 	cfg := &qwen.ChatModelConfig{
 		APIKey:         p.ApiKey,
@@ -301,7 +301,7 @@ func buildQwen(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.To
 
 func buildArk(ctx context.Context, p *ProviderConfig, m *ModelConfig) (model.ToolCallingChatModel, error) {
 	if p.ApiKey == "" {
-		return nil, fmt.Errorf("供应商 %q 未配置 API Key", p.ID)
+		return nil, fmt.Errorf("provider %q has no API key configured", p.ID)
 	}
 	cfg := &ark.ChatModelConfig{
 		APIKey:      p.ApiKey,

@@ -146,7 +146,7 @@ func (p *Project) SetWorkspaceDir(dir string) error {
 			return fmt.Errorf("turn in progress, cancel it first")
 		}
 		if len(c.GetSessionMgr().GetData().Messages) > 0 {
-			return fmt.Errorf("项目已有对话记录，工作区已锁定；如需在新目录下工作，请新建项目")
+			return fmt.Errorf("project has conversation history and its workspace is locked; create a new project to work in a different directory")
 		}
 	}
 

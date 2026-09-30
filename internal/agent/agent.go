@@ -291,9 +291,9 @@ func normalizeErr(callCtx, ctx context.Context, timeout time.Duration, iter int,
 	if llm.IsContextOverflow(err) {
 		// 保留原始错误文本：各家会带上"上限 N / 实际 M"这类有用数字，
 		// 且用户报障时需要它（不静默丢信息）。
-		return fmt.Errorf("%w：本轮内容过大，自动压缩已无法再回收空间。"+
-			"可以开启新会话、把当前任务拆成更小的步骤，或换用上下文窗口更大的模型。"+
-			"（原始错误：%v）", llm.ErrContextOverflow, err)
+		return fmt.Errorf("%w: the request is too large and auto-compaction can no longer reclaim space. "+
+			"Start a new session, split the task into smaller steps, or switch to a model with a larger context window. "+
+			"(original error: %v)", llm.ErrContextOverflow, err)
 	}
 	return err
 }
