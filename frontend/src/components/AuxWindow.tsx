@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Events, Window, Screens } from "@wailsio/runtime";
-import { Palette, FileText, X, ArrowDownToLine, Save, SquareArrowOutUpRight } from "lucide-react";
+import { BookOpen, FileText, X, ArrowDownToLine, Save, SquareArrowOutUpRight } from "lucide-react";
 import { agentApi } from "../services/agentApi";
 import WindowControls from "./WindowControls";
 import type { AuxTab } from "../types";
@@ -25,6 +26,7 @@ interface AuxSnapshot {
  * - 独立窗口拖回：拖动停止后与副窗口重叠 >25% 后端自动吸回，或点吸回按钮。
  */
 export default function AuxWindow() {
+  const { t } = useTranslation();
   const [snap, setSnap] = useState<AuxSnapshot>({ tabs: [], activeId: "", detached: [] });
   const [activeOverride, setActiveOverride] = useState<string | null>(null);
   const [supportsImages, setSupportsImages] = useState(false);
@@ -91,6 +93,15 @@ export default function AuxWindow() {
     const allow = (e: DragEvent) => e.preventDefault();
     window.addEventListener("dragover", allow, true);
     return () => window.removeEventListener("dragover", allow, true);
+  }, []);
+
+  // [诊断] F12 打开 DevTools（无边框窗口无系统快捷方式）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F12") void Window.OpenDevTools();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
 
@@ -174,38 +185,42 @@ export default function AuxWindow() {
     <div className="aux-window">
       {/* Tab 条兼任无边框标题栏（拖拽区 + 窗口控制 + 双击扩缩循环） */}
       <div className="aux-tabbar" onDoubleClick={(e) => void onTabbarDoubleClick(e)}>
-        {tabs.map((t) => (
+        {tabs.map((tab) => (
           <div
-            key={t.id}
-            className={`aux-tab${t.id === activeId ? " active" : ""}${draggingId === t.id ? " dragging" : ""}`}
-            onClick={() => setActiveOverride(t.id)}
+            key={tab.id}
+            className={`aux-tab${tab.id === activeId ? " active" : ""}${draggingId === tab.id ? " dragging" : ""}`}
+            onClick={() => setActiveOverride(tab.id)}
             onMouseDown={(e) => {
               // 中键关闭标签（浏览器惯例）；preventDefault 阻止自动滚动。
               // 编辑器 Tab 走 aux:tab-action 通道（FileViewer 有脏检查），
               // 画板 Tab 无监听者，直接关闭。
               if (e.button === 1) {
                 e.preventDefault();
-                if (t.kind === "editor") tabAction(t, "close");
-                else closeTab(t.id);
+                if (tab.kind === "editor") tabAction(tab, "close");
+                else closeTab(tab.id);
               }
             }}
             onContextMenu={(e) => {
               e.preventDefault();
-              setCtxMenu({ tab: t, x: e.clientX, y: e.clientY });
+              setCtxMenu({ tab, x: e.clientX, y: e.clientY });
             }}
             draggable
-            onDragStart={(e) => onTabDragStart(t, e)}
-            onDragEnd={(e) => onTabDragEnd(t, e)}
-            title={t.kind === "editor" ? t.path : undefined}
+            onDragStart={(e) => onTabDragStart(tab, e)}
+            onDragEnd={(e) => onTabDragEnd(tab, e)}
+            title={tab.kind === "editor" ? tab.path : undefined}
           >
-            {t.kind === "canvas" ? <Palette size={13} /> : <FileText size={13} />}
-            <span className="aux-tab-title">{t.title}</span>
+            {/* 画板 Tab 用书本图标（与 Excalidraw 素材库图标同形态） */}
+            {tab.kind === "canvas" ? <BookOpen size={13} /> : <FileText size={13} />}
+            {/* 画板标题由后端写死中文，渲染时按界面语言覆盖；编辑器 Tab 用文件名 */}
+            <span className="aux-tab-title">
+              {tab.kind === "canvas" ? t("canvas.title") : tab.title}
+            </span>
             <button
               className="aux-tab-close"
-              title="关闭标签"
+              title={t("aux.closeTab")}
               onClick={(e) => {
                 e.stopPropagation();
-                closeTab(t.id);
+                closeTab(tab.id);
               }}
             >
               <X size={12} />
@@ -217,7 +232,7 @@ export default function AuxWindow() {
         {detachedId && (
           <button
             className="topbar-btn"
-            title="吸回副面板（也可把窗口拖到副面板上自动吸回）"
+            title={t("aux.reattach")}
             onClick={() => void agentApi.reattachAuxTab(detachedId)}
           >
             <ArrowDownToLine size={15} />
@@ -228,18 +243,18 @@ export default function AuxWindow() {
 
       {/* Tab 内容保活：全部挂载，隐藏的仅 display:none */}
       <div className="aux-content">
-        {tabs.map((t) => (
+        {tabs.map((tab) => (
           <div
-            key={t.id}
+            key={tab.id}
             className="aux-pane"
-            style={{ display: t.id === activeId ? undefined : "none" }}
+            style={{ display: tab.id === activeId ? undefined : "none" }}
           >
-            <Suspense fallback={<div className="settings-loading">加载中…</div>}>
-              {renderTab(t)}
+            <Suspense fallback={<div className="settings-loading">{t("aux.loading")}</div>}>
+              {renderTab(tab)}
             </Suspense>
           </div>
         ))}
-        {tabs.length === 0 && <div className="settings-loading">没有打开的标签页</div>}
+        {tabs.length === 0 && <div className="settings-loading">{t("aux.empty")}</div>}
       </div>
 
       {/* Tab 右键菜单（编辑器动作经 aux:tab-action 转发给 FileViewer） */}
@@ -259,7 +274,7 @@ export default function AuxWindow() {
                 }}
               >
                 <Save size={14} />
-                保存（Ctrl+S）
+                {t("aux.save")}
               </button>
               <button
                 className="ws-ctx-item"
@@ -269,7 +284,7 @@ export default function AuxWindow() {
                 }}
               >
                 <SquareArrowOutUpRight size={14} />
-                用默认程序打开
+                {t("workspace.openDefault")}
               </button>
             </>
           )}
@@ -281,7 +296,7 @@ export default function AuxWindow() {
             }}
           >
             <X size={14} />
-            关闭标签
+            {t("aux.closeTab")}
           </button>
         </div>
       )}

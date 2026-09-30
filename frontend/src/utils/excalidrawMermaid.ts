@@ -12,6 +12,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
  * 走图片通道。
  */
 
+/** reason 是 i18n 键（canvas.reason.*），由展示层翻译成当前界面语言 */
 export type ConvertResult =
   | { ok: true; mermaid: string }
   | { ok: false; reason: string };
@@ -25,7 +26,7 @@ function escLabel(s: string): string {
 
 export function sceneToMermaid(elements: readonly ExcalidrawElement[]): ConvertResult {
   const els = elements.filter((e) => !e.isDeleted);
-  if (els.length === 0) return { ok: false, reason: "画布为空" };
+  if (els.length === 0) return { ok: false, reason: "canvas.reason.empty" };
 
   const byId = new Map(els.map((e) => [e.id, e]));
 
@@ -33,7 +34,7 @@ export function sceneToMermaid(elements: readonly ExcalidrawElement[]): ConvertR
   for (const e of els) {
     if (e.type === "frame") continue;
     if (NODE_TYPES.has(e.type) || e.type === "arrow" || e.type === "text") continue;
-    return { ok: false, reason: "包含自由手绘/图片等不可转换内容，请改用图片" };
+    return { ok: false, reason: "canvas.reason.unsupported" };
   }
 
   // 文本必须绑定到图形（节点标签）或箭头（边标签）
@@ -44,7 +45,7 @@ export function sceneToMermaid(elements: readonly ExcalidrawElement[]): ConvertR
     const containerId = (e as { containerId?: string | null }).containerId;
     const container = containerId ? byId.get(containerId) : undefined;
     if (!container) {
-      return { ok: false, reason: "存在未绑定图形的孤立文本，请把文字写进图形里（双击图形）" };
+      return { ok: false, reason: "canvas.reason.orphanText" };
     }
     if (NODE_TYPES.has(container.type)) nodeLabel.set(container.id, e.text);
     else if (container.type === "arrow") edgeLabel.set(container.id, e.text);
@@ -52,7 +53,7 @@ export function sceneToMermaid(elements: readonly ExcalidrawElement[]): ConvertR
 
   const nodes = els.filter((e) => NODE_TYPES.has(e.type));
   if (nodes.length === 0) {
-    return { ok: false, reason: "没有可转换的图形（矩形/椭圆/菱形 + 吸附箭头）" };
+    return { ok: false, reason: "canvas.reason.noShapes" };
   }
   // Mermaid 节点 ID：按画布顺序编号（确定性）
   const mid = new Map<string, string>();
@@ -68,7 +69,7 @@ export function sceneToMermaid(elements: readonly ExcalidrawElement[]): ConvertR
     const s = b.startBinding?.elementId;
     const t = b.endBinding?.elementId;
     if (!s || !t || !mid.has(s) || !mid.has(t)) {
-      return { ok: false, reason: "存在未吸附图形的箭头，请把箭头两端拖到图形上（出现吸附框）" };
+      return { ok: false, reason: "canvas.reason.unboundArrow" };
     }
   }
 

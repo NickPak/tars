@@ -48,6 +48,19 @@ func (s *ConfigService) BroadcastTheme(theme string) error {
 	return nil
 }
 
+// BroadcastLocale 界面语言切换广播（locale:changed）到所有窗口。
+// 与主题同理：持久化在前端 localStorage，这里只做实时同步转发。
+// pref 为空串表示"跟随系统"。
+func (s *ConfigService) BroadcastLocale(pref string) error {
+	if pref != "" && pref != "zh" && pref != "en" {
+		return fmt.Errorf("unknown locale: %s", pref)
+	}
+	if app := application.Get(); app != nil {
+		app.Event.Emit("locale:changed", pref)
+	}
+	return nil
+}
+
 // themeFile 主题持久化小文件路径。
 func themeFile() string {
 	return filepath.Join(config.DefaultDataDir(), "theme")

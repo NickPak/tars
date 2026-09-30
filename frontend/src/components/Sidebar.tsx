@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useLayoutStore } from "../store/layoutStore";
@@ -7,6 +8,7 @@ import RenameDialog, { ConfirmDialog } from "./Dialog";
 import ResizeHandle from "./ResizeHandle";
 
 export default function Sidebar() {
+  const { t } = useTranslation();
   const projects = useChatStore((s) => s.projects);
   const sessions = useChatStore((s) => s.sessions);
   const activeProjectId = useChatStore((s) => s.activeProjectId);
@@ -28,9 +30,9 @@ export default function Sidebar() {
       const latest = ss[ss.length - 1];
       return {
         projectId: p.id,
-        title: p.title || latest?.title || "新项目",
+        title: p.title || latest?.title || t("sidebar.newProject"),
         sessionCount: ss.length,
-        workspace: p.workspaceDir || "默认工作区",
+        workspace: p.workspaceDir || t("sidebar.defaultWorkspace"),
         updatedAt: ss.reduce((m, c) => Math.max(m, c.updatedAt), p.updatedAt),
       };
     })
@@ -69,7 +71,9 @@ export default function Sidebar() {
   const handleCopyId = (id: string) => {
     navigator.clipboard
       .writeText(id)
-      .catch((e) => setBackendError(`复制失败: ${e instanceof Error ? e.message : String(e)}`));
+      .catch((e) =>
+        setBackendError(t("common.copyFailed", { msg: e instanceof Error ? e.message : String(e) })),
+      );
     setCtxMenu(null);
   };
 
@@ -77,7 +81,11 @@ export default function Sidebar() {
     setCtxMenu(null);
     agentApi
       .revealProjectWorkspace(projectId)
-      .catch((e) => setBackendError(`打开工作区失败: ${e instanceof Error ? e.message : String(e)}`));
+      .catch((e) =>
+        setBackendError(
+          t("sidebar.revealFailed", { msg: e instanceof Error ? e.message : String(e) }),
+        ),
+      );
   };
 
   return (
@@ -85,20 +93,20 @@ export default function Sidebar() {
       {/* 收起/展开开关在左侧常驻图标栏（App.tsx 的 left-rail） */}
       <button className="new-chat-btn" onClick={newSession}>
         <Plus size={16} />
-        新项目
+        {t("sidebar.newProject")}
       </button>
 
-      <div className="sidebar-section">最近</div>
+      <div className="sidebar-section">{t("sidebar.recent")}</div>
 
       <nav className="session-list">
         {items.length === 0 && (
-          <div className="session-empty">暂无项目</div>
+          <div className="session-empty">{t("sidebar.empty")}</div>
         )}
         {items.map((c) => (
           <div
             key={c.projectId}
             className={`session-item${c.projectId === activeProjectId ? " active" : ""}`}
-            title={`${c.title}\n工作区：${c.workspace}`}
+            title={t("sidebar.itemTooltip", { title: c.title, workspace: c.workspace })}
             onClick={() => void selectProject(c.projectId)}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -108,8 +116,8 @@ export default function Sidebar() {
             <span className="session-title">{c.title}</span>
             <span className="session-actions">
               <button
-                aria-label="重命名"
-                title="重命名"
+                aria-label={t("common.rename")}
+                title={t("common.rename")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setRenameTarget({ id: c.projectId, title: c.title });
@@ -118,8 +126,8 @@ export default function Sidebar() {
                 <Pencil size={14} />
               </button>
               <button
-                aria-label="删除"
-                title="删除"
+                aria-label={t("common.delete")}
+                title={t("common.delete")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setDeleteTarget(c.projectId);
@@ -148,13 +156,13 @@ export default function Sidebar() {
               setCtxMenu(null);
             }}
           >
-            重命名
+            {t("common.rename")}
           </button>
           <button className="ws-ctx-item" onClick={() => handleCopyId(ctxItem.projectId)}>
-            复制项目 ID
+            {t("sidebar.copyProjectId")}
           </button>
           <button className="ws-ctx-item" onClick={() => handleRevealWorkspace(ctxItem.projectId)}>
-            在文件管理器中打开工作区
+            {t("sidebar.revealWorkspace")}
           </button>
           <div className="ws-ctx-separator" />
           <button
@@ -164,7 +172,7 @@ export default function Sidebar() {
               setDeleteTarget(ctxItem.projectId);
             }}
           >
-            删除项目
+            {t("sidebar.deleteProject")}
           </button>
         </div>
       )}
@@ -186,8 +194,11 @@ export default function Sidebar() {
       <ConfirmDialog
         open={deleteTarget !== null}
         message={(() => {
-          const t = items.find((i) => i.projectId === deleteTarget);
-          return `确定删除项目「${t?.title ?? ""}」及其 ${t?.sessionCount ?? 0} 个会话？此操作不可撤销。`;
+          const item = items.find((i) => i.projectId === deleteTarget);
+          return t("sidebar.deleteConfirm", {
+            title: item?.title ?? "",
+            count: item?.sessionCount ?? 0,
+          });
         })()}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {

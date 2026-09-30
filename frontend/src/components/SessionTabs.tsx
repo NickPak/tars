@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, X, ChevronDown } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { agentApi } from "../services/agentApi";
@@ -13,6 +14,7 @@ import RenameDialog, { ConfirmDialog } from "./Dialog";
  * （数据保留，点击即重开）；只有右键"删除会话"才真正清空对话记录。
  */
 export default function SessionTabs() {
+  const { t } = useTranslation();
   const activeProjectId = useChatStore((s) => s.activeProjectId);
   const activeId = useChatStore((s) => s.activeId);
   const sessions = useChatStore((s) => s.sessions);
@@ -71,7 +73,9 @@ export default function SessionTabs() {
   const handleCopyId = (id: string) => {
     navigator.clipboard
       .writeText(id)
-      .catch((e) => setBackendError(`复制失败: ${e instanceof Error ? e.message : String(e)}`));
+      .catch((e) =>
+        setBackendError(t("common.copyFailed", { msg: e instanceof Error ? e.message : String(e) })),
+      );
     setCtxMenu(null);
   };
 
@@ -79,31 +83,35 @@ export default function SessionTabs() {
     setCtxMenu(null);
     agentApi
       .exportSession(id)
-      .catch((e) => setBackendError(`导出失败: ${e instanceof Error ? e.message : String(e)}`));
+      .catch((e) =>
+        setBackendError(
+          t("sessionTabs.exportFailed", { msg: e instanceof Error ? e.message : String(e) }),
+        ),
+      );
   };
 
   return (
     <div className="session-tabs">
-      {tabs.map((t) => (
+      {tabs.map((tab) => (
         <div
-          key={t.id}
-          className={`session-tab${t.id === activeId ? " active" : ""}`}
-          title={t.title || "新对话"}
-          onClick={() => void selectSession(t.id)}
+          key={tab.id}
+          className={`session-tab${tab.id === activeId ? " active" : ""}`}
+          title={tab.title || t("sessionTabs.newChat")}
+          onClick={() => void selectSession(tab.id)}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setCtxMenu({ x: e.clientX, y: e.clientY, id: t.id });
+            setCtxMenu({ x: e.clientX, y: e.clientY, id: tab.id });
           }}
         >
-          <span className="session-tab-title">{t.title || "新对话"}</span>
+          <span className="session-tab-title">{tab.title || t("sessionTabs.newChat")}</span>
           <button
             className="session-tab-close"
-            aria-label="关闭会话"
-            title="关闭会话（对话记录保留，可从右侧已关闭列表重开）"
+            aria-label={t("sessionTabs.closeTab")}
+            title={t("sessionTabs.closeTabTip")}
             onClick={(e) => {
               e.stopPropagation();
-              void closeSessionTab(t.id);
+              void closeSessionTab(tab.id);
             }}
           >
             <X size={12} />
@@ -112,8 +120,8 @@ export default function SessionTabs() {
       ))}
       <button
         className="session-tab-add"
-        title="新建会话（与当前项目共用工作区）"
-        aria-label="新建会话"
+        title={t("sessionTabs.addTab")}
+        aria-label={t("sessionTabs.addTab")}
         onClick={() => void addSessionTab()}
       >
         <Plus size={14} />
@@ -126,8 +134,8 @@ export default function SessionTabs() {
       <div ref={closedMenuRef}>
         <button
           className="session-tab-add"
-          title={closedTabs.length > 0 ? `已关闭的会话（${closedTabs.length}）` : "没有已关闭的会话"}
-          aria-label="已关闭的会话"
+          title={closedTabs.length > 0 ? t("sessionTabs.closedList", { count: closedTabs.length }) : t("sessionTabs.closedEmpty")}
+          aria-label={t("sessionTabs.closedAria")}
           disabled={closedTabs.length === 0}
           onClick={(e) => {
             if (closedMenuPos) {
@@ -148,16 +156,16 @@ export default function SessionTabs() {
             className="ws-ctx-menu"
             style={{ top: closedMenuPos.y, left: closedMenuPos.x }}
           >
-            {closedTabs.map((t) => (
+            {closedTabs.map((tab) => (
               <button
-                key={t.id}
+                key={tab.id}
                 className="ws-ctx-item"
                 onClick={() => {
                   setClosedMenuPos(null);
-                  void reopenSessionTab(t.id);
+                  void reopenSessionTab(tab.id);
                 }}
               >
-                {t.title || "新对话"}
+                {tab.title || t("sessionTabs.newChat")}
               </button>
             ))}
           </div>
@@ -178,13 +186,13 @@ export default function SessionTabs() {
               setCtxMenu(null);
             }}
           >
-            重命名
+            {t("common.rename")}
           </button>
           <button className="ws-ctx-item" onClick={() => handleCopyId(ctxTab.id)}>
-            复制会话 ID
+            {t("sessionTabs.copySessionId")}
           </button>
           <button className="ws-ctx-item" onClick={() => handleExport(ctxTab.id)}>
-            导出对话
+            {t("sessionTabs.export")}
           </button>
           <div className="ws-ctx-separator" />
           <button
@@ -194,7 +202,7 @@ export default function SessionTabs() {
               void closeSessionTab(ctxTab.id);
             }}
           >
-            关闭
+            {t("sessionTabs.close")}
           </button>
           <button
             className="ws-ctx-item"
@@ -204,7 +212,7 @@ export default function SessionTabs() {
               void closeOtherTabs(ctxTab.id);
             }}
           >
-            关闭其他标签
+            {t("sessionTabs.closeOthers")}
           </button>
           <button
             className="ws-ctx-item"
@@ -213,7 +221,7 @@ export default function SessionTabs() {
               void closeAllTabs();
             }}
           >
-            关闭全部标签
+            {t("sessionTabs.closeAll")}
           </button>
           <div className="ws-ctx-separator" />
           <button
@@ -223,7 +231,7 @@ export default function SessionTabs() {
               setDeleteTarget(ctxTab.id);
             }}
           >
-            删除会话
+            {t("sessionTabs.delete")}
           </button>
         </div>
       )}
@@ -244,7 +252,7 @@ export default function SessionTabs() {
       {/* 删除 = 清空对话记录，不可撤销，需确认 */}
       <ConfirmDialog
         open={deleteTarget !== null}
-        message="删除会话将清空其对话记录，此操作不可撤销。确定删除？"
+        message={t("sessionTabs.deleteConfirm")}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) void deleteSessionTab(deleteTarget);

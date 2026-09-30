@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MessageSquarePlus } from "lucide-react";
 import { Events } from "@wailsio/runtime";
 import { agentApi } from "../services/agentApi";
@@ -27,6 +28,7 @@ export default function FileViewer({
   tabId?: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -157,9 +159,11 @@ export default function FileViewer({
       .writeWorkspaceFile(sessionId, path, editor.getValue())
       .then(() => {
         setDirty(false);
-        flash("已保存");
+        flash(t("editor.saved"));
       })
-      .catch((e) => flash(`保存失败：${e instanceof Error ? e.message : String(e)}`, 4000))
+      .catch((e) =>
+        flash(t("editor.saveFailed", { msg: e instanceof Error ? e.message : String(e) }), 4000),
+      )
       .finally(() => setSaving(false));
   };
 
@@ -188,7 +192,7 @@ export default function FileViewer({
       if (id !== tabId) return;
       if (action === "save") saveRef.current();
       if (action === "close") {
-        if (dirtyRef.current && !window.confirm("有未保存的改动，确定关闭吗？")) return;
+        if (dirtyRef.current && !window.confirm(t("editor.confirmCloseDirty"))) return;
         onClose();
       }
     };
@@ -207,7 +211,7 @@ export default function FileViewer({
         ? `${path}:L${sel.startLineNumber}`
         : `${path}:L${sel.startLineNumber}-${sel.endLineNumber}`;
     // 独立窗口的 store 是窗口本地状态——引用经后端事件回流主窗口输入框
-    void agentApi.editorInsertReference(sessionId, ref).then(() => flash(`已引用 ${ref}`));
+    void agentApi.editorInsertReference(sessionId, ref).then(() => flash(t("editor.referenced", { ref })));
     setSelPopup(null);
   };
 
@@ -324,9 +328,9 @@ export default function FileViewer({
       </div>
       <div className="editor-pane-body">
         {error && <div className="code-editor-error">{error}</div>}
-        {!error && content === null && <div className="settings-loading">加载中…</div>}
+        {!error && content === null && <div className="settings-loading">{t("editor.loading")}</div>}
         {!error && content !== null && (
-          <Suspense fallback={<div className="code-editor-loading">编辑器加载中…</div>}>
+          <Suspense fallback={<div className="code-editor-loading">{t("editor.loadingEditor")}</div>}>
             <CodeEditor
               path={path}
               value={content}

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Folder, ListTree, Settings } from "lucide-react";
 import Sidebar from "./components/Sidebar";
 import MessageList from "./components/MessageList";
@@ -14,6 +15,7 @@ import { useLayoutStore } from "./store/layoutStore";
 import { useSettingsStore } from "./store/settingsStore";
 
 export default function App() {
+  const { t } = useTranslation();
   const backendError = useChatStore((s) => s.backendError);
   const dismissError = useChatStore((s) => s.dismissError);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
@@ -78,8 +80,8 @@ export default function App() {
       <aside className="left-rail">
         <button
           className={`rail-btn${sidebarCollapsed ? "" : " active"}`}
-          title={sidebarCollapsed ? "展开项目列表" : "收起项目列表"}
-          aria-label={sidebarCollapsed ? "展开项目列表" : "收起项目列表"}
+          title={sidebarCollapsed ? t("app.expandSidebar") : t("app.collapseSidebar")}
+          aria-label={sidebarCollapsed ? t("app.expandSidebar") : t("app.collapseSidebar")}
           onClick={toggleSidebar}
         >
           <Folder size={17} />
@@ -88,8 +90,8 @@ export default function App() {
         <div className="rail-bottom">
           <button
             className="rail-btn"
-            title="设置 (Ctrl+,)"
-            aria-label="设置"
+            title={t("app.settings")}
+            aria-label={t("app.settingsAria")}
             onClick={() => useSettingsStore.getState().openSettings()}
           >
             <Settings size={17} />
@@ -102,8 +104,8 @@ export default function App() {
         <TopicBar />
         {backendError && (
           <div className="backend-error" role="alert">
-            <span>后端调用失败:{backendError}</span>
-            <button onClick={dismissError} aria-label="关闭">
+            <span>{t("app.backendError", { msg: backendError })}</span>
+            <button onClick={dismissError} aria-label={t("common.close")}>
               ✕
             </button>
           </div>
@@ -117,8 +119,8 @@ export default function App() {
       <aside className="right-rail">
         <button
           className={`rail-btn${workspaceVisible ? " active" : ""}`}
-          title={workspaceVisible ? "收起工作区" : "展开工作区"}
-          aria-label={workspaceVisible ? "收起工作区" : "展开工作区"}
+          title={workspaceVisible ? t("app.collapseWorkspace") : t("app.expandWorkspace")}
+          aria-label={workspaceVisible ? t("app.collapseWorkspace") : t("app.expandWorkspace")}
           onClick={toggleWorkspace}
         >
           <ListTree size={17} />

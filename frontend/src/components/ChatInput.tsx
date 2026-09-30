@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Events } from "@wailsio/runtime";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -72,6 +73,7 @@ function ToolbarBtn({
  *   导致的光标跳动）。
  */
 export default function ChatInput() {
+  const { t } = useTranslation();
   /** 图片双击预览（lightbox） */
   const [preview, setPreview] = useState<string | null>(null);
   /** 编辑器高度（顶部把手拖拽后固定为该值；null = 随内容自适应）。
@@ -126,7 +128,8 @@ export default function ChatInput() {
       Markdown,
       Mathematics, // katex 样式已由 Markdown.tsx 全局引入；$...$/$$...$$ 与 markdown 双向序列化
       ComposerImage,
-      Placeholder.configure({ placeholder: "向 TARS 提问…（支持 Markdown）" }),
+      // placeholder 在建编辑器时取值；切换语言后下次挂载生效（可接受）
+      Placeholder.configure({ placeholder: t("chat.placeholder") }),
       FileHandler.configure({
         // 注意：allowedMimeTypes 是精确匹配（不支持 "image/*" 通配符），
         // 传了反而全被过滤掉——类型过滤由 insertImageFiles 的前缀判断负责。
@@ -286,7 +289,7 @@ export default function ChatInput() {
         onMouseDown={onGripDown}
         role="separator"
         aria-orientation="horizontal"
-        title="拖拽调整输入区高度"
+        title={t("chat.resizeGrip")}
       >
         <span />
       </div>
@@ -294,24 +297,24 @@ export default function ChatInput() {
         <div className="composer-main">
           {editor && (
             <div className="composer-toolbar">
-              <ToolbarBtn title="一级标题" active={editorState?.h1} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 size={14} /></ToolbarBtn>
-              <ToolbarBtn title="二级标题" active={editorState?.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.h1")} active={editorState?.h1} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.h2")} active={editorState?.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={14} /></ToolbarBtn>
               <span className="composer-toolbar-sep" />
-              <ToolbarBtn title="无序列表" active={editorState?.bullet} onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={14} /></ToolbarBtn>
-              <ToolbarBtn title="有序列表" active={editorState?.ordered} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={14} /></ToolbarBtn>
-              <ToolbarBtn title="引用块" active={editorState?.quote} onClick={() => editor.chain().focus().toggleBlockquote().run()}><TextQuote size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.bullet")} active={editorState?.bullet} onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.ordered")} active={editorState?.ordered} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.quote")} active={editorState?.quote} onClick={() => editor.chain().focus().toggleBlockquote().run()}><TextQuote size={14} /></ToolbarBtn>
               <span className="composer-toolbar-sep" />
-              <ToolbarBtn title="行内代码" active={editorState?.code} onClick={() => editor.chain().focus().toggleCode().run()}><Code size={14} /></ToolbarBtn>
-              <ToolbarBtn title="代码块" active={editorState?.codeBlock} onClick={() => editor.chain().focus().toggleCodeBlock().run()}><SquareCode size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.inlineCode")} active={editorState?.code} onClick={() => editor.chain().focus().toggleCode().run()}><Code size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.codeBlock")} active={editorState?.codeBlock} onClick={() => editor.chain().focus().toggleCodeBlock().run()}><SquareCode size={14} /></ToolbarBtn>
               <span className="composer-toolbar-sep" />
-              <ToolbarBtn title="行内公式（$...$）" onClick={() => editor.chain().focus().insertInlineMath({ latex: "" }).run()}><Sigma size={14} /></ToolbarBtn>
-              <ToolbarBtn title="公式块（$$...$$）" onClick={() => editor.chain().focus().insertBlockMath({ latex: "" }).run()}><Radical size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.inlineMath")} onClick={() => editor.chain().focus().insertInlineMath({ latex: "" }).run()}><Sigma size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.blockMath")} onClick={() => editor.chain().focus().insertBlockMath({ latex: "" }).run()}><Radical size={14} /></ToolbarBtn>
               <span className="composer-toolbar-sep" />
-              <ToolbarBtn title="画板：在副面板窗口绘制草图并插入（内容随会话暂存，可续编）" onClick={() => void agentApi.openAuxTab(activeId ?? "", "canvas", "")}><Palette size={14} /></ToolbarBtn>
+              <ToolbarBtn title={t("chat.canvasTip")} onClick={() => void agentApi.openAuxTab(activeId ?? "", "canvas", "")}><Palette size={14} /></ToolbarBtn>
               {supportsImages && (
                 <>
                   <span className="composer-toolbar-sep" />
-                  <ToolbarBtn title="添加图片（也可直接粘贴/拖入）" onClick={() => fileRef.current?.click()}><ImagePlus size={14} /></ToolbarBtn>
+                  <ToolbarBtn title={t("chat.addImage")} onClick={() => fileRef.current?.click()}><ImagePlus size={14} /></ToolbarBtn>
                 </>
               )}
             </div>
@@ -342,8 +345,8 @@ export default function ChatInput() {
           <button
             className="composer-btn stop"
             onClick={() => void cancel()}
-            aria-label="停止生成"
-            title="停止生成"
+            aria-label={t("chat.stop")}
+            title={t("chat.stop")}
           >
             <Square size={18} fill="currentColor" />
           </button>
@@ -352,14 +355,14 @@ export default function ChatInput() {
             className="composer-btn send"
             onClick={() => doSendRef.current()}
             disabled={editorState?.isEmpty ?? true}
-            aria-label="发送"
-            title="发送"
+            aria-label={t("chat.send")}
+            title={t("chat.send")}
           >
             <ArrowUp size={20} />
           </button>
         )}
       </div>
-      <div className="composer-hint">Enter 发送 · Shift + Enter 换行 · 支持 Markdown</div>
+      <div className="composer-hint">{t("chat.hint")}</div>
       <ImagePreview src={preview} onClose={() => setPreview(null)} />
     </div>
   );

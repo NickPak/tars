@@ -4,6 +4,7 @@
  * 的 system 消息即包含新技能目录。
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Download,
   PackageOpen,
@@ -19,22 +20,11 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** 内置推荐分类的中文标签（与后端 skills.RecommendedCategories 对应） */
-const CATEGORY_LABELS: Record<string, string> = {
-  documents: "文档",
-  office: "办公",
-  devops: "运维部署",
-  development: "软件开发",
-  data: "数据处理",
-  research: "研究检索",
-  system: "系统操作",
-  design: "设计图像",
-  writing: "写作内容",
-};
-
-function categoryLabel(c: string): string {
-  return CATEGORY_LABELS[c] ?? c;
-}
+/** 内置推荐分类的标签键（与后端 skills.RecommendedCategories 对应） */
+const CATEGORY_KEYS = [
+  "documents", "office", "devops", "development", "data",
+  "research", "system", "design", "writing",
+];
 
 export default function SkillsPage({
   draft,
@@ -43,6 +33,10 @@ export default function SkillsPage({
   draft: AppConfig;
   update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
+  const { t } = useTranslation();
+  // 分类标签：内置分类走字典，自定义分类显示原值
+  const categoryLabel = (c: string): string =>
+    CATEGORY_KEYS.includes(c) ? t(`skills.cat.${c}`) : c;
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +87,7 @@ export default function SkillsPage({
         pendingCategory.trim(),
         overwrite,
       );
-      setNotice(`已安装技能 "${name}"`);
+      setNotice(t("skills.installed", { name }));
       setInstallPath("");
       setPendingCategory("");
       setConflict(false);
@@ -131,7 +125,7 @@ export default function SkillsPage({
     setNotice(null);
     try {
       await agentApi.uninstallSkill(name);
-      setNotice(`已卸载技能 "${name}"`);
+      setNotice(t("skills.uninstalled", { name }));
       await refresh();
     } catch (e) {
       setError(errText(e));
@@ -143,7 +137,7 @@ export default function SkillsPage({
     setNotice(null);
     try {
       await agentApi.setSkillCategory(name, category);
-      setNotice(`已更新 "${name}" 的分类，下一轮对话生效`);
+      setNotice(t("skills.categoryUpdated", { name }));
       await refresh();
     } catch (e) {
       setError(errText(e));
@@ -156,7 +150,7 @@ export default function SkillsPage({
     try {
       await agentApi.setSkillEnabled(name, enabled);
       setNotice(
-        enabled ? `已启用 "${name}"` : `已禁用 "${name}"（对 Agent 不可见）`,
+        enabled ? t("skills.enabled", { name }) : t("skills.disabled", { name }),
       );
       await refresh();
     } catch (e) {
@@ -201,20 +195,19 @@ export default function SkillsPage({
 
   return (
     <div className="settings-page">
-      <h2 className="settings-page-title">技能（Skills）</h2>
+      <h2 className="settings-page-title">{t("skills.title")}</h2>
       <p className="settings-page-desc">
-        技能是领域知识与专项操作流程的能力层：目录索引常驻系统消息，模型按需
-        load_skill 加载完整手册。安装后下一次对话即可用。
+        {t("skills.desc")}
       </p>
 
       {/* 索引档位阈值（走 config 保存流） */}
       <section className="settings-section">
-        <div className="settings-section-title">索引档位阈值</div>
+        <div className="settings-section-title">{t("skills.thresholds")}</div>
         <div className="settings-field">
           <div className="settings-field-copy">
-            <span className="settings-field-label">全量清单上限</span>
+            <span className="settings-field-label">{t("skills.fullListCap")}</span>
             <span className="settings-field-hint">
-              不超过此数量时，所有技能的 name + 描述常驻系统消息（默认 50）。
+              {t("skills.fullListCapHint")}
             </span>
           </div>
           <div className="settings-field-control">
@@ -230,9 +223,9 @@ export default function SkillsPage({
         </div>
         <div className="settings-field">
           <div className="settings-field-copy">
-            <span className="settings-field-label">常驻索引上限</span>
+            <span className="settings-field-label">{t("skills.indexCap")}</span>
             <span className="settings-field-hint">
-              超过此数量时不再常驻清单，只留"用 discover_tools 检索"提示（默认 500）。
+              {t("skills.indexCapHint")}
             </span>
           </div>
           <div className="settings-field-control">
@@ -248,9 +241,9 @@ export default function SkillsPage({
         </div>
         <div className="settings-field">
           <div className="settings-field-copy">
-            <span className="settings-field-label">检索候选数上限</span>
+            <span className="settings-field-label">{t("skills.searchCap")}</span>
             <span className="settings-field-hint">
-              discover_tools 与下方搜索框每次返回的候选技能数（默认 5），两者共用。
+              {t("skills.searchCapHint")}
             </span>
           </div>
           <div className="settings-field-control">
@@ -267,14 +260,13 @@ export default function SkillsPage({
           </div>
         </div>
         <p className="settings-field-hint">
-          技能数量超过阈值时，索引从"全量清单"降级为"类别目录"再到"仅检索提示"，
-          控制常驻系统消息的大小。保存后下一次对话立即生效。
+          {t("skills.thresholdNote")}
         </p>
       </section>
 
       {/* 安装区 */}
       <section className="settings-section">
-        <div className="settings-section-title">安装技能</div>
+        <div className="settings-section-title">{t("skills.install")}</div>
         {installPath ? (
           <div className="skills-install-row">
             <code className="skills-install-path">{installPath}</code>
@@ -283,7 +275,7 @@ export default function SkillsPage({
               value={pendingCategory}
               onChange={(e) => setPendingCategory(e.target.value)}
             >
-              <option value="">分类：未分类（misc）</option>
+              <option value="">{t("skills.categoryMisc")}</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {categoryLabel(c)}
@@ -296,7 +288,7 @@ export default function SkillsPage({
                 disabled={installing}
                 onClick={() => void doInstall(true)}
               >
-                {installing ? "安装中…" : "覆盖安装"}
+                {installing ? t("skills.installing") : t("skills.overwriteInstall")}
               </button>
             ) : (
               <button
@@ -304,7 +296,7 @@ export default function SkillsPage({
                 disabled={installing}
                 onClick={() => void doInstall(false)}
               >
-                {installing ? "安装中…" : "安装"}
+                {installing ? t("skills.installing") : t("skills.installBtn")}
               </button>
             )}
             <button
@@ -312,7 +304,7 @@ export default function SkillsPage({
               disabled={installing}
               onClick={clearInstall}
             >
-              取消
+              {t("common.cancel")}
             </button>
           </div>
         ) : (
@@ -322,17 +314,17 @@ export default function SkillsPage({
               onClick={() => void pickInstallFile()}
             >
               <Download size={14} />
-              选择文件
+              {t("skills.chooseFile")}
             </button>
             <button
               className="dialog-btn secondary"
               onClick={() => void pickInstallDir()}
             >
               <Download size={14} />
-              选择目录
+              {t("skills.chooseDir")}
             </button>
             <span className="skills-pick-hint">
-              支持 SKILL.md、.zip、.tar.gz，或含 SKILL.md 的目录
+              {t("skills.artifactHint")}
             </span>
           </div>
         )}
@@ -343,21 +335,21 @@ export default function SkillsPage({
       {/* 已安装列表 */}
       <section className="settings-section">
         <div className="settings-section-title skills-list-title">
-          已安装（{displayed?.length ?? 0}
-          {searchResults ? ` / ${skills?.length ?? 0}` : ""}）
+          {t("skills.installedList", { count: displayed?.length ?? 0 })}
+          {searchResults ? ` / ${skills?.length ?? 0}` : ""}
           <span className="skills-title-actions">
             <span className="skills-search">
               <Search size={12} />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="模糊搜索（与模型同款检索）"
+                placeholder={t("skills.searchPlaceholder")}
                 spellCheck={false}
               />
             </span>
             <button
               className="skills-refresh"
-              title="刷新"
+              title={t("skills.refresh")}
               onClick={() => void refresh()}
             >
               <RefreshCw size={13} />
@@ -365,17 +357,17 @@ export default function SkillsPage({
           </span>
         </div>
 
-        {loading && <div className="settings-loading">加载中…</div>}
+        {loading && <div className="settings-loading">{t("settings.loading")}</div>}
         {!loading && searchResults && searchResults.length === 0 && (
           <div className="skills-empty">
             <PackageOpen size={20} />
-            <span>没有匹配的技能。换个描述试试，或确认是否已安装。</span>
+            <span>{t("skills.noMatch")}</span>
           </div>
         )}
         {!loading && !searchResults && skills && skills.length === 0 && (
           <div className="skills-empty">
             <PackageOpen size={20} />
-            <span>还没有安装技能。上方选择制品即可安装。</span>
+            <span>{t("skills.noneInstalled")}</span>
           </div>
         )}
         {!loading &&
@@ -393,8 +385,8 @@ export default function SkillsPage({
                     aria-checked={sk.enabled}
                     title={
                       sk.enabled
-                        ? "禁用（对 Agent 不可见：索引/检索/加载排除）"
-                        : "启用（对 Agent 可见，下一轮对话生效）"
+                        ? t("skills.disableTip")
+                        : t("skills.enableTip")
                     }
                     onClick={() => void toggleEnabled(sk.name, !sk.enabled)}
                   >
@@ -404,9 +396,9 @@ export default function SkillsPage({
                     className="skill-item-category"
                     value={sk.category || "misc"}
                     onChange={(e) => void changeCategory(sk.name, e.target.value)}
-                    title="修改分类（重跑索引，下一轮对话生效）"
+                    title={t("skills.editCategoryTip")}
                   >
-                    <option value="misc">未分类（misc）</option>
+                    <option value="misc">{t("skills.misc")}</option>
                     {categories
                       .filter((c) => c !== "misc")
                       .map((c) => (
@@ -416,9 +408,9 @@ export default function SkillsPage({
                       ))}
                   </select>
                   {sk.hasScripts && (
-                    <span className="skill-item-tag skill-item-tag-script" title="含可执行脚本">
+                    <span className="skill-item-tag skill-item-tag-script" title={t("skills.hasScriptTip")}>
                       <Shield size={11} />
-                      含脚本
+                      {t("skills.hasScript")}
                     </span>
                   )}
                 </div>
@@ -426,7 +418,7 @@ export default function SkillsPage({
               </div>
               <button
                 className="skill-item-remove"
-                title="卸载"
+                title={t("skills.uninstall")}
                 onClick={() => void doUninstall(sk.name)}
               >
                 <Trash2 size={14} />

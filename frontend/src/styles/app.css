@@ -777,41 +777,7 @@ body.resizing-col .resize-handle::after {
   flex-direction: column;
 }
 
-.canvas-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  /* 无边框窗口：头部兼任标题栏拖拽区 */
-  app-region: drag;
-
-  user-select: none;
-}
-
-.canvas-header button {
-  app-region: no-drag;
-
-}
-
-.canvas-title {
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.canvas-hint {
-  font-size: 12px;
-  color: var(--text-dim);
-  flex: 1;
-}
-
-.canvas-actions {
-  display: flex;
-  gap: 8px;
-}
+/* 画板头部状态栏已移除（动作收进 Excalidraw 主菜单） */
 
 /* ===== 副面板窗口（画板/编辑器 Tab 容器） ===== */
 .aux-window {
@@ -1101,14 +1067,6 @@ body.resizing-col .resize-handle::after {
   font-size: 14px;
 }
 
-.canvas-actions .dialog-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap; /* 窄窗下按钮文字不换行 */
-  flex-shrink: 0;
-}
-
 .canvas-body {
   flex: 1;
   min-height: 0;
@@ -1116,6 +1074,35 @@ body.resizing-col .resize-handle::after {
 
 .canvas-body .excalidraw {
   height: 100%;
+}
+
+/* 素材库按钮与底部帮助按钮同一定位方式：帮助按钮在 absolute 底栏内
+   右 1rem；顶部触发区改为绝对定位贴右（top:auto 保持原垂直位置），
+   不再受顶部三列网格宽度影响。14px = 1rem - 2px，补偿触发按钮外层
+   label 包装的多余边距（实测按钮右缘 18px vs 帮助 16px）。
+   两按钮同为 --default-button-size 方钮 + 1px 边框，样式本就一致 */
+.canvas-body .excalidraw .layer-ui__wrapper__top-right {
+  /* 定位祖先是 FixedSideContainer_side_top——它四周已内缩
+     --editor-container-padding(16px)，其右缘即视口右 16px；
+     贴齐它（right:0）就与底栏帮助按钮（footer 760 宽 -
+     padding 1rem）落在同一垂直线，与窗口宽度无关 */
+  position: absolute;
+  right: 0;
+  width: auto;
+}
+
+/* 顶部三列网格在窄窗下溢出问题：中间工具栏有最小内容宽度，
+   默认 1fr 2fr 1fr 的 fr 轨道含 min-content 下限，窗口 <~780px 时
+   把右列（素材库按钮）顶出视口。两侧列改为可收缩到 0 */
+.canvas-body .excalidraw .App-menu_top {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+/* 素材库触发按钮只留图标（隐藏 "Library" 文字，tooltip 仍有标题）。
+   注意需带上 .default-sidebar-trigger 提权——Excalidraw 的 CSS 随懒加载
+   chunk 后注入，同优先级会压过本条 */
+.canvas-body .excalidraw .default-sidebar-trigger .sidebar-trigger__label {
+  display: none;
 }
 
 /* 图片右键菜单（复制/保存） */

@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Archive, Check, Pencil, RefreshCw, Trash2, X } from "lucide-react";
 import { agentApi } from "../services/agentApi";
 import type { AppConfig, MemoryAuditView, MemoryFact, MemoryFactsView } from "../types";
 import { ConfirmDialog } from "./Dialog";
 
-const TYPE_LABELS: Record<MemoryFact["type"], string> = {
-  user: "用户",
-  feedback: "反馈",
-  project: "项目",
-  reference: "参考",
-  lesson: "教训",
-};
+/** 记忆类型标签走字典键 memory.kind.<type>（TYPE_KEYS 仅作键白名单） */
+const TYPE_KEYS = ["user", "feedback", "project", "reference", "lesson"];
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -34,6 +30,10 @@ export default function MemoryPage({
   draft: AppConfig;
   update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
+  const { t } = useTranslation();
+  // 类型标签：白名单内走字典，未知类型显示原值
+  const typeLabel = (ty: string): string =>
+    TYPE_KEYS.includes(ty) ? t(`memory.kind.${ty}`) : ty;
   const [view, setView] = useState<MemoryFactsView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -134,17 +134,17 @@ export default function MemoryPage({
   const renderAudit = (key: string) => {
     if (!auditOpen[key]) return null;
     const a = audit[key];
-    if (!a) return <div className="mem-audit">加载中…</div>;
+    if (!a) return <div className="mem-audit">{t("settings.loading")}</div>;
     const archived = a.archived ?? [];
     const rejected = a.rejected ?? [];
     if (archived.length === 0 && rejected.length === 0) {
-      return <div className="mem-audit">暂无留痕。</div>;
+      return <div className="mem-audit">{t("memory.noAudit")}</div>;
     }
     const renderRow = (tag: string, f: MemoryFact) => (
       <div key={tag + f.subject} className="mem-fact mem-audit-row">
         <div className="mem-fact-head">
           <span className="mem-audit-tag">{tag}</span>
-          <span className={`mem-type mem-type-${f.type}`}>{TYPE_LABELS[f.type]}</span>
+          <span className={`mem-type mem-type-${f.type}`}>{typeLabel(f.type)}</span>
           <span className="mem-subject">{f.subject}</span>
         </div>
         <div className="mem-body">{f.body}</div>
@@ -152,8 +152,8 @@ export default function MemoryPage({
     );
     return (
       <div className="mem-audit">
-        {archived.map((f) => renderRow("归档", f))}
-        {rejected.map((f) => renderRow("已拒绝", f))}
+        {archived.map((f) => renderRow(t("memory.archived"), f))}
+        {rejected.map((f) => renderRow(t("memory.rejected"), f))}
       </div>
     );
   };
@@ -164,15 +164,15 @@ export default function MemoryPage({
     return (
       <div key={scope + projectId + f.subject} className={`mem-fact${isExpired(f) ? " expired" : ""}`}>
         <div className="mem-fact-head">
-          <span className={`mem-type mem-type-${f.type}`}>{TYPE_LABELS[f.type]}</span>
-          <span className="mem-subject" title={`${f.subject} · 来源 ${f.writtenBy || "未知"} · 确认于 ${f.lastConfirmed}`}>
+          <span className={`mem-type mem-type-${f.type}`}>{typeLabel(f.type)}</span>
+          <span className="mem-subject" title={t("memory.rowTip", { subject: f.subject, source: f.writtenBy || t("memory.unknownSource"), time: f.lastConfirmed })}>
             {f.subject}
           </span>
-          {isExpired(f) && <span className="mem-expired-tag">已过期</span>}
+          {isExpired(f) && <span className="mem-expired-tag">{t("memory.expired")}</span>}
           <span className="mem-actions">
             <button
               className="ws-icon-btn"
-              title="编辑正文"
+              title={t("memory.editBody")}
               onClick={() =>
                 setEditing(isEditing ? null : { scope, projectId, subject: f.subject, body: f.body })
               }
@@ -181,7 +181,7 @@ export default function MemoryPage({
             </button>
             <button
               className="ws-icon-btn"
-              title="删除（归档留痕，可恢复）"
+              title={t("memory.deleteTip")}
               onClick={() => setDeleteTarget({ scope, projectId, subject: f.subject })}
             >
               <Trash2 size={13} />
@@ -198,10 +198,10 @@ export default function MemoryPage({
             />
             <div className="mem-edit-actions">
               <button className="dialog-btn secondary" onClick={() => setEditing(null)}>
-                取消
+                {t("common.cancel")}
               </button>
               <button className="dialog-btn primary" onClick={() => void handleSaveEdit()}>
-                保存
+                {t("common.save")}
               </button>
             </div>
           </div>
@@ -218,17 +218,17 @@ export default function MemoryPage({
 
   return (
     <div className="settings-page">
-      <h2 className="settings-page-title">记忆</h2>
+      <h2 className="settings-page-title">{t("memory.title")}</h2>
       <p className="settings-page-desc">
-        Agent 跨会话记住的事实（remember 工具写入 + 你可直接编辑）。索引注入每轮对话，超上限退化为按需检索；编辑与删除立即生效，删除走归档可恢复。
+        {t("memory.desc")}
       </p>
 
       <section className="settings-section">
-        <div className="settings-section-title">功能</div>
+        <div className="settings-section-title">{t("memory.feature")}</div>
         <div className="settings-field">
           <div className="settings-field-copy">
-            <span className="settings-field-label">启用记忆</span>
-            <span className="settings-field-hint">关闭后记忆块不注入对话，remember/recall 工具不可用。</span>
+            <span className="settings-field-label">{t("memory.enable")}</span>
+            <span className="settings-field-hint">{t("memory.enableHint")}</span>
           </div>
           <button
             className={`switch${memCfg.enabled ? " on" : ""}`}
@@ -246,8 +246,8 @@ export default function MemoryPage({
         </div>
         <div className="settings-field">
           <div className="settings-field-copy">
-            <span className="settings-field-label">索引注入上限</span>
-            <span className="settings-field-hint">字节数。超出截断并提示用 recall 工具检索。</span>
+            <span className="settings-field-label">{t("memory.indexCap")}</span>
+            <span className="settings-field-hint">{t("memory.indexCapHint")}</span>
           </div>
           <input
             className="settings-input small"
@@ -266,13 +266,13 @@ export default function MemoryPage({
 
       <section className="settings-section">
         <div className="settings-section-title mem-section-head">
-          全局记忆（{globals.length}）
-          <button className="ws-icon-btn" title="刷新" onClick={load}>
+          {t("memory.globals", { count: globals.length })}
+          <button className="ws-icon-btn" title={t("memory.refresh")} onClick={load}>
             <RefreshCw size={13} className={loading ? "ws-spin" : ""} />
           </button>
           <button
             className={`ws-icon-btn${auditOpen["global"] ? " mem-audit-on" : ""}`}
-            title="留痕（归档 + 拒绝审计）"
+            title={t("memory.auditTip")}
             onClick={() => void toggleAudit("global", "global", "")}
           >
             <Archive size={13} />
@@ -286,10 +286,10 @@ export default function MemoryPage({
       {projects.map((p) => (
         <section className="settings-section" key={p.projectId}>
           <div className="settings-section-title mem-section-head">
-            项目：{p.title}（{p.facts.length}）
+            {t("memory.project", { title: p.title, count: p.facts.length })}
             <button
               className={`ws-icon-btn${auditOpen[p.projectId] ? " mem-audit-on" : ""}`}
-              title="留痕（归档 + 拒绝审计）"
+              title={t("memory.auditTip")}
               onClick={() => void toggleAudit(p.projectId, "project", p.projectId)}
             >
               <Archive size={13} />
@@ -302,37 +302,37 @@ export default function MemoryPage({
           {(p.candidates?.length ?? 0) > 0 && (
             <div className="mem-candidates">
               <div className="mem-candidates-title">
-                候选（{p.candidates!.length}）—— 由历史对话提炼，采纳后才生效
+                {t("memory.candidates", { count: p.candidates!.length })}
                 <span className="mem-candidates-batch">
                   <button className="dialog-btn secondary" onClick={() => void handleAdoptAll(p.projectId)}>
-                    全部采纳
+                    {t("memory.adoptAll")}
                   </button>
                   <button className="dialog-btn secondary" onClick={() => void handleRejectAll(p.projectId)}>
-                    全部拒绝
+                    {t("memory.rejectAll")}
                   </button>
                 </span>
               </div>
               {p.candidates!.map((c) => (
                 <div key={c.subject} className="mem-fact mem-candidate">
                   <div className="mem-fact-head">
-                    <span className={`mem-type mem-type-${c.type}`}>{TYPE_LABELS[c.type]}</span>
+                    <span className={`mem-type mem-type-${c.type}`}>{typeLabel(c.type)}</span>
                     <span
                       className="mem-subject"
-                      title={`${c.subject} · 来源 ${c.source}`}
+                      title={t("memory.candidateTip", { subject: c.subject, source: c.source })}
                     >
                       {c.subject}
                     </span>
                     <span className="mem-actions">
                       <button
                         className="ws-icon-btn mem-adopt"
-                        title="采纳（转为正式记忆，进入索引）"
+                        title={t("memory.adoptTip")}
                         onClick={() => void handleAdopt(p.projectId, c.subject)}
                       >
                         <Check size={13} />
                       </button>
                       <button
                         className="ws-icon-btn"
-                        title="拒绝（不再重复提议）"
+                        title={t("memory.rejectTip")}
                         onClick={() => void handleReject(p.projectId, c.subject)}
                       >
                         <X size={13} />
@@ -348,12 +348,12 @@ export default function MemoryPage({
       ))}
 
       {empty && (
-        <div className="mem-empty">暂无记忆。对话中说"记住我……"，Agent 会在这里留下事实。</div>
+        <div className="mem-empty">{t("memory.empty")}</div>
       )}
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        message={`确定删除记忆「${deleteTarget?.subject ?? ""}」？旧值将归档保留，可恢复。`}
+        message={t("memory.deleteConfirm", { subject: deleteTarget?.subject ?? "" })}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void handleDelete()}
       />

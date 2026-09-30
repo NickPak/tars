@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { useImageContextMenu } from "./ImageContextMenu";
 
@@ -14,6 +15,7 @@ export default function ImagePreview({
   src: string | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -90,8 +92,8 @@ export default function ImagePreview({
       >
         <button
           className="image-preview-close"
-          title="关闭"
-          aria-label="关闭预览"
+          title={t("win.close")}
+          aria-label={t("img.closePreview")}
           onClick={(e) => {
             e.stopPropagation();
             onClose();
@@ -103,7 +105,7 @@ export default function ImagePreview({
           ref={imgRef}
           className="image-preview"
           src={src}
-          alt="图片预览"
+          alt={t("img.previewAlt")}
           draggable={false}
         />
       </div>

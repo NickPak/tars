@@ -9,6 +9,7 @@
  * 自动识别）、手动配置（逐项表单）、JSON（Claude Desktop 格式整段粘贴）。
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plug, RefreshCw, Search, Trash2, Zap } from "lucide-react";
 import { agentApi } from "../services/agentApi";
 import type { MCPServerConfig, MCPServerInfo, MCPToolHit } from "../types";
@@ -44,6 +45,7 @@ const EMPTY_FORM: MCPServerConfig = {
 type EditorMode = "quick" | "form" | "json";
 
 export default function MCPPage() {
+  const { t } = useTranslation();
   const [infos, setInfos] = useState<MCPServerInfo[] | null>(null);
 
   // 工具检索（模型视角）：与 discover_tools 同款 bleve 检索和候选数
@@ -136,8 +138,8 @@ export default function MCPPage() {
 
   /** 共享校验：名字合法且不重复（各模式解析后统一过这道关） */
   const checkName = (name: string): string | null => {
-    if (!validServerName(name)) return `服务器名 "${name}" 不合法（小写字母/数字/连字符）`;
-    if ((infos ?? []).some((i) => i.name === name)) return `服务器 "${name}" 已存在`;
+    if (!validServerName(name)) return t("mcp.invalidName", { name });
+    if ((infos ?? []).some((i) => i.name === name)) return t("mcp.duplicate", { name });
     return null;
   };
 
@@ -151,7 +153,7 @@ export default function MCPPage() {
     setFormErr(null);
     setJsonErr(null);
     clearExtras();
-    setNotice(`已添加 "${parsed.name}"（点"探测"抓取工具清单后即可被检索）`);
+    setNotice(t("mcp.added", { name: parsed.name }));
     await refresh();
   };
 
@@ -293,7 +295,7 @@ export default function MCPPage() {
         // env 文本解析（非法行在此报错）。
         const env = textToEnv(envDraft);
         const argv = tokenizeCommand(form.command);
-        if (argv.length === 0) throw new Error("命令必填（可执行文件或 npx/uvx 等启动器）");
+        if (argv.length === 0) throw new Error(t("mcp.commandRequired"));
         parsed = {
           name: formName.trim().toLowerCase(),
           config: { ...form, command: argv[0], args: argv.slice(1), env },
@@ -316,7 +318,7 @@ export default function MCPPage() {
     try {
       // 配置已即改即存，直接探测（探测即授权：拉起外部进程抓工具清单）。
       await agentApi.probeMCPServer(name);
-      setRowMsg({ name, kind: "ok", text: "工具清单已缓存" });
+      setRowMsg({ name, kind: "ok", text: t("mcp.toolsCached") });
       await refresh();
     } catch (e) {
       setRowMsg({ name, kind: "err", text: errText(e) });
@@ -344,9 +346,9 @@ export default function MCPPage() {
     <>
       <div className="settings-field settings-field-block">
         <div className="settings-field-copy">
-          <span className="settings-field-label">环境变量</span>
+          <span className="settings-field-label">{t("mcp.env")}</span>
           <span className="settings-field-hint">
-            KEY=VALUE 每行一条（最小权限凭证；支持 ${"${VAR}"} 引用）。与命令/JSON 中的 env 按键合并，此处优先。
+            {t("mcp.envHint")}
           </span>
         </div>
         <div className="settings-field-control">
@@ -365,9 +367,9 @@ export default function MCPPage() {
       </div>
       <div className="settings-field settings-field-block">
         <div className="settings-field-copy">
-          <span className="settings-field-label">描述</span>
+          <span className="settings-field-label">{t("mcp.desc")}</span>
           <span className="settings-field-hint">
-            一句话能力描述（模型可见；英文对模型更友好，非强制）。填写后以这里为准。
+            {t("mcp.descHint")}
           </span>
         </div>
         <div className="settings-field-control">
@@ -385,9 +387,9 @@ export default function MCPPage() {
       </div>
       <div className="settings-field settings-field-block">
         <div className="settings-field-copy">
-          <span className="settings-field-label">信息源类型 / 风险</span>
+          <span className="settings-field-label">{t("mcp.typeRisk")}</span>
           <span className="settings-field-hint">
-            类型标注于系统消息索引；风险决定工具调用的审批级别。"自动" = 以解析结果为准（缺省 query / medium）。
+            {t("mcp.typeRiskHint")}
           </span>
         </div>
         <div className="settings-field-control" style={{ display: "flex", gap: 8 }}>
@@ -396,10 +398,10 @@ export default function MCPPage() {
             value={extraSourceType}
             onChange={(e) => setExtraSourceType(e.target.value)}
           >
-            <option value="">自动</option>
-            {SOURCE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            <option value="">{t("mcp.auto")}</option>
+            {SOURCE_TYPES.map((st) => (
+              <option key={st} value={st}>
+                {st}
               </option>
             ))}
           </select>
@@ -408,7 +410,7 @@ export default function MCPPage() {
             value={extraRisk}
             onChange={(e) => setExtraRisk(e.target.value)}
           >
-            <option value="">自动</option>
+            <option value="">{t("mcp.auto")}</option>
             {RISK_LEVELS.map((r) => (
               <option key={r} value={r}>
                 {r}
@@ -422,20 +424,19 @@ export default function MCPPage() {
 
   return (
     <div className="settings-page">
-      <h2 className="settings-page-title">MCP 与工具</h2>
+      <h2 className="settings-page-title">{t("mcp.title")}</h2>
       <p className="settings-page-desc">
-        MCP 服务器是外部系统的工具供给渠道：服务器级索引常驻系统消息，
-        discover_tools 按需发现并把工具注册进会话。会话启动不拉起进程，命中后才懒启动；添加/删除/启停立即生效，启用后点"探测"抓取工具清单。
+        {t("mcp.pageDesc")}
       </p>
 
       {/* 第一部分：添加 MCP 服务器（快速安装 / 手动配置 / JSON） */}
       <section className="settings-section">
-        <div className="settings-section-title">添加 MCP 服务器</div>
-      <div className="mcp-mode-seg" role="tablist" aria-label="添加方式">
+        <div className="settings-section-title">{t("mcp.addSection")}</div>
+      <div className="mcp-mode-seg" role="tablist" aria-label={t("mcp.addWayAria")}>
         {(
           [
-            ["quick", "快速安装"],
-            ["form", "手动配置"],
+            ["quick", t("mcp.modeQuick")],
+            ["form", t("mcp.modeForm")],
             ["json", "JSON"],
           ] as [EditorMode, string][]
         ).map(([m, label]) => (
@@ -455,10 +456,9 @@ export default function MCPPage() {
       {mode === "quick" && (
         <div className="settings-field settings-field-block">
           <div className="settings-field-copy">
-            <span className="settings-field-label">命令或 JSON</span>
+            <span className="settings-field-label">{t("mcp.cmdOrJson")}</span>
             <span className="settings-field-hint">
-              粘贴启动命令即可：自动拆分 command/args 并推导服务器名；
-              以 &#123; 开头时按 JSON 解析。环境变量、描述、类型/风险在下方补充。
+              {t("mcp.cmdOrJsonHint")}
             </span>
           </div>
           <div className="settings-field-control">
@@ -482,9 +482,9 @@ export default function MCPPage() {
         <>
           <div className="settings-field settings-field-block">
             <div className="settings-field-copy">
-              <span className="settings-field-label">名字</span>
+              <span className="settings-field-label">{t("mcp.name")}</span>
               <span className="settings-field-hint">
-                编入工具名 mcp__&lt;name&gt;__&lt;tool&gt;，小写字母/数字/连字符。
+                {t("mcp.nameHint")}
               </span>
             </div>
             <div className="settings-field-control">
@@ -502,9 +502,9 @@ export default function MCPPage() {
           </div>
           <div className="settings-field settings-field-block">
             <div className="settings-field-copy">
-              <span className="settings-field-label">命令</span>
+              <span className="settings-field-label">{t("mcp.command")}</span>
               <span className="settings-field-hint">
-                完整的启动命令（可执行文件或 npx/uvx 等启动器 + 参数，含参数用引号包裹亦可），提交时自动拆分。
+                {t("mcp.commandHint")}
               </span>
             </div>
             <div className="settings-field-control">
@@ -519,9 +519,9 @@ export default function MCPPage() {
           </div>
           <div className="settings-field settings-field-block">
             <div className="settings-field-copy">
-              <span className="settings-field-label">环境变量</span>
+              <span className="settings-field-label">{t("mcp.env")}</span>
               <span className="settings-field-hint">
-                KEY=VALUE 每行一条（最小权限凭证；支持 ${"${VAR}"} 引用）。
+                {t("mcp.envHintShort")}
               </span>
             </div>
             <div className="settings-field-control">
@@ -540,9 +540,9 @@ export default function MCPPage() {
           </div>
           <div className="settings-field settings-field-block">
             <div className="settings-field-copy">
-              <span className="settings-field-label">描述</span>
+              <span className="settings-field-label">{t("mcp.desc")}</span>
               <span className="settings-field-hint">
-                一句话能力描述（模型可见；英文对模型更友好，非强制）。
+                {t("mcp.descHintShort")}
               </span>
             </div>
             <div className="settings-field-control">
@@ -557,9 +557,9 @@ export default function MCPPage() {
           </div>
           <div className="settings-field settings-field-block">
             <div className="settings-field-copy">
-              <span className="settings-field-label">信息源类型 / 风险</span>
+              <span className="settings-field-label">{t("mcp.typeRisk")}</span>
               <span className="settings-field-hint">
-                类型标注于系统消息索引；风险决定工具调用的审批级别。
+                {t("mcp.typeRiskHintShort")}
               </span>
             </div>
             <div className="settings-field-control" style={{ display: "flex", gap: 8 }}>
@@ -568,9 +568,9 @@ export default function MCPPage() {
                 value={form.sourceType ?? "query"}
                 onChange={(e) => setForm({ ...form, sourceType: e.target.value })}
               >
-                {SOURCE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+                {SOURCE_TYPES.map((st) => (
+                  <option key={st} value={st}>
+                    {st}
                   </option>
                 ))}
               </select>
@@ -593,12 +593,9 @@ export default function MCPPage() {
       {mode === "json" && (
         <div className="settings-field settings-field-block">
           <div className="settings-field-copy">
-            <span className="settings-field-label">完整配置</span>
+            <span className="settings-field-label">{t("mcp.fullConfig")}</span>
             <span className="settings-field-hint">
-              支持 {"{\"server-name\": {...}}"} 或
-              {" {\"mcpServers\": {\"server-name\": {...}}}"}
-              （Claude Desktop 格式）。下方输入框用于补充或覆盖 JSON 中的
-              env/描述/类型/风险。
+              {t("mcp.fullConfigHint")}
             </span>
           </div>
           <div className="settings-field-control">
@@ -629,7 +626,7 @@ export default function MCPPage() {
             void addServer();
           }}
         >
-          添加
+          {t("mcp.add")}
         </button>
       </div>
       </section>
@@ -637,15 +634,15 @@ export default function MCPPage() {
       {/* 第二部分：MCP 列表（独立分块，已配置服务器；列表过长不顶表单） */}
       <section className="settings-section">
       <div className="settings-section-title">
-        已配置 MCP 列表（{infos?.length ?? 0}）
+        {t("mcp.listTitle", { count: infos?.length ?? 0 })}
       </div>
       {error && <div className="settings-error">{error}</div>}
       {infos === null ? (
-        <div className="settings-loading">加载中…</div>
+        <div className="settings-loading">{t("settings.loading")}</div>
       ) : infos.length === 0 ? (
         <div className="skills-empty">
           <Plug size={20} />
-          <span>还没有配置 MCP 服务器。上方添加。</span>
+          <span>{t("mcp.empty")}</span>
         </div>
       ) : (
         infos.map((info) => {
@@ -660,7 +657,7 @@ export default function MCPPage() {
                     role="switch"
                     aria-checked={info.enabled}
                     disabled={rowBusy}
-                    title={info.enabled ? "禁用（立即生效）" : "启用（立即生效）"}
+                    title={info.enabled ? t("mcp.disableTip") : t("mcp.enableTip")}
                     onClick={() => void toggleEnabled(info)}
                   >
                     <span className="switch-thumb" />
@@ -668,7 +665,7 @@ export default function MCPPage() {
                   {info.sourceType && (
                     <span className="skill-item-tag">{info.sourceType}</span>
                   )}
-                  <span className="skill-item-tag" title="工具默认风险级别">
+                  <span className="skill-item-tag" title={t("mcp.riskTagTip")}>
                     {info.risk}
                   </span>
                 </div>
@@ -679,7 +676,7 @@ export default function MCPPage() {
                   <code>{info.command}</code>
                   <span>·</span>
                   <span>
-                    {info.toolCount > 0 ? `${info.toolCount} 个工具` : "未探测"}
+                    {info.toolCount > 0 ? t("mcp.toolCount", { count: info.toolCount }) : t("mcp.notProbed")}
                   </span>
                 </div>
               </div>
@@ -693,7 +690,7 @@ export default function MCPPage() {
                 <button
                   className="mcp-icon-btn"
                   disabled={!info.enabled || probing !== null || rowBusy}
-                  title={info.enabled ? "探测：抓取工具清单缓存" : "启用后才能探测"}
+                  title={info.enabled ? t("mcp.probeTip") : t("mcp.probeDisabledTip")}
                   onClick={() => void doProbe(info.name)}
                 >
                   {probing === info.name ? (
@@ -701,12 +698,12 @@ export default function MCPPage() {
                   ) : (
                     <Zap size={12} />
                   )}
-                  探测
+                  {t("mcp.probe")}
                 </button>
                 <button
                   className="mcp-icon-btn danger"
                   disabled={rowBusy}
-                  title="删除（立即生效，连接即回收）"
+                  title={t("mcp.deleteTip")}
                   onClick={() => void removeServer(info.name)}
                 >
                   <Trash2 size={12} />
@@ -721,34 +718,34 @@ export default function MCPPage() {
       {/* 工具检索（模型视角）：验证工具清单是否会被 discover_tools 命中 */}
       <section className="settings-section">
         <div className="settings-section-title skills-list-title">
-          工具检索（{toolResults?.length ?? 0}）
+          {t("mcp.toolSearch", { count: toolResults?.length ?? 0 })}
           <span className="skills-title-actions">
             <span className="skills-search">
               <Search size={12} />
               <input
                 value={toolQuery}
                 onChange={(e) => setToolQuery(e.target.value)}
-                placeholder="模糊搜索工具（与模型同款检索）"
+                placeholder={t("mcp.toolSearchPlaceholder")}
                 spellCheck={false}
               />
             </span>
           </span>
         </div>
-        {toolSearching && <div className="settings-loading">检索中…</div>}
+        {toolSearching && <div className="settings-loading">{t("mcp.searching")}</div>}
         {!toolSearching && toolResults && toolResults.length === 0 && (
-          <div className="skills-empty">无命中——模型用这个词也找不到，换个说法试试</div>
+          <div className="skills-empty">{t("mcp.noHit")}</div>
         )}
         {!toolSearching &&
-          toolResults?.map((t) => (
-            <div className="skill-item" key={t.fullName}>
+          toolResults?.map((hit) => (
+            <div className="skill-item" key={hit.fullName}>
               <div className="skill-item-head">
-                <span className="skill-item-name">{t.name}</span>
-                <span className="skill-item-tag">{t.server}</span>
-                {t.sourceType && <span className="skill-item-tag">{t.sourceType}</span>}
+                <span className="skill-item-name">{hit.name}</span>
+                <span className="skill-item-tag">{hit.server}</span>
+                {hit.sourceType && <span className="skill-item-tag">{hit.sourceType}</span>}
               </div>
-              {t.description && <div className="skill-item-desc">{t.description}</div>}
+              {hit.description && <div className="skill-item-desc">{hit.description}</div>}
               <div className="skill-item-meta">
-                <code>{t.fullName}</code>
+                <code>{hit.fullName}</code>
               </div>
             </div>
           ))}

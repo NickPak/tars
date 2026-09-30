@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import {
   Activity,
@@ -29,22 +30,20 @@ import AppearancePage from "./AppearancePage";
 
 interface NavItem {
   tab: SettingsTab;
-  label: string;
   icon: ReactNode;
-  /** 规划中功能的占位页签 */
-  planned?: boolean;
 }
 
+// 标签在渲染时取 t(`settings.nav.${tab}`)（语言切换即时跟随）
 const NAV_ITEMS: NavItem[] = [
-  { tab: "general", label: "通用", icon: <SlidersHorizontal size={15} /> },
-  { tab: "model", label: "模型", icon: <Brain size={15} /> },
-  { tab: "agent", label: "Agent", icon: <Bot size={15} /> },
-  { tab: "trace", label: "追踪", icon: <Activity size={15} /> },
-  { tab: "memory", label: "记忆", icon: <BookMarked size={15} /> },
-  { tab: "skills", label: "技能", icon: <Sparkles size={15} /> },
-  { tab: "mcp", label: "MCP 与工具", icon: <Plug size={15} /> },
-  { tab: "appearance", label: "外观", icon: <Palette size={15} /> },
-  { tab: "about", label: "关于", icon: <Info size={15} /> },
+  { tab: "general", icon: <SlidersHorizontal size={15} /> },
+  { tab: "model", icon: <Brain size={15} /> },
+  { tab: "agent", icon: <Bot size={15} /> },
+  { tab: "trace", icon: <Activity size={15} /> },
+  { tab: "memory", icon: <BookMarked size={15} /> },
+  { tab: "skills", icon: <Sparkles size={15} /> },
+  { tab: "mcp", icon: <Plug size={15} /> },
+  { tab: "appearance", icon: <Palette size={15} /> },
+  { tab: "about", icon: <Info size={15} /> },
 ];
 
 /** 有真实内容、显示底部保存条的页签（其余为占位）。
@@ -62,6 +61,7 @@ function errText(e: unknown): string {
  * 全量提交（后端按键级合并写回 config.yaml，保留注释与 apiKey 引用）。
  */
 export default function SettingsPanel() {
+  const { t } = useTranslation();
   const open = useSettingsStore((s) => s.open);
   const tab = useSettingsStore((s) => s.tab);
   const setTab = useSettingsStore((s) => s.setTab);
@@ -154,11 +154,11 @@ export default function SettingsPanel() {
     <div className="settings-overlay" onClick={requestClose}>
       <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-head">
-          <span className="settings-title">设置</span>
+          <span className="settings-title">{t("settings.title")}</span>
           <button
             className="settings-close"
-            title="关闭"
-            aria-label="关闭设置"
+            title={t("settings.close")}
+            aria-label={t("settings.closeAria")}
             onClick={requestClose}
           >
             <X size={16} />
@@ -174,18 +174,15 @@ export default function SettingsPanel() {
                 onClick={() => setTab(item.tab)}
               >
                 {item.icon}
-                <span>{item.label}</span>
-                {item.planned && (
-                  <span className="settings-nav-badge">规划中</span>
-                )}
+                <span>{t(`settings.nav.${item.tab}`)}</span>
               </button>
             ))}
           </nav>
 
           <main className="settings-content">
-            {loading && <div className="settings-loading">加载中…</div>}
+            {loading && <div className="settings-loading">{t("settings.loading")}</div>}
             {!loading && error && !draft && (
-              <div className="settings-load-error">加载配置失败：{error}</div>
+              <div className="settings-load-error">{t("settings.loadFailed", { msg: error })}</div>
             )}
             {!loading && draft && (
               <>
@@ -221,7 +218,7 @@ export default function SettingsPanel() {
             {saved && !error && (
               <span className="settings-saved">
                 <Check size={13} />
-                已保存（工作目录修改需重启生效）
+                {t("settings.saved")}
               </span>
             )}
             <span className="settings-foot-spacer" />
@@ -230,14 +227,14 @@ export default function SettingsPanel() {
               disabled={!dirty || saving}
               onClick={() => setDraft(baseline)}
             >
-              放弃更改
+              {t("settings.discard")}
             </button>
             <button
               className="dialog-btn primary"
               disabled={!dirty || saving}
               onClick={() => void handleSave()}
             >
-              {saving ? "保存中…" : "保存"}
+              {saving ? t("settings.saving") : t("common.save")}
             </button>
           </div>
         )}
@@ -245,7 +242,7 @@ export default function SettingsPanel() {
 
       <ConfirmDialog
         open={discardConfirm}
-        message="有未保存的修改，确定放弃并关闭？"
+        message={t("settings.discardConfirm")}
         onCancel={() => setDiscardConfirm(false)}
         onConfirm={() => {
           setDiscardConfirm(false);
@@ -365,6 +362,7 @@ function SecretInput({
   placeholder?: string;
   onChange: (v: string) => void;
 }) {
+  const { t } = useTranslation();
   const [show, setShow] = useState(false);
   return (
     <div className="settings-secret">
@@ -378,8 +376,8 @@ function SecretInput({
       />
       <button
         className="settings-secret-eye"
-        title={show ? "隐藏密钥" : "显示密钥"}
-        aria-label={show ? "隐藏密钥" : "显示密钥"}
+        title={show ? t("settings.hideSecret") : t("settings.showSecret")}
+        aria-label={show ? t("settings.hideSecret") : t("settings.showSecret")}
         onClick={() => setShow((s) => !s)}
       >
         {show ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -395,99 +393,91 @@ function GeneralPage({
   draft: AppConfig;
   update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
+  const { t } = useTranslation();
   const handleBrowse = async () => {
     const dir = await agentApi.openDirectoryDialog();
     if (dir) update((d) => ({ ...d, workDir: dir }));
   };
 
   return (
-    <PageShell title="通用" desc="应用级基础设置。">
-      <Section title="存储">
+    <PageShell title={t("settings.general.title")} desc={t("settings.general.desc")}>
+      <Section title={t("settings.general.storage")}>
         <Field
-          label="工作目录"
-          hint="Agent 工具操作与会话数据的根目录，留空使用默认目录（~/tars）。修改后需重启生效。"
+          label={t("settings.general.workDir")}
+          hint={t("settings.general.workDirHint")}
         >
           <input
             className="settings-input"
             value={draft.workDir}
-            placeholder="默认（~/tars）"
+            placeholder={t("settings.general.workDirPlaceholder")}
             onChange={(e) =>
               update((d) => ({ ...d, workDir: e.target.value }))
             }
           />
           <button
             className="dialog-btn secondary"
-            title="浏览目录"
+            title={t("settings.general.browse")}
             onClick={() => void handleBrowse()}
           >
             <FolderOpen size={14} />
           </button>
         </Field>
       </Section>
-      <Section title="语言">
-        <Field label="界面语言" hint="多语言界面规划中，当前仅支持中文。">
-          <Seg
-            value="zh"
-            options={[{ value: "zh", label: "中文" }]}
-            onChange={() => {}}
-            disabled
-          />
-        </Field>
-      </Section>
+      {/* 界面语言设置在"外观"页（立即生效，不走 draft 保存流程） */}
     </PageShell>
   );
 }
 
-/** 供应商类型元信息：UI 标签、各字段的显隐与提示（对应后端原生组件能力） */
+/** 供应商类型元信息：各字段的显隐（对应后端原生组件能力）。
+ *  品牌名原样显示；带中文后缀的标签与提示走字典键（labelKey/hintKey）。 */
 const PROVIDER_TYPES: {
   value: string;
-  label: string;
+  label?: string;
+  labelKey?: string;
   needApiKey: boolean;
   needBaseUrl: boolean;
-  baseUrlHint: string;
+  hintKey?: string;
   hasRegion: boolean;
   hasCacheTTL: boolean;
 }[] = [
   {
     value: "gemini", label: "Gemini", needApiKey: true,
-    needBaseUrl: false, baseUrlHint: "", hasRegion: false, hasCacheTTL: false,
+    needBaseUrl: false, hasRegion: false, hasCacheTTL: false,
   },
   {
-    value: "openai", label: "OpenAI 兼容", needApiKey: true,
-    needBaseUrl: true,
-    baseUrlHint: "必填。覆盖 OpenAI 官方与所有兼容端点（Moonshot/OpenRouter/本地 vLLM 等），如 https://api.openai.com/v1",
+    value: "openai", labelKey: "settings.model.providerOpenAI", needApiKey: true,
+    needBaseUrl: true, hintKey: "settings.model.baseUrlOpenAI",
     hasRegion: false, hasCacheTTL: false,
   },
   {
     value: "claude", label: "Claude", needApiKey: true,
-    needBaseUrl: false, baseUrlHint: "可选，自定义 Anthropic 端点",
+    needBaseUrl: false, hintKey: "settings.model.baseUrlClaude",
     hasRegion: false, hasCacheTTL: true,
   },
   {
     value: "deepseek", label: "DeepSeek", needApiKey: true,
-    needBaseUrl: false, baseUrlHint: "可选，默认官方端点",
+    needBaseUrl: false, hintKey: "settings.model.baseUrlDefault",
     hasRegion: false, hasCacheTTL: false,
   },
   {
-    value: "qwen", label: "Qwen（百炼）", needApiKey: true,
-    needBaseUrl: true,
-    baseUrlHint: "必填，如 https://dashscope.aliyuncs.com/compatible-mode/v1",
+    value: "qwen", labelKey: "settings.model.providerQwen", needApiKey: true,
+    needBaseUrl: true, hintKey: "settings.model.baseUrlQwen",
     hasRegion: false, hasCacheTTL: false,
   },
   {
-    value: "ark", label: "火山方舟 ARK", needApiKey: true,
-    needBaseUrl: false, baseUrlHint: "可选，默认官方端点",
+    value: "ark", labelKey: "settings.model.providerArk", needApiKey: true,
+    needBaseUrl: false, hintKey: "settings.model.baseUrlDefault",
     hasRegion: true, hasCacheTTL: false,
   },
   {
-    value: "ollama", label: "Ollama（本地）", needApiKey: false,
-    needBaseUrl: false, baseUrlHint: "可选，默认 http://localhost:11434",
+    value: "ollama", labelKey: "settings.model.providerOllama", needApiKey: false,
+    needBaseUrl: false, hintKey: "settings.model.baseUrlOllama",
     hasRegion: false, hasCacheTTL: false,
   },
 ];
 
 function providerMeta(type: string) {
-  return PROVIDER_TYPES.find((t) => t.value === type) ?? PROVIDER_TYPES[1];
+  return PROVIDER_TYPES.find((p) => p.value === type) ?? PROVIDER_TYPES[1];
 }
 
 /** 哪些供应商类型的模型条目显示"思考模式"开关 */
@@ -501,6 +491,16 @@ function ModelPage({
   draft: AppConfig;
   updateLLM: (patch: Partial<LLMConfig>) => void;
 }) {
+  const { t } = useTranslation();
+  // 供应商元信息 → 显示文本（品牌名原样，其余走字典）
+  const pLabel = (type: string): string => {
+    const m = providerMeta(type);
+    return m.labelKey ? t(m.labelKey) : (m.label ?? type);
+  };
+  const pHint = (type: string): string => {
+    const m = providerMeta(type);
+    return m.hintKey ? t(m.hintKey) : "";
+  };
   const llm = draft.llm;
   // 手风琴展开的条目 key："p:<索引>" 供应商 / "m:<索引>" 模型。
   // 必须用数组索引而非条目 ID 作 key：编辑 ID 时 ID 每击键都变，
@@ -605,11 +605,11 @@ function ModelPage({
 
   return (
     <PageShell
-      title="模型"
-      desc="供应商（鉴权与端点）+ 模型条目（模型 ID 与计量参数），保存后立即生效。"
+      title={t("settings.model.title")}
+      desc={t("settings.model.desc")}
     >
-      <Section title="当前使用">
-        <Field label="默认模型" hint="新对话与未切换会话使用的模型条目。">
+      <Section title={t("settings.model.current")}>
+        <Field label={t("settings.model.defaultModel")} hint={t("settings.model.defaultModelHint")}>
           <select
             className="settings-select"
             value={llm.active}
@@ -617,15 +617,15 @@ function ModelPage({
           >
             {llm.models.map((m) => (
               <option key={m.entryId} value={m.entryId}>
-                {m.entryId || "（未命名条目）"}
+                {m.entryId || t("settings.model.unnamed")}
               </option>
             ))}
-            {llm.models.length === 0 && <option value="">（无可用模型）</option>}
+            {llm.models.length === 0 && <option value="">{t("settings.model.noModels")}</option>}
           </select>
         </Field>
       </Section>
 
-      <Section title={`模型列表（${llm.models.length}）`}>
+      <Section title={t("settings.model.listTitle", { count: llm.models.length })}>
         {llm.models.map((m, idx) => {
           const key = "m:" + idx;
           const isOpen = expanded === key;
@@ -635,7 +635,7 @@ function ModelPage({
               <div className="settings-item-head" onClick={() => toggle(key)}>
                 <span
                   className={`settings-item-star${llm.active === m.entryId && m.entryId ? " on" : ""}`}
-                  title={llm.active === m.entryId && m.entryId ? "当前使用" : "设为当前使用"}
+                  title={llm.active === m.entryId && m.entryId ? t("settings.model.currentUse") : t("settings.model.setCurrent")}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (m.entryId) updateLLM({ active: m.entryId });
@@ -644,14 +644,14 @@ function ModelPage({
                   {llm.active === m.entryId && m.entryId ? "★" : "☆"}
                 </span>
                 <span className="settings-item-name">
-                  {m.entryId || "（新条目）"}
+                  {m.entryId || t("settings.model.newEntry")}
                 </span>
                 <span className="settings-item-sub">
                   {m.provider} · {m.modelId}
                 </span>
                 <button
                   className="settings-item-del"
-                  title="删除该模型条目"
+                  title={t("settings.model.deleteEntry")}
                   onClick={(e) => {
                     e.stopPropagation();
                     removeModel(idx);
@@ -663,8 +663,8 @@ function ModelPage({
               {isOpen && (
                 <div className="settings-item-body">
                   {/* 第一块：模型身份 */}
-                  <div className="settings-group-title">模型身份</div>
-                  <Field label="供应商">
+                  <div className="settings-group-title">{t("settings.model.identity")}</div>
+                  <Field label={t("settings.model.provider")}>
                     <select
                       className="settings-select"
                       value={m.provider}
@@ -676,37 +676,37 @@ function ModelPage({
                         </option>
                       ))}
                       {llm.providers.length === 0 && (
-                        <option value="">（请先添加供应商）</option>
+                        <option value="">{t("settings.model.addProviderFirst")}</option>
                       )}
                     </select>
                   </Field>
                   <Field
-                    label="模型 ID"
+                    label={t("settings.model.modelId")}
                     hint={
                       pType === "ark"
-                        ? "火山方舟填推理接入点 endpoint ID（ep-xxx），不是模型名。"
-                        : "发送给 API 的真实模型名。"
+                        ? t("settings.model.modelIdHintArk")
+                        : t("settings.model.modelIdHint")
                     }
                   >
                     <input
                       className="settings-input"
                       value={m.modelId}
-                      placeholder="如 deepseek-chat"
+                      placeholder={t("settings.model.modelIdPlaceholder")}
                       onChange={(e) => patchModel(idx, { modelId: e.target.value })}
                     />
                   </Field>
                   <Field
-                    label="条目 ID"
-                    hint="唯一标识，由 供应商/模型ID 自动生成。"
+                    label={t("settings.model.entryId")}
+                    hint={t("settings.model.entryIdHint")}
                   >
                     <span className="settings-readonly">
-                      {m.entryId || "（输入模型 ID 后自动生成）"}
+                      {m.entryId || t("settings.model.entryIdAuto")}
                     </span>
                   </Field>
 
                   {/* 第二块：上下文能力 */}
-                  <div className="settings-group-title">上下文能力</div>
-                  <Field label="最大输入 Tokens" hint="模型的最大输入上下文（tokens），0 = 未知。">
+                  <div className="settings-group-title">{t("settings.model.context")}</div>
+                  <Field label={t("settings.model.maxInput")} hint={t("settings.model.maxInputHint")}>
                     <input
                       className="settings-input small"
                       type="number"
@@ -721,13 +721,13 @@ function ModelPage({
                     />
                   </Field>
                   <Field
-                    label="最大输出 Tokens"
+                    label={t("settings.model.maxOutput")}
                     hint={
                       pType === "claude"
-                        ? "模型单次响应允许的最大输出 Tokens 数。Claude 必填（Anthropic API 强制要求）。"
+                        ? t("settings.model.maxOutputHintClaude")
                         : pType === "deepseek"
-                          ? "模型单次响应允许的最大输出 Tokens 数。DeepSeek 默认 4096，上限 8192。0 = 用默认。"
-                          : "模型单次响应允许的最大输出 Tokens 数。0 = 不设置（用服务端默认）。"
+                          ? t("settings.model.maxOutputHintDeepseek")
+                          : t("settings.model.maxOutputHint")
                     }
                   >
                     <input
@@ -741,7 +741,7 @@ function ModelPage({
                       }
                     />
                   </Field>
-                  <Field label="输入价格" hint="元 / 百万 tokens（0 不展示费用）。">
+                  <Field label={t("settings.model.inputPrice")} hint={t("settings.model.inputPriceHint")}>
                     <input
                       className="settings-input small"
                       type="number"
@@ -756,7 +756,7 @@ function ModelPage({
                       }
                     />
                   </Field>
-                  <Field label="输出价格" hint="元 / 百万 tokens。">
+                  <Field label={t("settings.model.outputPrice")} hint={t("settings.model.outputPriceHint")}>
                     <input
                       className="settings-input small"
                       type="number"
@@ -773,10 +773,10 @@ function ModelPage({
                   </Field>
 
                   {/* 第三块：能力 */}
-                  <div className="settings-group-title">能力</div>
+                  <div className="settings-group-title">{t("settings.model.capabilities")}</div>
                   <Field
-                    label="推理"
-                    hint="声明模型支持推理或思考过程；开启后下方出现 Reasoning 配置。"
+                    label={t("settings.model.capReasoning")}
+                    hint={t("settings.model.capReasoningHint")}
                   >
                     <BoolSwitch
                       value={m.supportsReasoning}
@@ -784,8 +784,8 @@ function ModelPage({
                     />
                   </Field>
                   <Field
-                    label="图片"
-                    hint="声明模型可接收图片输入；关闭时不会向该模型发送图片。"
+                    label={t("settings.model.capImage")}
+                    hint={t("settings.model.capImageHint")}
                   >
                     <BoolSwitch
                       value={m.supportsImages}
@@ -793,8 +793,8 @@ function ModelPage({
                     />
                   </Field>
                   <Field
-                    label="工具"
-                    hint="声明模型可调用工具；关闭后对话中不会向该模型下发工具定义。"
+                    label={t("settings.model.capTools")}
+                    hint={t("settings.model.capToolsHint")}
                   >
                     <BoolSwitch
                       value={m.supportsTools}
@@ -807,12 +807,12 @@ function ModelPage({
                     pType === "gemini" ||
                     THINKING_SWITCH_TYPES.includes(pType)) && (
                     <>
-                      <div className="settings-group-title">Reasoning 配置</div>
+                      <div className="settings-group-title">{t("settings.model.reasoning")}</div>
                       {m.supportsReasoning && (
                         <>
                           <Field
-                            label="推理强度"
-                            hint="跨供应商统一抽象，目前仅 openai 类型映射（reasoning_effort）；空 = 不下发。"
+                            label={t("settings.model.effort")}
+                            hint={t("settings.model.effortHint")}
                           >
                             <select
                               className="settings-select"
@@ -821,7 +821,7 @@ function ModelPage({
                                 patchModel(idx, { reasoningEffort: e.target.value })
                               }
                             >
-                              <option value="">（不下发）</option>
+                              <option value="">{t("settings.model.notSend")}</option>
                               <option value="minimal">minimal</option>
                               <option value="low">low</option>
                               <option value="medium">medium</option>
@@ -830,8 +830,8 @@ function ModelPage({
                             </select>
                           </Field>
                           <Field
-                            label="推理摘要"
-                            hint="OpenAI Responses API 的 reasoning.summary；当前版本不下发（预留配置）。"
+                            label={t("settings.model.summary")}
+                            hint={t("settings.model.summaryHint")}
                           >
                             <select
                               className="settings-select"
@@ -840,7 +840,7 @@ function ModelPage({
                                 patchModel(idx, { reasoningSummary: e.target.value })
                               }
                             >
-                              <option value="">（不下发）</option>
+                              <option value="">{t("settings.model.notSend")}</option>
                               <option value="auto">auto</option>
                               <option value="concise">concise</option>
                               <option value="detailed">detailed</option>
@@ -850,8 +850,8 @@ function ModelPage({
                       )}
                       {pType === "gemini" && (
                         <Field
-                          label="思考预算"
-                          hint="仅 gemini 供应商生效。flash-lite 系列默认关闭，需显式开启动态思考。"
+                          label={t("settings.model.budget")}
+                          hint={t("settings.model.budgetHint")}
                         >
                           <ThinkingBudgetSeg
                             value={m.thinkingBudget}
@@ -861,8 +861,8 @@ function ModelPage({
                       )}
                       {THINKING_SWITCH_TYPES.includes(pType) && (
                         <Field
-                          label="思考模式"
-                          hint="映射到供应商原生字段：DeepSeek thinking.type / Qwen enable_thinking / ARK thinking.type / Ollama think。"
+                          label={t("settings.model.thinking")}
+                          hint={t("settings.model.thinkingHint")}
                         >
                           <Seg
                             value={
@@ -873,9 +873,9 @@ function ModelPage({
                                   : "default"
                             }
                             options={[
-                              { value: "default", label: "默认" },
-                              { value: "on", label: "开启" },
-                              { value: "off", label: "关闭" },
+                              { value: "default", label: t("settings.model.optDefault") },
+                              { value: "on", label: t("settings.model.optOn") },
+                              { value: "off", label: t("settings.model.optOff") },
                             ]}
                             onChange={(v) =>
                               patchModel(idx, {
@@ -889,10 +889,10 @@ function ModelPage({
                   )}
 
                   {/* 第五块：请求默认值 */}
-                  <div className="settings-group-title">请求默认值</div>
+                  <div className="settings-group-title">{t("settings.model.defaults")}</div>
                   <Field
                     label="Temperature"
-                    hint="请求默认温度，合法区间 [0, 2]；留空 = 不下发（跟随服务端默认）。"
+                    hint={t("settings.model.temperatureHint")}
                   >
                     <input
                       className="settings-input small"
@@ -900,7 +900,7 @@ function ModelPage({
                       min={0}
                       max={2}
                       step={0.1}
-                      placeholder="默认"
+                      placeholder={t("settings.model.defaultPlaceholder")}
                       value={m.temperature ?? ""}
                       onChange={(e) => {
                         const v = e.target.valueAsNumber;
@@ -914,11 +914,11 @@ function ModelPage({
           );
         })}
         <button className="settings-add-btn" onClick={addModel}>
-          + 添加模型
+          {t("settings.model.addModel")}
         </button>
       </Section>
 
-      <Section title={`供应商（${llm.providers.length}）`}>
+      <Section title={t("settings.model.providers", { count: llm.providers.length })}>
         {llm.providers.map((p, idx) => {
           const key = "p:" + idx;
           const isOpen = expanded === key;
@@ -927,16 +927,16 @@ function ModelPage({
               <div className="settings-item-head" onClick={() => toggle(key)}>
                 <span className="settings-item-name">{p.id}</span>
                 <span className="settings-item-sub">
-                  {providerMeta(p.type).label}
+                  {pLabel(p.type)}
                   {providerMeta(p.type).needApiKey
                     ? p.apiKey
-                      ? " · 已配置 Key"
-                      : " · 未配置 Key"
+                      ? t("settings.model.keyConfigured")
+                      : t("settings.model.keyMissing")
                     : ""}
                 </span>
                 <button
                   className="settings-item-del"
-                  title="删除该供应商"
+                  title={t("settings.model.deleteProvider")}
                   onClick={(e) => {
                     e.stopPropagation();
                     removeProvider(idx);
@@ -947,7 +947,7 @@ function ModelPage({
               </div>
               {isOpen && (
                 <div className="settings-item-body">
-                  <Field label="供应商 ID" hint="唯一标识，模型条目通过它引用。">
+                  <Field label={t("settings.model.providerId")} hint={t("settings.model.providerIdHint")}>
                     <input
                       className="settings-input"
                       value={p.id}
@@ -955,17 +955,17 @@ function ModelPage({
                     />
                   </Field>
                   <Field
-                    label="类型"
-                    hint="每种类型对应 eino 原生组件（非 OpenAI 兼容转译），保留模型私有特性。"
+                    label={t("settings.model.type")}
+                    hint={t("settings.model.typeHint")}
                   >
                     <select
                       className="settings-select"
                       value={p.type}
                       onChange={(e) => patchProvider(idx, { type: e.target.value })}
                     >
-                      {PROVIDER_TYPES.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
+                      {PROVIDER_TYPES.map((pt) => (
+                        <option key={pt.value} value={pt.value}>
+                          {pLabel(pt.value)}
                         </option>
                       ))}
                     </select>
@@ -973,16 +973,16 @@ function ModelPage({
                   {providerMeta(p.type).needApiKey && (
                     <Field
                       label="API Key"
-                      hint={p.apiKey ? "已配置，点击眼睛图标查看明文。" : "尚未配置 API Key。"}
+                      hint={p.apiKey ? t("settings.model.apiKeyHintSet") : t("settings.model.apiKeyHintUnset")}
                     >
                       <SecretInput
                         value={p.apiKey}
-                        placeholder="输入 API Key"
+                        placeholder={t("settings.model.apiKeyPlaceholder")}
                         onChange={(v) => patchProvider(idx, { apiKey: v })}
                       />
                     </Field>
                   )}
-                  <Field label="Base URL" hint={providerMeta(p.type).baseUrlHint}>
+                  <Field label="Base URL" hint={pHint(p.type)}>
                     <input
                       className="settings-input"
                       value={p.baseUrl}
@@ -990,7 +990,7 @@ function ModelPage({
                     />
                   </Field>
                   {providerMeta(p.type).hasRegion && (
-                    <Field label="区域" hint="火山引擎区域，留空默认 cn-beijing。">
+                    <Field label={t("settings.model.region")} hint={t("settings.model.regionHint")}>
                       <input
                         className="settings-input small"
                         value={p.region}
@@ -1001,15 +1001,15 @@ function ModelPage({
                   )}
                   {providerMeta(p.type).hasCacheTTL && (
                     <Field
-                      label="自动前缀缓存"
-                      hint="在 system、工具定义与每轮最后一条 user 消息上打缓存断点，长会话显著降本。"
+                      label={t("settings.model.cacheTTL")}
+                      hint={t("settings.model.cacheTTLHint")}
                     >
                       <Seg
                         value={p.cacheTTL === "5m" ? "5m" : p.cacheTTL === "1h" ? "1h" : "off"}
                         options={[
-                          { value: "off", label: "关闭" },
-                          { value: "5m", label: "5 分钟" },
-                          { value: "1h", label: "1 小时" },
+                          { value: "off", label: t("settings.model.optOff") },
+                          { value: "5m", label: t("settings.model.ttl5m") },
+                          { value: "1h", label: t("settings.model.ttl1h") },
                         ]}
                         onChange={(v) =>
                           patchProvider(idx, { cacheTTL: v === "off" ? "" : v })
@@ -1023,7 +1023,7 @@ function ModelPage({
           );
         })}
         <button className="settings-add-btn" onClick={addProvider}>
-          + 添加供应商
+          {t("settings.model.addProvider")}
         </button>
       </Section>
     </PageShell>
@@ -1038,6 +1038,7 @@ function ThinkingBudgetSeg({
   value: number | null;
   onChange: (v: number | null) => void;
 }) {
+  const { t } = useTranslation();
   const mode =
     value === null
       ? "default"
@@ -1051,10 +1052,10 @@ function ThinkingBudgetSeg({
       <Seg
         value={mode}
         options={[
-          { value: "default", label: "默认" },
-          { value: "dynamic", label: "动态" },
-          { value: "off", label: "关闭" },
-          { value: "custom", label: "自定义" },
+          { value: "default", label: t("settings.model.optDefault") },
+          { value: "dynamic", label: t("settings.model.optDynamic") },
+          { value: "off", label: t("settings.model.optOff") },
+          { value: "custom", label: t("settings.model.optCustom") },
         ]}
         onChange={(m) =>
           onChange(
@@ -1082,12 +1083,13 @@ function AgentPage({
   draft: AppConfig;
   update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <PageShell title="Agent" desc="ReAct 循环运行时行为，保存后立即生效。">
-      <Section title="执行">
+    <PageShell title={t("settings.agent.title")} desc={t("settings.agent.desc")}>
+      <Section title={t("settings.agent.execution")}>
         <Field
-          label="最大迭代次数"
-          hint="LLM→工具→LLM 一轮算一次。防止死循环烧 token；复杂多文件任务需要较大预算。"
+          label={t("settings.agent.maxIter")}
+          hint={t("settings.agent.maxIterHint")}
         >
           <input
             className="settings-input small"
@@ -1106,8 +1108,8 @@ function AgentPage({
           />
         </Field>
         <Field
-          label="迭代超时（秒）"
-          hint="单次模型调用（一次迭代，含流式响应）的最大时长，默认 120 秒；超时后轮终止并报错。复杂推理或慢速端点可调大。"
+          label={t("settings.agent.iterTimeout")}
+          hint={t("settings.agent.iterTimeoutHint")}
         >
           <input
             className="settings-input small"
@@ -1128,8 +1130,8 @@ function AgentPage({
           />
         </Field>
         <Field
-          label="上下文压缩阈值"
-          hint="上下文使用占比超过该值时触发历史压缩（归档早期轮次为摘要条目，原始记录保留在磁盘）。"
+          label={t("settings.agent.compressThreshold")}
+          hint={t("settings.agent.compressThresholdHint")}
         >
           <input
             className="settings-slider"
@@ -1153,8 +1155,8 @@ function AgentPage({
           </span>
         </Field>
         <Field
-          label="压缩保留轮数"
-          hint="压缩时原样保留的最近完整对话轮数；其余早期轮次归档为摘要条目。"
+          label={t("settings.agent.keepRounds")}
+          hint={t("settings.agent.keepRoundsHint")}
         >
           <input
             className="settings-input small"
@@ -1173,8 +1175,8 @@ function AgentPage({
           />
         </Field>
         <Field
-          label="最小压缩批量"
-          hint="可压缩消息数低于该值时不执行压缩（收益不抵一次缓存重建）。"
+          label={t("settings.agent.minBatch")}
+          hint={t("settings.agent.minBatchHint")}
         >
           <input
             className="settings-input small"
@@ -1193,8 +1195,8 @@ function AgentPage({
           />
         </Field>
         <Field
-          label="压缩熔断阈值"
-          hint="连续压缩失败达该次数后，本会话不再自动压缩（避免失败循环空烧 API）；重开会话恢复。"
+          label={t("settings.agent.circuitThreshold")}
+          hint={t("settings.agent.circuitThresholdHint")}
         >
           <input
             className="settings-input small"
@@ -1224,15 +1226,16 @@ function TracePage({
   draft: AppConfig;
   update: (fn: (d: AppConfig) => AppConfig) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <PageShell
-      title="追踪"
-      desc="OpenTelemetry 链路追踪，仅导出到配置的 OTLP 收集器（无本地文件落盘）。修改保存后立即生效。"
+      title={t("settings.trace.title")}
+      desc={t("settings.trace.desc")}
     >
-      <Section title="总开关">
+      <Section title={t("settings.trace.masterSwitch")}>
         <Field
-          label="启用追踪"
-          hint="关闭时即使配置了端点也不产生任何 span。"
+          label={t("settings.trace.enable")}
+          hint={t("settings.trace.enableHint")}
         >
           <button
             className={`switch${draft.trace.enabled ? " on" : ""}`}
@@ -1249,10 +1252,10 @@ function TracePage({
           </button>
         </Field>
       </Section>
-      <Section title="OTLP 导出">
+      <Section title={t("settings.trace.otlp")}>
         <Field
-          label="OTLP / HTTP 端点"
-          hint="如 localhost:4318（Jaeger）：docker run -d -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one"
+          label={t("settings.trace.httpEndpoint")}
+          hint={t("settings.trace.httpHint")}
         >
           <input
             className="settings-input"
@@ -1267,8 +1270,8 @@ function TracePage({
           />
         </Field>
         <Field
-          label="OTLP / gRPC 端点"
-          hint="如 localhost:4317（Arize Phoenix）：docker run -d -p 6006:6006 -p 4317:4317 arizephoenix/phoenix"
+          label={t("settings.trace.grpcEndpoint")}
+          hint={t("settings.trace.grpcHint")}
         >
           <input
             className="settings-input"
@@ -1288,13 +1291,14 @@ function TracePage({
 }
 
 function AboutPage() {
+  const { t } = useTranslation();
   return (
-    <PageShell title="关于" desc="应用信息。">
+    <PageShell title={t("settings.about.title")} desc={t("settings.about.desc")}>
       <div className="settings-about">
         <div className="settings-about-name">TARS</div>
         <div className="settings-about-version">v0.0.1</div>
         <p className="settings-about-desc">
-          通用 AI Agent 桌面应用 · Wails v3 + Go + React
+          {t("settings.about.tagline")}
         </p>
       </div>
     </PageShell>

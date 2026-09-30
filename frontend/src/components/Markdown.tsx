@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, isValidElement } from "react";
+import { useTranslation } from "react-i18next";
 import type { ReactElement, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -69,6 +70,7 @@ function extractText(node: ReactNode): string {
 
 /** 代码块：右上角悬浮"语言标签 + 复制按钮"，hover 代码块时显示 */
 function CodeBlock(props: { children?: ReactNode }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const child = Array.isArray(props.children)
@@ -101,11 +103,11 @@ function CodeBlock(props: { children?: ReactNode }) {
           <button
             className="codeblock-copy"
             onClick={handleCopy}
-            title="复制源码到剪贴板"
-            aria-label="复制源码"
+            title={t("md.copySourceTip")}
+            aria-label={t("md.copySource")}
           >
             {copied ? <Check size={13} /> : <Copy size={13} />}
-            {copied ? "已复制" : "复制"}
+            {copied ? t("common.copied") : t("common.copy")}
           </button>
         </div>
         <MermaidDiagram code={text} />
@@ -125,11 +127,11 @@ function CodeBlock(props: { children?: ReactNode }) {
         <button
           className="codeblock-copy"
           onClick={handleCopy}
-          title="复制到剪贴板"
-          aria-label="复制代码"
+          title={t("md.copyTip")}
+          aria-label={t("md.copyCode")}
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
-          {copied ? "已复制" : "复制"}
+          {copied ? t("common.copied") : t("common.copy")}
         </button>
       </div>
       <pre className="codeblock-pre">{props.children}</pre>
@@ -149,6 +151,7 @@ let mermaidThemeInited: string | null = null;
  * 错误态将永远无法自愈。语法错误时隐藏图、回退显示源码 + 错误提示。
  */
 function MermaidDiagram({ code }: { code: string }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   // 应用主题切换时重渲染（mermaid 主题在 initialize 时锁定）
@@ -202,7 +205,7 @@ function MermaidDiagram({ code }: { code: string }) {
       />
       {error && (
         <>
-          <div className="mermaid-error">图表渲染失败（语法错误），显示源码</div>
+          <div className="mermaid-error">{t("md.mermaidError")}</div>
           <pre className="codeblock-pre">{code}</pre>
         </>
       )}

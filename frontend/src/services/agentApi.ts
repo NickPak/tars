@@ -7,6 +7,7 @@
 // 本模块对上层（store / 组件）暴露的接口保持不变。
 
 import { Events } from "@wailsio/runtime";
+import i18n from "../i18n";
 import {
   AgentService,
   AgentsMDService,
@@ -108,10 +109,10 @@ function normalizeAppConfig(raw: configModels.AppConfig | null): AppConfig {
  */
 function toWireConfig(cfg: AppConfig): configModels.AppConfig {
   if (new Set(cfg.llm.providers.map((p) => p.id)).size !== cfg.llm.providers.length) {
-    throw new Error("供应商 ID 重复");
+    throw new Error(i18n.t("errors.duplicateProviderId"));
   }
   if (new Set(cfg.llm.models.map((m) => m.entryId)).size !== cfg.llm.models.length) {
-    throw new Error("模型条目 ID 重复");
+    throw new Error(i18n.t("errors.duplicateModelEntryId"));
   }
   return {
     workDir: cfg.workDir,
@@ -133,7 +134,7 @@ export const agentApi = {
   /** 创建新项目（含一个默认会话：sessions 恰含新建的那一个） */
   createProject: async (): Promise<Project> => {
     const p = await AgentService.CreateProject();
-    if (!p || !p.sessions?.[0]) throw new Error("创建项目失败：后端返回空");
+    if (!p || !p.sessions?.[0]) throw new Error(i18n.t("errors.createProjectEmpty"));
     return p as Project;
   },
 
@@ -198,7 +199,7 @@ export const agentApi = {
   /** 在项目中新建会话（Tab，与项目共用工作区） */
   createSession: async (projectId: string): Promise<Session> => {
     const sess = await AgentService.CreateSession(projectId);
-    if (!sess) throw new Error("创建会话失败：后端返回空");
+    if (!sess) throw new Error(i18n.t("errors.createSessionEmpty"));
     return sess as Session;
   },
 
@@ -208,7 +209,7 @@ export const agentApi = {
 
   getSession: async (id: string): Promise<Session> => {
     const sess = await AgentService.GetSession(id);
-    if (!sess) throw new Error(`会话不存在：${id}`);
+    if (!sess) throw new Error(i18n.t("errors.sessionNotFound", { id }));
     return sess as Session;
   },
 
@@ -475,7 +476,7 @@ export const agentApi = {
   /** 获取当前应用配置（密钥原样返回，UI 层负责掩码显示） */
   getAppConfig: async (): Promise<AppConfig> => {
     const cfg = await ConfigService.GetAppConfig();
-    if (!cfg) throw new Error("获取配置失败：后端返回空");
+    if (!cfg) throw new Error(i18n.t("errors.configEmpty"));
     return normalizeAppConfig(cfg);
   },
 

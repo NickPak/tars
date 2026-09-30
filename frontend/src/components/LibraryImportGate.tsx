@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Window } from "@wailsio/runtime";
 import { agentApi } from "../services/agentApi";
 
@@ -11,31 +12,37 @@ import { agentApi } from "../services/agentApi";
  * 广播事件刷新主窗口画板 → 自动关窗。
  */
 export default function LibraryImportGate() {
-  const [status, setStatus] = useState("正在导入素材库…");
+  const { t } = useTranslation();
+  const [status, setStatus] = useState(() => t("canvas.importing"));
 
   useEffect(() => {
     const m = /#addLibrary=([^&]+)/.exec(window.location.hash);
     if (!m) {
-      setStatus("链接无效");
+      setStatus(t("gate.invalid"));
       return;
     }
     agentApi
       .importCanvasLibrary(decodeURIComponent(m[1]))
       .then(({ added }) => {
-        setStatus(added > 0 ? `已导入 ${added} 个素材` : "素材已存在，无需导入");
+        setStatus(
+          added > 0 ? t("canvas.imported", { count: added }) : t("canvas.importExists"),
+        );
         // 主窗口经事件即时刷新；本窗口使命完成，自动关闭
         setTimeout(() => void Window.Close(), 1200);
       })
       .catch((err) => {
-        setStatus(`导入失败：${err instanceof Error ? err.message : String(err)}`);
+        setStatus(
+          t("canvas.importFailed", { msg: err instanceof Error ? err.message : String(err) }),
+        );
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="library-import-gate">
       <div className="library-import-gate-text">{status}</div>
       <button className="dialog-btn secondary" onClick={() => void Window.Close()}>
-        关闭窗口
+        {t("gate.closeWindow")}
       </button>
     </div>
   );

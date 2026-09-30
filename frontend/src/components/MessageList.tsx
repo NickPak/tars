@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Archive,
   Copy,
@@ -30,21 +31,24 @@ type TimelineItem =
 
 /** 上下文压缩的时间线分隔标记（Claude Code 风格留痕）。 */
 function CompressionDivider({ mark }: { mark: CompressionMark }) {
+  const { t } = useTranslation();
   return (
     <div className={`compression-mark${mark.error ? " error" : ""}`}>
       <Archive size={13} />
       {mark.error ? (
         <span>
-          上下文压缩失败
+          {t("msg.compressFailed")}
           {mark.circuitOpen
-            ? "（连续失败已熔断，本会话不再自动压缩，建议拆分任务或开新会话）"
-            : "（稍后自动重试）"}
+            ? t("msg.compressFused")
+            : t("msg.compressRetry")}
         </span>
       ) : (
         <span>
-          上下文已压缩 {formatTokens(mark.beforeTokens ?? 0)} →{" "}
-          {formatTokens(mark.afterTokens ?? 0)}
-          {mark.newEntries ? `（归档 ${mark.newEntries} 条）` : ""}
+          {t("msg.compressed", {
+            from: formatTokens(mark.beforeTokens ?? 0),
+            to: formatTokens(mark.afterTokens ?? 0),
+          })}
+          {mark.newEntries ? t("msg.compressedArchived", { count: mark.newEntries }) : ""}
         </span>
       )}
     </div>
@@ -128,6 +132,7 @@ function turnAggregate(
 }
 
 export default function MessageList() {
+  const { t } = useTranslation();
   const messages = useChatStore((s) => s.messages);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const deleteMessage = useChatStore((s) => s.deleteMessage);
@@ -173,14 +178,14 @@ export default function MessageList() {
   if (messages.length === 0) {
     return (
       <div className="welcome">
-        <h1 className="welcome-title">你好</h1>
-        <p className="welcome-sub">有什么可以帮你的？</p>
+        <h1 className="welcome-title">{t("msg.welcomeHello")}</h1>
+        <p className="welcome-sub">{t("msg.welcomeSub")}</p>
         <button
           className="welcome-open-dir"
           onClick={() => void pickAndSetWorkspace()}
         >
           <FolderOpen size={18} />
-          打开目录作为工作区
+          {t("msg.welcomeOpenDir")}
         </button>
       </div>
     );
@@ -275,6 +280,7 @@ function UserBubble({
   images?: string[];
   onDelete?: () => void;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const { openMenu, menuEl } = useImageContextMenu();
@@ -301,8 +307,8 @@ function UserBubble({
             key={`img${i}`}
             className="user-bubble-image"
             src={u}
-            alt={`图片 ${i + 1}`}
-            title="双击预览 · 右键复制/保存"
+            alt={t("msg.imageAlt", { n: i + 1 })}
+            title={t("msg.imageTip")}
             onDoubleClick={() => setPreview(u)}
             onContextMenu={(e) => openMenu(e, u)}
           />,
@@ -315,8 +321,8 @@ function UserBubble({
           key={`imgx${i}`}
           className="user-bubble-image"
           src={images[i]}
-          alt={`图片 ${i + 1}`}
-          title="双击预览 · 右键复制/保存"
+          alt={t("msg.imageAlt", { n: i + 1 })}
+          title={t("msg.imageTip")}
           onDoubleClick={() => setPreview(images[i])}
           onContextMenu={(e) => openMenu(e, images[i])}
         />,
@@ -331,13 +337,13 @@ function UserBubble({
       <ImagePreview src={preview} onClose={() => setPreview(null)} />
       {menuEl}
       <div className="user-bubble-actions">
-        <button className="msg-action" title="复制" onClick={handleCopy}>
+        <button className="msg-action" title={t("common.copy")} onClick={handleCopy}>
           {copied ? <Check size={15} /> : <Copy size={15} />}
         </button>
         {onDelete && (
           <button
             className="msg-action msg-action-danger"
-            title="删除"
+            title={t("common.delete")}
             onClick={onDelete}
           >
             <Trash2 size={15} />
@@ -360,6 +366,7 @@ function ReasoningBlock({
   content: string;
   streaming: boolean;
 }) {
+  const { t } = useTranslation();
   // manual: null = 跟随自动状态；true/false = 用户手动锁定
   const [manual, setManual] = useState<boolean | null>(null);
   const [copied, setCopied] = useState(false);
@@ -387,7 +394,7 @@ function ReasoningBlock({
         </button>
         <button
           className="msg-action reasoning-copy"
-          title="复制思考过程"
+          title={t("msg.copyThinking")}
           onClick={copyReasoning}
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -427,6 +434,7 @@ function ToolCallCard({
   args: string;
   output?: string;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedOutput, setCopiedOutput] = useState(false);
@@ -488,7 +496,7 @@ function ToolCallCard({
             {args && (
               <button
                 className="msg-action tool-card-copy"
-                title="复制参数"
+                title={t("msg.copyParams")}
                 onClick={copyArgs}
               >
                 {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -531,7 +539,7 @@ function ToolCallCard({
               <div className="tool-card-body-head">
                 <button
                   className="msg-action"
-                  title="复制结果"
+                  title={t("msg.copyResult")}
                   onClick={copyOutput}
                 >
                   {copiedOutput ? <Check size={14} /> : <Copy size={14} />}
@@ -544,7 +552,7 @@ function ToolCallCard({
               </pre>
             </>
           ) : (
-            <div className="tool-card-pending">执行中…</div>
+            <div className="tool-card-pending">{t("msg.toolPending")}</div>
           )}
         </div>
       )}
@@ -562,6 +570,7 @@ function ErrorBanner({
   kind?: "timeout" | "error";
   isLast: boolean;
 }) {
+  const { t } = useTranslation();
   const retry = useChatStore((s) => s.retry);
   const isStreaming = useChatStore((s) => s.isStreaming);
 
@@ -573,15 +582,15 @@ function ErrorBanner({
           {kind === "timeout" ? (
             <>
               <span className="message-error-title">
-                模型响应超时 — 已等待 2 分钟仍无回复
+                {t("msg.timeoutTitle")}
               </span>
               <span className="message-error-detail">
-                服务商当前可能繁忙或排队较长，你可以重试一次。
+                {t("msg.timeoutHint")}
               </span>
             </>
           ) : (
             <>
-              <span className="message-error-title">生成失败</span>
+              <span className="message-error-title">{t("msg.errorTitle")}</span>
               <span className="message-error-detail">{error}</span>
             </>
           )}
@@ -594,7 +603,7 @@ function ErrorBanner({
           onClick={() => void retry()}
         >
           <RotateCcw size={14} />
-          重试
+          {t("common.retry")}
         </button>
       )}
     </div>
@@ -613,6 +622,7 @@ function MessageStatusBar({
   elapsedMs?: number;
   onDelete?: () => void;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   // 价格表来自会话统计（后端配置），用于估算本次费用
   const stats = useChatStore((s) => s.stats);
@@ -650,19 +660,19 @@ function MessageStatusBar({
 
   return (
     <div className="msg-status-bar">
-      <button className="msg-action" title="复制" onClick={handleCopy}>
+      <button className="msg-action" title={t("common.copy")} onClick={handleCopy}>
         {copied ? <Check size={16} /> : <Copy size={16} />}
       </button>
-      <button className="msg-action" title="赞">
+      <button className="msg-action" title={t("msg.like")}>
         <ThumbsUp size={16} />
       </button>
-      <button className="msg-action" title="踩">
+      <button className="msg-action" title={t("msg.dislike")}>
         <ThumbsDown size={16} />
       </button>
       {onDelete && (
         <button
           className="msg-action msg-action-danger"
-          title="删除"
+          title={t("common.delete")}
           onClick={onDelete}
         >
           <Trash2 size={16} />
@@ -670,23 +680,23 @@ function MessageStatusBar({
       )}
       <span className="msg-status-metrics">
         {hitRate !== undefined && (
-          <span className="msg-usage" title="本次缓存命中率（cachedTokens / promptTokens）">
-            本次命中 {(hitRate * 100).toFixed(0)}%
+          <span className="msg-usage" title={t("msg.hitRateTip")}>
+            {t("msg.hitRate", { value: (hitRate * 100).toFixed(0) })}
           </span>
         )}
         {usage && (
-          <span className="msg-usage" title={`输入 ${usage.promptTokens} / 输出 ${usage.completionTokens}`}>
+          <span className="msg-usage" title={t("msg.tokensTip", { input: usage.promptTokens, output: usage.completionTokens })}>
             <Coins size={12} />
             Tokens {formatTokens(usage.totalTokens)}
           </span>
         )}
         {cost !== undefined && (
-          <span className="msg-usage" title="本次费用（按当前价格表估算）">
+          <span className="msg-usage" title={t("msg.costTip")}>
             ¥{cost.toFixed(4)}
           </span>
         )}
         {elapsedMs !== undefined && (
-          <span className="msg-usage" title="本轮总耗时（含所有工具迭代）">
+          <span className="msg-usage" title={t("msg.elapsedTip")}>
             <Clock size={12} />
             {formatElapsed(elapsedMs)}
           </span>

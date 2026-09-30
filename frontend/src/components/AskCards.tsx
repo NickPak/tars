@@ -6,6 +6,8 @@
  *   仅挂在等待中的调用上）。超时未答后端按保守默认处理。
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { CircleHelp, ShieldAlert, Star } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import type {
@@ -38,6 +40,7 @@ function Countdown({ seconds, active }: { seconds?: number; active: boolean }) {
 
 /** ask_user 询问卡片：待答时渲染交互控件，已答时渲染答复摘要 */
 export function AskUserCard({ toolCall }: { toolCall: ToolCallInfo }) {
+  const { t } = useTranslation();
   const answerAsk = useChatStore((s) => s.answerAsk);
   const [text, setText] = useState("");
 
@@ -61,7 +64,7 @@ export function AskUserCard({ toolCall }: { toolCall: ToolCallInfo }) {
             ? formatAnswer(params, ans)
             : toolCall.output}
           {ans?.source === "timeout_default" && (
-            <span className="ask-card-note">（超时，已采用默认）</span>
+            <span className="ask-card-note">{t("ask.timeoutNote")}</span>
           )}
         </div>
       </div>
@@ -83,10 +86,10 @@ export function AskUserCard({ toolCall }: { toolCall: ToolCallInfo }) {
       {params.type === "confirm" && (
         <div className="ask-card-actions">
           <button className="ask-btn ask-btn-primary" onClick={() => submit("confirm")}>
-            确认
+            {t("ask.confirm")}
           </button>
           <button className="ask-btn" onClick={() => submit("deny")}>
-            拒绝
+            {t("ask.reject")}
           </button>
         </div>
       )}
@@ -103,7 +106,7 @@ export function AskUserCard({ toolCall }: { toolCall: ToolCallInfo }) {
                 {o.label}
                 {params.recommended?.startsWith(o.id) && (
                   <span className="ask-option-rec" title={params.recommended}>
-                    <Star size={11} /> 推荐
+                    <Star size={11} /> {t("ask.recommended")}
                   </span>
                 )}
               </span>
@@ -120,7 +123,7 @@ export function AskUserCard({ toolCall }: { toolCall: ToolCallInfo }) {
           <input
             className="ask-input"
             value={text}
-            placeholder="输入你的答复…"
+            placeholder={t("ask.replyPlaceholder")}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && text.trim()) submit(text.trim());
@@ -131,7 +134,7 @@ export function AskUserCard({ toolCall }: { toolCall: ToolCallInfo }) {
             disabled={!text.trim()}
             onClick={() => submit(text.trim())}
           >
-            提交
+            {t("ask.submit")}
           </button>
         </div>
       )}
@@ -141,6 +144,7 @@ export function AskUserCard({ toolCall }: { toolCall: ToolCallInfo }) {
 
 /** 危险调用审批卡片：允许一次 / 本会话常允许 / 拒绝（可附理由） */
 export function ApprovalCard({ approval }: { approval: ApprovalEvent }) {
+  const { t } = useTranslation();
   const answerAsk = useChatStore((s) => s.answerAsk);
   const [reason, setReason] = useState("");
 
@@ -153,7 +157,7 @@ export function ApprovalCard({ approval }: { approval: ApprovalEvent }) {
       <div className="ask-card-head">
         <ShieldAlert size={14} />
         <span className="ask-card-question">
-          {approval.toolName} 命中安全规则：{approval.reason}
+          {t("ask.ruleHit", { tool: approval.toolName, reason: approval.reason })}
         </span>
         <Countdown seconds={approval.timeoutSeconds} active />
       </div>
@@ -161,18 +165,18 @@ export function ApprovalCard({ approval }: { approval: ApprovalEvent }) {
       <input
         className="ask-input"
         value={reason}
-        placeholder="拒绝理由（可选，会反馈给模型）"
+        placeholder={t("ask.denyPlaceholder")}
         onChange={(e) => setReason(e.target.value)}
       />
       <div className="ask-card-actions">
         <button className="ask-btn ask-btn-primary" onClick={() => submit("allow")}>
-          允许一次
+          {t("ask.allowOnce")}
         </button>
         <button className="ask-btn" onClick={() => submit("allow_always")}>
-          本会话常允许此类
+          {t("ask.allowSession")}
         </button>
         <button className="ask-btn ask-btn-danger" onClick={() => submit("deny")}>
-          拒绝
+          {t("ask.deny")}
         </button>
       </div>
     </div>
@@ -197,7 +201,10 @@ function parseAnswer(raw: string): AskAnswerPayload | null {
 }
 
 function formatAnswer(params: AskUserParams, ans: AskAnswerPayload): string {
-  if (ans.type === "confirm") return ans.answer === "confirm" ? "已确认" : "已拒绝";
+  if (ans.type === "confirm")
+    return ans.answer === "confirm"
+      ? i18n.t("ask.resultConfirmed")
+      : i18n.t("ask.resultRejected");
   if (ans.type === "select") return ans.label ?? ans.answer;
   return ans.answer;
 }

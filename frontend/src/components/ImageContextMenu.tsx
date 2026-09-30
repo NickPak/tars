@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Check, Copy, Save } from "lucide-react";
 import { agentApi } from "../services/agentApi";
 import { useChatStore } from "../store/chatStore";
@@ -34,6 +35,7 @@ interface MenuState {
  * 把返回的 menuEl 渲染到组件树即可。点击他处 / Esc / 滚动自动关闭。
  */
 export function useImageContextMenu() {
+  const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -69,7 +71,7 @@ export function useImageContextMenu() {
       setCopied(true);
       setTimeout(() => setMenu(null), 600);
     } catch (err) {
-      setBackendError(`复制图片失败：${err instanceof Error ? err.message : String(err)}`);
+      setBackendError(t("img.copyFailed", { msg: err instanceof Error ? err.message : String(err) }));
       setMenu(null);
     }
   };
@@ -79,7 +81,7 @@ export function useImageContextMenu() {
     try {
       await agentApi.saveImage(menu.src); // 后端弹保存对话框；取消为空操作
     } catch (err) {
-      setBackendError(`保存图片失败：${err instanceof Error ? err.message : String(err)}`);
+      setBackendError(t("img.saveFailed", { msg: err instanceof Error ? err.message : String(err) }));
     }
     setMenu(null);
   };
@@ -103,11 +105,11 @@ export function useImageContextMenu() {
     >
       <button className="image-ctx-item" onClick={() => void onCopy()}>
         {copied ? <Check size={14} /> : <Copy size={14} />}
-        {copied ? "已复制" : "复制图片"}
+        {copied ? t("common.copied") : t("img.copy")}
       </button>
       <button className="image-ctx-item" onClick={() => void onSave()}>
         <Save size={14} />
-        保存图片…
+        {t("img.save")}
       </button>
     </div>
   ) : null;

@@ -344,7 +344,9 @@ func (s *CanvasService) OpenAuxTab(sessionID, kind, path string) error {
 	if win, ok := app.Window.GetByName(auxWindowName); ok {
 		win.Show().Focus()
 	} else {
-		const w, h = 720, 800 // 高度与主窗口默认一致
+		// 宽度下限锚定 Excalidraw 桌面布局断点（容器宽 <730px 会被判定为
+		// 移动端：菜单沉到底栏、无缩放控件）；760 给边框/滚动条留余量
+		const w, h = 760, 800 // 高度与主窗口默认一致
 		opts := application.WebviewWindowOptions{
 			Name:   auxWindowName,
 			Title:  "TARS 面板",

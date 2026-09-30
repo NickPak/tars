@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Minus, Square, Copy, X } from "lucide-react";
 import { System, Window, Events } from "@wailsio/runtime";
 
@@ -11,6 +12,7 @@ import { System, Window, Events } from "@wailsio/runtime";
  * onClose 可覆盖默认的 Window.Close()（如编辑器窗口需要脏检查确认）。
  */
 export default function WindowControls({ onClose }: { onClose?: () => void }) {
+  const { t } = useTranslation();
   const [isWindows, setIsWindows] = useState(false);
   const [maximised, setMaximised] = useState(false);
 
@@ -37,16 +39,16 @@ export default function WindowControls({ onClose }: { onClose?: () => void }) {
       <span className="topbar-win-divider" />
       <button
         className="topbar-btn"
-        title="最小化"
-        aria-label="最小化"
+        title={t("win.minimize")}
+        aria-label={t("win.minimize")}
         onClick={() => void Window.Minimise()}
       >
         <Minus size={15} />
       </button>
       <button
         className="topbar-btn"
-        title={maximised ? "还原" : "最大化"}
-        aria-label={maximised ? "还原" : "最大化"}
+        title={maximised ? t("win.restore") : t("win.maximize")}
+        aria-label={maximised ? t("win.restore") : t("win.maximize")}
         onClick={() => {
           void Window.ToggleMaximise();
           setMaximised((v) => !v);
@@ -56,8 +58,8 @@ export default function WindowControls({ onClose }: { onClose?: () => void }) {
       </button>
       <button
         className="topbar-btn topbar-btn-close"
-        title="关闭"
-        aria-label="关闭"
+        title={t("win.close")}
+        aria-label={t("win.close")}
         onClick={() => (onClose ? onClose() : void Window.Close())}
       >
         <X size={16} />

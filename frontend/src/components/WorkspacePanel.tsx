@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FileText,
   Folder,
@@ -30,6 +31,7 @@ import type { AgentsMdStatus, FileEntry } from "../types";
  *   - Agent 生成文件后自动刷新（监听工具执行事件，防抖 300ms）
  */
 export default function WorkspacePanel() {
+  const { t } = useTranslation();
   const workspaceWidth = useLayoutStore((s) => s.workspaceWidth);
   const setWorkspaceWidth = useLayoutStore((s) => s.setWorkspaceWidth);
   const refresh = useWorkspaceStore((s) => s.refresh);
@@ -65,25 +67,25 @@ export default function WorkspacePanel() {
       {/* 左边缘拖拽把手（调整工作区宽度） */}
       <ResizeHandle side="left" width={workspaceWidth} onResize={setWorkspaceWidth} />
       <div className="workspace-section-header">
-        <span className="workspace-section-title">工作区</span>
+        <span className="workspace-section-title">{t("workspace.title")}</span>
         <div className="workspace-section-actions">
           <button
             className="ws-icon-btn"
-            title="刷新文件列表"
+            title={t("workspace.refresh")}
             onClick={() => void refresh()}
           >
             <RefreshCw size={16} className={loading ? "ws-spin" : ""} />
           </button>
           <button
             className="ws-icon-btn"
-            title={expandAll ? "全部折叠" : "全部展开"}
+            title={expandAll ? t("workspace.collapseAll") : t("workspace.expandAll")}
             onClick={toggleExpandAll}
           >
             {expandAll ? <ChevronsUp size={16} /> : <ChevronsDown size={16} />}
           </button>
           <button
             className="ws-icon-btn"
-            title={nameOrder === "asc" ? "名称排序：正序（点击切换为倒序）" : "名称排序：倒序（点击切换为正序）"}
+            title={nameOrder === "asc" ? t("workspace.sortAsc") : t("workspace.sortDesc")}
             onClick={cycleNameOrder}
           >
             {nameOrder === "asc" ? <ArrowDownAZ size={16} /> : <ArrowDownZA size={16} />}
@@ -91,7 +93,7 @@ export default function WorkspacePanel() {
           <div className="ws-more-wrapper" ref={moreRef}>
             <button
               className="ws-icon-btn"
-              title="更多"
+              title={t("workspace.more")}
               onClick={() => setMoreOpen((v) => !v)}
             >
               <MoreHorizontal size={16} />
@@ -100,7 +102,7 @@ export default function WorkspacePanel() {
               <div className="ws-more-menu">
                 <button className="ws-ctx-item" onClick={handleRevealWorkspace}>
                   <FolderOpen size={14} />
-                  在文件管理器中打开工作区
+                  {t("workspace.revealInExplorer")}
                 </button>
               </div>
             )}
@@ -123,6 +125,7 @@ export default function WorkspacePanel() {
  * 未找到 → "创建"（写入骨架模板）。状态跟随会话/工作区切换与文件变更刷新。
  */
 function AgentsMdRow() {
+  const { t } = useTranslation();
   const activeId = useChatStore((s) => s.activeId);
   const workspacePath = useChatStore((s) => s.workspace?.path);
   const setBackendError = useChatStore((s) => s.setBackendError);
@@ -168,7 +171,9 @@ function AgentsMdRow() {
         void refreshTree();
       })
       .catch((e) => {
-        setBackendError(`创建 AGENTS.md 失败: ${e instanceof Error ? e.message : String(e)}`);
+        setBackendError(
+          t("workspace.createAgentsMdFailed", { msg: e instanceof Error ? e.message : String(e) }),
+        );
       });
   };
 
@@ -178,26 +183,26 @@ function AgentsMdRow() {
       <span className="ws-agentsmd-name">AGENTS.md</span>
       {status.exists ? (
         <>
-          <span className="ws-agentsmd-state ws-agentsmd-ok">已发现</span>
+          <span className="ws-agentsmd-state ws-agentsmd-ok">{t("workspace.agentsMdFound")}</span>
           <button
             className="ws-agentsmd-btn"
-            title="在文件管理器中打开所在目录"
+            title={t("workspace.openDirTip")}
             onClick={() => void agentApi.revealInExplorer(activeId)}
           >
             <FolderOpen size={13} />
-            打开目录
+            {t("workspace.openDir")}
           </button>
         </>
       ) : (
         <>
-          <span className="ws-agentsmd-state">未找到</span>
+          <span className="ws-agentsmd-state">{t("workspace.agentsMdMissing")}</span>
           <button
             className="ws-agentsmd-btn"
-            title="在工作区根创建 AGENTS.md 骨架模板（创建后下一轮会话自动注入）"
+            title={t("workspace.createAgentsMdTip")}
             onClick={handleCreate}
           >
             <Plus size={13} />
-            创建
+            {t("common.create")}
           </button>
         </>
       )}
@@ -222,6 +227,7 @@ function allDirPaths(entries: FileEntry[]): Set<string> {
 
 /** 文件树：状态来自 workspaceStore，支持自动刷新 */
 function FilesTab() {
+  const { t } = useTranslation();
   const activeId = useChatStore((s) => s.activeId);
   // 工作区路径：切换自定义目录后必须重新加载文件树，
   // 否则面板继续显示旧目录的内容
@@ -310,7 +316,7 @@ function FilesTab() {
   const handleOpenFile = (relPath: string) => {
     if (!activeId) return;
     agentApi.openFile(activeId, relPath).catch((e) => {
-      setBackendError(`打开文件失败: ${e instanceof Error ? e.message : String(e)}`);
+      setBackendError(t("workspace.openFileFailed", { msg: e instanceof Error ? e.message : String(e) }));
     });
   };
 
@@ -318,14 +324,14 @@ function FilesTab() {
   const handleViewFile = (relPath: string) => {
     if (!activeId) return;
     agentApi.openAuxTab(activeId, "editor", relPath).catch((e) => {
-      setBackendError(`打开编辑器失败: ${e instanceof Error ? e.message : String(e)}`);
+      setBackendError(t("workspace.openEditorFailed", { msg: e instanceof Error ? e.message : String(e) }));
     });
   };
 
   const handleRevealFile = (relPath: string) => {
     if (!activeId) return;
     agentApi.revealFileInExplorer(activeId, relPath).catch((e) => {
-      setBackendError(`在文件管理器中显示失败: ${e instanceof Error ? e.message : String(e)}`);
+      setBackendError(t("workspace.revealFailed", { msg: e instanceof Error ? e.message : String(e) }));
     });
     setCtxMenu(null);
   };
@@ -352,8 +358,8 @@ function FilesTab() {
     return (
       <div className="ws-empty">
         <Inbox size={32} className="ws-empty-icon" />
-        <p>未选择会话</p>
-        <span>选择一个对话后查看其工作区文件</span>
+        <p>{t("workspace.noSession")}</p>
+        <span>{t("workspace.noSessionHint")}</span>
       </div>
     );
   }
@@ -370,10 +376,10 @@ function FilesTab() {
     return (
       <div className="ws-empty">
         <Inbox size={32} className="ws-empty-icon" />
-        <p>加载失败</p>
+        <p>{t("workspace.loadFailed")}</p>
         <span>{error}</span>
         <button className="ws-retry-btn" onClick={() => void refresh()}>
-          <RefreshCw size={14} /> 重试
+          <RefreshCw size={14} /> {t("common.retry")}
         </button>
       </div>
     );
@@ -383,8 +389,8 @@ function FilesTab() {
     return (
       <div className="ws-empty">
         <Inbox size={32} className="ws-empty-icon" />
-        <p>工作区为空</p>
-        <span>Agent 生成的文件将显示在这里</span>
+        <p>{t("workspace.empty")}</p>
+        <span>{t("workspace.emptyHint")}</span>
       </div>
     );
   }
@@ -422,7 +428,7 @@ function FilesTab() {
               }}
             >
               <SquareArrowOutUpRight size={14} />
-              用默认程序打开
+              {t("workspace.openDefault")}
             </button>
           )}
           <button
@@ -430,7 +436,7 @@ function FilesTab() {
             onClick={() => handleRevealFile(ctxMenu.entry.path)}
           >
             <FolderOpen size={14} />
-            在文件资源管理器中显示
+            {t("workspace.showInExplorer")}
           </button>
         </div>
       )}
@@ -458,6 +464,7 @@ function FileTreeNode({
   onViewFile: (relPath: string) => void;
   onContextMenu: (e: React.MouseEvent, entry: FileEntry) => void;
 }) {
+  const { t } = useTranslation();
   const isExpanded = expanded.has(entry.path);
 
   if (entry.isDir) {
@@ -507,7 +514,7 @@ function FileTreeNode({
       onClick={() => onViewFile(entry.path)}
       onDoubleClick={() => onOpenFile(entry.path)}
       onContextMenu={(e) => onContextMenu(e, entry)}
-      title="单击内置查看 · 双击用默认程序打开 · 右键更多操作"
+      title={t("workspace.itemTip")}
     >
       <FileText size={13} className="ws-file-icon" />
       <span className="ws-file-name">{entry.name}</span>

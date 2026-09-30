@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
+import { useTranslation } from "react-i18next";
+import { Excalidraw, MainMenu, exportToBlob } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI, ExcalidrawInitialDataState, LibraryItems } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 import { ImageDown, Workflow, Save, FileDown } from "lucide-react";
-import WindowControls from "./WindowControls";
 import { Events } from "@wailsio/runtime";
 import { sceneToMermaid } from "../utils/excalidrawMermaid";
 import type { ConvertResult } from "../utils/excalidrawMermaid";
@@ -28,6 +28,9 @@ export default function CanvasBoard({
   onInsert: (dataUrl: string) => void;
   onInsertMermaid: (mermaid: string) => void;
 }) {
+  const { t, i18n } = useTranslation();
+  // Excalidraw 内置语言包：zh→zh-CN，en→en；切换语言即整体换肤文案
+  const excalidrawLang = i18n.language.startsWith("zh") ? "zh-CN" : "en";
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -62,7 +65,12 @@ export default function CanvasBoard({
       const draft = JSON.parse(draftJson) as {
         elements?: unknown[];
         files?: unknown;
-        appState?: { scrollX?: number; scrollY?: number; zoom?: { value: number } };
+        appState?: {
+          scrollX?: number;
+          scrollY?: number;
+          zoom?: { value: number };
+          defaultSidebarDockedPreference?: boolean;
+        };
       };
       return {
         libraryItems,
@@ -79,11 +87,22 @@ export default function CanvasBoard({
   const latestDraftRef = useRef<string>("");
   const saveDraft = (elements: unknown, appState: unknown, files: unknown) => {
     if (!draftSid) return;
-    const st = appState as { scrollX?: number; scrollY?: number; zoom?: { value: number } };
+    const st = appState as {
+      scrollX?: number;
+      scrollY?: number;
+      zoom?: { value: number };
+      defaultSidebarDockedPreference?: boolean;
+    };
     latestDraftRef.current = JSON.stringify({
       elements,
       files,
-      appState: { scrollX: st.scrollX, scrollY: st.scrollY, zoom: st.zoom },
+      // 视口状态 + 素材库停靠（Pin）偏好——关窗重开保持停靠
+      appState: {
+        scrollX: st.scrollX,
+        scrollY: st.scrollY,
+        zoom: st.zoom,
+        defaultSidebarDockedPreference: st.defaultSidebarDockedPreference,
+      },
     });
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
@@ -98,20 +117,15 @@ export default function CanvasBoard({
       draftTimerRef.current = null;
     }
     if (!latestDraftRef.current) {
-      setImportNote("画布还没有内容");
-      setTimeout(() => setImportNote(null), 2000);
+      toast(t("canvas.emptyNote"));
       return;
     }
     void agentApi
       .setCanvasDraft(draftSid, latestDraftRef.current)
-      .then(() => {
-        setImportNote("草稿已保存");
-        setTimeout(() => setImportNote(null), 2000);
-      })
-      .catch((err) => {
-        setImportNote(`保存失败：${err instanceof Error ? err.message : String(err)}`);
-        setTimeout(() => setImportNote(null), 4000);
-      });
+      .then(() => toast(t("canvas.saved")))
+      .catch((err) =>
+        toast(t("canvas.saveFailed", { msg: err instanceof Error ? err.message : String(err) })),
+      );
   };
   // 另存为（Ctrl+Shift+S）：导出 .excalidraw 场景文件（Excalidraw
   // 原生格式，可分享/备份/再导入），走系统保存对话框
@@ -129,13 +143,11 @@ export default function CanvasBoard({
       .exportCanvasScene(scene)
       .then((path) => {
         if (!path) return; // 用户取消
-        setImportNote(`已另存为 ${path}`);
-        setTimeout(() => setImportNote(null), 4000);
+        toast(t("canvas.savedAs", { path }));
       })
-      .catch((err) => {
-        setImportNote(`另存失败：${err instanceof Error ? err.message : String(err)}`);
-        setTimeout(() => setImportNote(null), 4000);
-      });
+      .catch((err) =>
+        toast(t("canvas.saveAsFailed", { msg: err instanceof Error ? err.message : String(err) })),
+      );
   };
 
   // 快捷键（桌面惯例）：Ctrl+S 静默保存草稿到会话目录；
@@ -175,7 +187,8 @@ export default function CanvasBoard({
     }, 800);
   };
 
-  const [importNote, setImportNote] = useState<string | null>(null);
+  // 瞬态提示统一走 Excalidraw 内置 toast（头部状态栏已移除）
+  const toast = (message: string) => apiRef.current?.setToast({ message });
 
   // 画板主题跟随应用主题（窗口内 CustomEvent，由 theme.ts 广播）
   const [appTheme, setAppTheme] = useState<"dark" | "light">(() =>
@@ -191,20 +204,18 @@ export default function CanvasBoard({
   // 素材库导入（#addLibrary hash 兜底路径使用；主链路是应用内素材
   // 浏览窗口 + 启动早期导入门 LibraryImportGate，不经由画板）。
   const importFrom = (sourceUrl: string) => {
-    setImportNote("正在导入素材库…");
+    toast(t("canvas.importing"));
     agentApi
       .importCanvasLibrary(sourceUrl)
       .then(({ json, added }) => {
         if (apiRef.current && json) {
           void apiRef.current.updateLibrary({ libraryItems: JSON.parse(json) });
         }
-        setImportNote(added > 0 ? `已导入 ${added} 个素材` : "素材已存在，无需导入");
-        setTimeout(() => setImportNote(null), 3000);
+        toast(added > 0 ? t("canvas.imported", { count: added }) : t("canvas.importExists"));
       })
-      .catch((err) => {
-        setImportNote(`素材导入失败：${err instanceof Error ? err.message : String(err)}`);
-        setTimeout(() => setImportNote(null), 5000);
-      });
+      .catch((err) =>
+        toast(t("canvas.importFailed", { msg: err instanceof Error ? err.message : String(err) })),
+      );
   };
   // 供 hashchange 回调拿到最新闭包
   const importFromRef = useRef(importFrom);
@@ -262,9 +273,9 @@ export default function CanvasBoard({
   // 且仅在结果实质变化时更新——onChange 每次产生新数组，若直接
   // setState 会驱动 Excalidraw 重渲染回流 jotai store，造成
   // "Maximum update depth exceeded" 无限循环。
-  const [conv, setConv] = useState<ConvertResult>({ ok: false, reason: "画布为空" });
+  const [conv, setConv] = useState<ConvertResult>({ ok: false, reason: "canvas.reason.empty" });
   const convRef = useRef<ConvertResult>(conv);
-  const hasContent = conv.ok || conv.reason !== "画布为空";
+  const hasContent = conv.ok || conv.reason !== "canvas.reason.empty";
 
   const insertAsImage = async () => {
     const api = apiRef.current;
@@ -295,63 +306,17 @@ export default function CanvasBoard({
 
   return (
     <div className="canvas-overlay">
-      <div className="canvas-header">
-        <span className="canvas-title">画板</span>
-        {/* 常驻提示已移除（窄窗换行难看）；导出动作的去向见按钮 tooltip。
-            canvas-hint 仅在素材导入等瞬态通知时出现 */}
-        {importNote && <span className="canvas-hint">{importNote}</span>}
-        <div className="canvas-actions">
-          {draftSid && (
-            <button
-              className="dialog-btn secondary"
-              title="保存草稿到会话目录（Ctrl+S）；Ctrl+Shift+S 另存为 .excalidraw 文件"
-              onClick={saveNow}
-            >
-              <Save size={14} /> 保存
-            </button>
-          )}
-          <button
-            className="dialog-btn secondary"
-            title="另存为 .excalidraw 场景文件（Ctrl+Shift+S），可分享/备份/再导入"
-            onClick={saveAs}
-          >
-            <FileDown size={14} /> 另存为
-          </button>
-          <button
-            className="dialog-btn secondary"
-            disabled={!conv.ok}
-            title={
-              conv.ok
-                ? "转换为 Mermaid 代码块，插入对话输入框（纯文本，省 Token，全模型可用）"
-                : conv.reason
-            }
-            onClick={() => {
-              const latest = convRef.current; // 点击取最新转换结果（state 有渲染延迟）
-              if (!latest.ok) return;
-              onInsertMermaid(latest.mermaid); // 关窗由调用方负责
-            }}
-          >
-            <Workflow size={14} /> 导出为 Mermaid
-          </button>
-          <button
-            className="dialog-btn primary"
-            disabled={!hasContent || exporting || !canInsertImage}
-            title={
-              canInsertImage
-                ? "导出为 PNG 图片，插入对话输入框"
-                : "当前模型未声明图片能力（设置 → 模型 → 能力 → 图片）"
-            }
-            onClick={() => void insertAsImage()}
-          >
-            <ImageDown size={14} /> {exporting ? "导出中…" : "导出为图片"}
-          </button>
-          <WindowControls />
-        </div>
-      </div>
+      {/* 头部状态栏已移除（标题由副窗口 Tab 承担）；保存/导出动作
+          收进 Excalidraw 主菜单（汉堡），瞬态提示走内置 toast */}
       <div className="canvas-body">
         <Excalidraw
           excalidrawAPI={(api) => (apiRef.current = api)}
           theme={appTheme}
+          langCode={excalidrawLang}
+          // 素材库侧栏的 Pin（停靠）按钮仅在宽度 ≥ dockedSidebarBreakpoint
+          // 时渲染；默认断点高于副窗口常用宽度，降到 620 让 Pin 常驻可用。
+          // 停靠偏好存在 appState，随草稿持久化（关窗重开仍停靠）。
+          UIOptions={{ dockedSidebarBreakpoint: 620 }}
           initialData={loadLibrary}
           onLibraryChange={onLibraryChange}
           onChange={(els, appState, files) => {
@@ -365,7 +330,43 @@ export default function CanvasBoard({
               return prev;
             });
           }}
-        />
+        >
+          <MainMenu>
+            {draftSid && (
+              <MainMenu.Item icon={<Save size={16} />} onSelect={saveNow}>
+                {t("canvas.save")}
+              </MainMenu.Item>
+            )}
+            <MainMenu.Item icon={<FileDown size={16} />} onSelect={saveAs}>
+              {t("canvas.saveAs")}
+            </MainMenu.Item>
+            <MainMenu.Item
+              icon={<Workflow size={16} />}
+              disabled={!conv.ok}
+              onSelect={() => {
+                const latest = convRef.current; // 点击取最新转换结果（state 有渲染延迟）
+                if (!latest.ok) return;
+                onInsertMermaid(latest.mermaid); // 关窗由调用方负责
+              }}
+            >
+              {t("canvas.exportMermaid")}
+            </MainMenu.Item>
+            <MainMenu.Item
+              icon={<ImageDown size={16} />}
+              disabled={!hasContent || exporting || !canInsertImage}
+              onSelect={() => void insertAsImage()}
+            >
+              {exporting ? t("canvas.exporting") : t("canvas.exportImage")}
+            </MainMenu.Item>
+            <MainMenu.Separator />
+            <MainMenu.DefaultItems.SearchMenu />
+            <MainMenu.DefaultItems.Help />
+            <MainMenu.DefaultItems.ClearCanvas />
+            <MainMenu.Separator />
+            <MainMenu.DefaultItems.ToggleTheme />
+            <MainMenu.DefaultItems.ChangeCanvasBackground />
+          </MainMenu>
+        </Excalidraw>
       </div>
     </div>
   );

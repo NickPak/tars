@@ -1,4 +1,5 @@
 import { Circle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useChatStore } from "../store/chatStore";
 
 /**
@@ -7,6 +8,7 @@ import { useChatStore } from "../store/chatStore";
  * 轮次级指标（本次命中率/本次费用/本轮 tokens/耗时）在每条消息的底部展示。
  */
 export default function StatusBar() {
+  const { t } = useTranslation();
   const stats = useChatStore((s) => s.stats);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const backendError = useChatStore((s) => s.backendError);
@@ -14,8 +16,8 @@ export default function StatusBar() {
   // 运行灯只表达即时状态：后端错误（红）/ 生成中（黄）/ 空闲（暗）
   const lampColor = backendError ? "var(--error)" : isStreaming ? "var(--attention)" : "var(--idle)";
   const lampTitle = backendError
-    ? "后端调用失败"
-    : isStreaming ? "生成中…" : "空闲";
+    ? t("statusbar.backendError")
+    : isStreaming ? t("statusbar.streaming") : t("statusbar.idle");
 
   return (
     <footer className="statusbar">
@@ -27,38 +29,44 @@ export default function StatusBar() {
       <div className="statusbar-right">
         {stats && (
           <>
-            <span className="statusbar-item" title="会话平均缓存命中率（Σcached / Σprompt）">
-              平均命中 {formatPercent(stats.avgCacheHitRate)}
+            <span className="statusbar-item" title={t("statusbar.avgHitTip")}>
+              {t("statusbar.avgHit", { value: formatPercent(stats.avgCacheHitRate) })}
             </span>
-            <span className="statusbar-item" title="会话累计 token 消耗">
-              会话 tokens {formatTokens(stats.totalTokens)}
+            <span className="statusbar-item" title={t("statusbar.tokensTip")}>
+              {t("statusbar.tokens", { value: formatTokens(stats.totalTokens) })}
             </span>
-            <span className="statusbar-item" title="会话累计 Credits（1 credit = 1000 tokens）">
-              Credits {stats.totalCredits.toFixed(1)}
+            <span className="statusbar-item" title={t("statusbar.creditsTip")}>
+              {t("statusbar.credits", { value: stats.totalCredits.toFixed(1) })}
             </span>
-            <span className="statusbar-item" title="会话轮次（提问次数）">
-              {stats.rounds} 轮
+            <span className="statusbar-item" title={t("statusbar.roundsTip")}>
+              {t("statusbar.rounds", { count: stats.rounds })}
             </span>
             <span
               className="statusbar-item"
-              title={`上下文使用 ${formatTokens(Math.round(stats.contextUsage * stats.contextWindow))} / ${formatTokens(stats.contextWindow)}`}
+              title={t("statusbar.contextTip", {
+                used: formatTokens(Math.round(stats.contextUsage * stats.contextWindow)),
+                total: formatTokens(stats.contextWindow),
+              })}
             >
-              上下文 {formatPercent(stats.contextUsage)}
+              {t("statusbar.context", { value: formatPercent(stats.contextUsage) })}
             </span>
-            <span className="statusbar-item" title="上下文压缩阈值（超过后应触发历史压缩）">
-              压缩阈值 {formatPercent(stats.compressionThreshold)}
+            <span className="statusbar-item" title={t("statusbar.thresholdTip")}>
+              {t("statusbar.threshold", { value: formatPercent(stats.compressionThreshold) })}
             </span>
             {(stats.compressionCount ?? 0) > 0 && (
               <span
                 className="statusbar-item"
-                title={`本会话已压缩 ${stats.compressionCount} 次，上次回收率 ${formatPercent(stats.lastCompressionRecovery ?? 0)}`}
+                title={t("statusbar.compressedTip", {
+                  count: stats.compressionCount,
+                  rate: formatPercent(stats.lastCompressionRecovery ?? 0),
+                })}
               >
-                已压缩 {stats.compressionCount} 次
+                {t("statusbar.compressed", { count: stats.compressionCount })}
               </span>
             )}
             {stats.inputPricePerMillion > 0 && (
-              <span className="statusbar-item" title="会话累计费用（按当前价格表估算）">
-                会话费用 ¥{stats.totalCostYuan.toFixed(4)}
+              <span className="statusbar-item" title={t("statusbar.costTip")}>
+                {t("statusbar.cost", { value: stats.totalCostYuan.toFixed(4) })}
               </span>
             )}
           </>

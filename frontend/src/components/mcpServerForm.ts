@@ -4,7 +4,12 @@
  * ServerConfig（command + args 分离、仅 stdio、扩展 description/
  * sourceType/enabled/risk 字段）。全部纯函数，便于单测。
  */
+import i18n from "../i18n";
 import type { MCPServerConfig } from "../types";
+
+/** 本模块为纯函数（非 React）：错误消息经 i18n 实例取当前界面语言 */
+const t = (key: string, vars?: Record<string, unknown>): string =>
+  i18n.t(key, vars) as string;
 
 /** 解析结果：服务器名 + 配置 */
 export interface ParsedServer {
@@ -118,14 +123,14 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function asString(v: unknown, key: string): string {
   if (v == null) return "";
-  if (typeof v !== "string") throw new Error(`字段 "${key}" 必须是字符串`);
+  if (typeof v !== "string") throw new Error(t("mcp.err.fieldString", { key }));
   return v;
 }
 
 function asStringArray(v: unknown, key: string): string[] {
   if (v == null) return [];
   if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) {
-    throw new Error(`字段 "${key}" 必须是字符串数组`);
+    throw new Error(t("mcp.err.fieldStringArray", { key }));
   }
   return v as string[];
 }
@@ -133,7 +138,7 @@ function asStringArray(v: unknown, key: string): string[] {
 function asStringRecord(v: unknown, key: string): Record<string, string> {
   if (v == null) return {};
   if (!isRecord(v) || !Object.values(v).every((x) => typeof x === "string")) {
-    throw new Error(`字段 "${key}" 必须是字符串键值表`);
+    throw new Error(t("mcp.err.fieldStringMap", { key }));
   }
   return v as Record<string, string>;
 }
@@ -152,25 +157,25 @@ export function parseServerJSON(raw: string, strict = true): ParsedServer {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("JSON 格式错误");
+    throw new Error(t("mcp.err.badJson"));
   }
-  if (!isRecord(parsed)) throw new Error("JSON 须为对象");
+  if (!isRecord(parsed)) throw new Error(t("mcp.err.jsonObject"));
   const container = isRecord(parsed.mcpServers) ? parsed.mcpServers : parsed;
   const entries = Object.entries(container);
-  if (entries.length !== 1) throw new Error("JSON 须恰好包含一个服务器");
+  if (entries.length !== 1) throw new Error(t("mcp.err.jsonOneServer"));
   const [name, value] = entries[0];
   if (!validServerName(name)) {
-    throw new Error(`服务器名 "${name}" 不合法（小写字母/数字/连字符）`);
+    throw new Error(t("mcp.invalidName", { name }));
   }
-  if (!isRecord(value)) throw new Error(`服务器 "${name}" 的配置须为对象`);
+  if (!isRecord(value)) throw new Error(t("mcp.err.serverConfigObject", { name }));
   for (const k of Object.keys(value)) {
-    if (!JSON_KEYS.has(k)) throw new Error(`不支持的字段 "${k}"`);
+    if (!JSON_KEYS.has(k)) throw new Error(t("mcp.err.unsupportedField", { key: k }));
   }
   const command = asString(value.command, "command").trim();
-  if (strict && !command) throw new Error("command 必填");
+  if (strict && !command) throw new Error(t("mcp.err.commandRequired"));
   const risk = asString(value.risk, "risk") || DEFAULTS.risk!;
   if (!["low", "medium", "high"].includes(risk)) {
-    throw new Error(`risk 须为 low/medium/high，得到 "${risk}"`);
+    throw new Error(t("mcp.err.badRisk", { value: risk }));
   }
   return {
     name,
@@ -194,13 +199,13 @@ export function parseServerJSON(raw: string, strict = true): ParsedServer {
  */
 export function parseQuick(raw: string): ParsedServer {
   const text = raw.trim();
-  if (!text) throw new Error("请输入命令或 JSON");
+  if (!text) throw new Error(t("mcp.err.emptyInput"));
   if (text.startsWith("{")) return parseServerJSON(text);
   if (/^https?:\/\//i.test(text)) {
-    throw new Error("暂不支持远程 URL 服务器（当前版本仅支持本地 stdio 进程）");
+    throw new Error(t("mcp.err.noRemote"));
   }
   const argv = tokenizeCommand(text);
-  if (argv.length === 0) throw new Error("命令为空");
+  if (argv.length === 0) throw new Error(t("mcp.err.emptyCommand"));
   return {
     name: deriveName(argv),
     config: { command: argv[0], args: argv.slice(1), env: {}, ...DEFAULTS },
@@ -235,7 +240,7 @@ export function textToEnv(text: string): Record<string, string> {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
-    if (eq <= 0) throw new Error(`第 ${i + 1} 行须为 KEY=VALUE 形式`);
+    if (eq <= 0) throw new Error(t("mcp.err.envLine", { n: i + 1 }));
     env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
   }
   return env;

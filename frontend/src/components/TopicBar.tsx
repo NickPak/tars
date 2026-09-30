@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   MoreVertical,
@@ -16,6 +17,7 @@ import { agentApi } from "../services/agentApi";
  * 工作目录仅可在新建会话的欢迎页选择；会话一旦开始就锁定，这里只提供"在文件管理器中打开"。
  */
 export default function TopicBar() {
+  const { t } = useTranslation();
   const activeId = useChatStore((s) => s.activeId);
   const workspace = useChatStore((s) => s.workspace);
   const model = useChatStore((s) => s.model);
@@ -51,7 +53,7 @@ export default function TopicBar() {
     try {
       await agentApi.exportSession(activeId);
     } catch (e) {
-      setBackendError(`导出失败: ${e instanceof Error ? e.message : String(e)}`);
+      setBackendError(t("common.exportFailed", { msg: e instanceof Error ? e.message : String(e) }));
     }
   };
 
@@ -63,20 +65,20 @@ export default function TopicBar() {
           <>
             <span
               className="topicbar-name topicbar-conv-id"
-              title={`会话 ID：${activeId}\n用于链路追踪检索`}
+              title={t("topicbar.sessionIdTip", { id: activeId })}
             >
               {activeId}
             </span>
             <button
               className="topicbar-copy-btn"
-              title="复制会话 ID"
+              title={t("sessionTabs.copySessionId")}
               onClick={handleCopyId}
             >
               {idCopied ? <Check size={13} /> : <Copy size={13} />}
             </button>
           </>
         ) : (
-          <span className="topicbar-name">新对话</span>
+          <span className="topicbar-name">{t("sessionTabs.newChat")}</span>
         )}
       </div>
 
@@ -88,14 +90,14 @@ export default function TopicBar() {
           disabled={!activeId}
           title={
             activeId
-              ? workspace?.path || "未设置工作区"
-              : "发送首条消息后可查看工作区"
+              ? workspace?.path || t("topicbar.workspaceUnset")
+              : t("topicbar.workspacePending")
           }
           onClick={() => setWsMenuOpen((v) => !v)}
         >
           <FolderOpen size={14} />
           <span className="topicbar-ws-name">
-            {workspace?.name || "默认工作区"}
+            {workspace?.name || t("sidebar.defaultWorkspace")}
           </span>
           {activeId && <ChevronDown size={12} />}
         </button>
@@ -112,7 +114,7 @@ export default function TopicBar() {
                 onClick={handleReveal}
               >
                 <ExternalLink size={14} />
-                在文件管理器中打开
+                {t("topicbar.openInExplorer")}
               </button>
             </div>
           </>
@@ -122,7 +124,7 @@ export default function TopicBar() {
         {model?.modelId && (
           <button
             className="topicbar-model-btn"
-            title={`模型：${model.entryId}\n上下文窗口：${model.contextWindow.toLocaleString()} tokens\n点击切换模型`}
+            title={t("topicbar.modelTip", { id: model.entryId, window: model.contextWindow.toLocaleString() })}
             onClick={() => setModelMenuOpen((v) => !v)}
           >
             <span>{model.modelId}</span>
@@ -155,7 +157,7 @@ export default function TopicBar() {
               ))}
               {models.length === 0 && (
                 <div className="topicbar-menu-empty">
-                  暂无可用模型，请在设置中添加
+                  {t("topicbar.noModels")}
                 </div>
               )}
             </div>
@@ -165,8 +167,8 @@ export default function TopicBar() {
         {/* 更多操作 */}
         <button
           className="topicbar-btn"
-          title="更多操作"
-          aria-label="更多操作"
+          title={t("topicbar.moreActions")}
+          aria-label={t("topicbar.moreActions")}
           onClick={() => setMenuOpen((v) => !v)}
         >
           <MoreVertical size={16} />
@@ -184,13 +186,13 @@ export default function TopicBar() {
                   void handleExport();
                 }}
               >
-                导出对话
+                {t("sessionTabs.export")}
               </button>
               <button className="topicbar-menu-item" onClick={() => setMenuOpen(false)}>
-                清空消息
+                {t("topicbar.clearMessages")}
               </button>
               <button className="topicbar-menu-item" onClick={() => setMenuOpen(false)}>
-                分享
+                {t("topicbar.share")}
               </button>
             </div>
           </>

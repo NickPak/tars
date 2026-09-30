@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface RenameDialogProps {
   open: boolean;
@@ -14,6 +15,7 @@ export default function RenameDialog({
   onCancel,
   onConfirm,
 }: RenameDialogProps) {
+  const { t } = useTranslation();
   const [value, setValue] = useState(oldTitle);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -54,24 +56,24 @@ export default function RenameDialog({
   return (
     <div className="dialog-overlay" onClick={onCancel}>
       <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
-        <div className="dialog-title">重命名对话</div>
+        <div className="dialog-title">{t("dialog.renameTitle")}</div>
         <input
           ref={inputRef}
           className="dialog-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="输入新的对话标题"
+          placeholder={t("dialog.renamePlaceholder")}
         />
         <div className="dialog-actions">
           <button className="dialog-btn secondary" onClick={onCancel}>
-            取消
+            {t("common.cancel")}
           </button>
           <button
             className="dialog-btn primary"
             onClick={submit}
             disabled={!value.trim()}
           >
-            确定
+            {t("common.confirm")}
           </button>
         </div>
       </div>
@@ -93,6 +95,7 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -111,10 +114,10 @@ export function ConfirmDialog({
         <div className="dialog-message">{message}</div>
         <div className="dialog-actions">
           <button className="dialog-btn secondary" onClick={onCancel}>
-            取消
+            {t("common.cancel")}
           </button>
           <button className="dialog-btn danger" onClick={onConfirm}>
-            删除
+            {t("common.delete")}
           </button>
         </div>
       </div>
